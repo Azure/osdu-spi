@@ -1,0 +1,131 @@
+# Project information
+site_name: OSDU SPI Fork
+site_author: Microsoft Azure Energy
+site_name: OSDU SPI Fork
+site_url: https://danielscholl-osdu.github.io/osdu-fork-template/
+site_author: Daniel Scholl
+site_description: >-
+  OSDU Fork Management Template - Simplified enterprise-grade fork management with AI-enhanced workflows
+
+docs_dir: src
+
+# Repository
+repo_name: osdu-fork-template
+repo_url: https://github.com/danielscholl-osdu/osdu-fork-template
+
+# Copyright
+copyright: Copyright &copy; Microsoft Corporation.
+
+extra:
+  generator: false
+
+# Configuration
+theme:
+  name: material
+  logo: images/favicon.png
+  favicon: images/favicon.ico
+  # custom_dir: overrides
+  font:
+    text: Inter
+    code: Fira Code
+  features:
+    - content.code.copy
+    - navigation.collapsible
+    - navigation.instant
+    - navigation.instant.preview
+    - navigation.tabs
+    - navigation.footer
+    # - navigation.tabs.sticky
+    # - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - search.share
+    - search.suggest
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
+    # # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      toggle:
+        icon: material/toggle-switch-off
+        name: Switch to system preference
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - def_list
+  - tables
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+  # - git-revision-date-localized:
+  #     enable_creation_date: true
+  #     enabled: !ENV [CI, false]
+  # - git-committers:
+  #     repository: azure/osdu-developer
+  #     branch: main
+      # enabled: !ENV [CI, false]
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10.9.0/dist/mermaid.min.js
+  - https://unpkg.com/tablesort@5.3.0/dist/tablesort.min.js
+  - javascripts/tablesort.js
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Concepts: concepts.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Three-Branch Strategy: architecture/three_branch_strategy.md
+      - Workflow System: architecture/workflow_system.md
+      - AI Integration: architecture/ai_integration.md
+  - Workflows:
+      - Initialization: workflows/initialization.md
+      - Synchronization: workflows/synchronization.md
+      - Cascade: workflows/cascade.md
+      - Validation: workflows/validation.md
+      - Build: workflows/build.md
+      - Release: workflows/release.md
+  - Decisions:
+      - Index: decisions/index.md
+      - Evolution: decisions/evolution.md

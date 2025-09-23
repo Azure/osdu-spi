@@ -1,0 +1,94 @@
+name: 'Java Build'
+description: 'Reusable Java build action that handles build, test, and artifact upload'
+
+inputs:
+  generate_coverage:
+    description: 'Whether to generate coverage report'
+    required: false
+    default: 'false'
+  gitlab_token:
+    description: 'GitLab token for Maven authentication'
+    required: false
+
+outputs:
+  is_java_project:
+    description: "Whether this is a Java project"
+    value: ${{ steps.check_pom.outputs.has_pom }}
+  build_result:
+    description: "Result of the build process"
+    value: ${{ steps.build.outcome }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Required for Sonar analysis
+
+    - name: "Check for pom.xml"
+      id: check_pom
+      shell: bash
+      run: |
+        if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
+          echo "has_pom=true" >> $GITHUB_OUTPUT
+        else
+          echo "has_pom=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: "Setup Java Environment"
+      if: steps.check_pom.outputs.has_pom == 'true'
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: 'maven'
+        cache-dependency-path: '**/pom.xml'
+
+    - name: "Build and Test"
+      if: steps.check_pom.outputs.has_pom == 'true'
+      id: build
+      shell: bash
+      run: |
+        # Set up Maven CLI options
+        MAVEN_CLI_OPTS="--batch-mode -Drevision=${GITHUB_REF_NAME}-SNAPSHOT"
+        
+        # Add settings file if it exists
+        if [ -f ".mvn/community-maven.settings.xml" ]; then
+          MAVEN_CLI_OPTS="$MAVEN_CLI_OPTS --settings=.mvn/community-maven.settings.xml"
+        fi
+        
+        if [[ "${{ inputs.generate_coverage }}" == "true" ]]; then
+          # Run build with coverage
+          mvn $MAVEN_CLI_OPTS clean test org.jacoco:jacoco-maven-plugin:0.8.11:report
+          
+          # Generate coverage summary
+          echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Summary" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          find . -name "index.html" -path "*/target/site/jacoco/*" -exec grep -o '<tfoot>.*</tfoot>' {} \; | sed 's/<[^>]*>//g' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        else
+          # Regular build without coverage
+          mvn $MAVEN_CLI_OPTS clean install
+        fi
+      env:
+        MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
+        COMMUNITY_MAVEN_TOKEN: ${{ inputs.gitlab_token }}
+
+    - name: "Upload Build Artifacts"
+      if: steps.check_pom.outputs.has_pom == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: |
+          **/target/*.jar
+          **/target/maven-*-output.txt
+        retention-days: 2
+
+    - name: "Upload Coverage Report"
+      if: steps.check_pom.outputs.has_pom == 'true' && inputs.generate_coverage == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: '**/target/site/jacoco/'
+        retention-days: 2 

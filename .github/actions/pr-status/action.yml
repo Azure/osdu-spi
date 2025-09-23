@@ -1,0 +1,28 @@
+name: 'PR Status Comment'
+description: 'Add a status comment to a PR'
+inputs:
+  token:
+    required: true
+    description: 'GitHub token'
+  pr_number:
+    required: true
+    description: 'PR number'
+  status_items:
+    required: true
+    description: 'JSON array of status items'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Comment PR Status
+      shell: bash
+      run: |
+        STATUS_ITEMS='${{ inputs.status_items }}'
+        CHECKS_STATUS="## Validation Status"
+        while IFS= read -r item; do
+          CHECKS_STATUS="$CHECKS_STATUS
+        - $item"
+        done < <(echo "$STATUS_ITEMS" | jq -r '.[]')
+        gh pr comment ${{ inputs.pr_number }} --body "$CHECKS_STATUS"
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }} 

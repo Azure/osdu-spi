@@ -1,0 +1,326 @@
+name: Validation
+
+on:
+  pull_request:
+    branches: [main, fork_integration, fork_upstream]
+    paths-ignore:
+      - '.github/workflows/**'
+      - '.github/template-workflows/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/actions/**'
+      - '.github/*.md'
+      - '.github/*.json'
+      - '.github/*.yml'
+      - '.github/*.yaml'
+      - '.github/.template-sync-commit'
+      - '.vscode/**'
+      - 'docs/**'
+      - '**.md'
+      - '**.txt'
+      - 'LICENSE'
+      - 'NOTICE'
+  pull_request_target:
+    branches: [main, fork_integration, fork_upstream]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '.github/workflows/**'
+      - '.github/template-workflows/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/actions/**'
+      - '.github/*.md'
+      - '.github/*.json'
+      - '.github/*.yml'
+      - '.github/*.yaml'
+      - '.github/.template-sync-commit'
+      - '.vscode/**'
+      - 'docs/**'
+      - '**.md'
+      - '**.txt'
+      - 'LICENSE'
+      - 'NOTICE'
+  push:
+    branches: [main, fork_integration, fork_upstream]
+    paths-ignore:
+      - '.github/workflows/**'
+      - '.github/template-workflows/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/actions/**'
+      - '.github/*.md'
+      - '.github/*.json'
+      - '.github/*.yml'
+      - '.github/*.yaml'
+      - '.github/.template-sync-commit'
+      - '.vscode/**'
+      - 'docs/**'
+      - '**.md'
+      - '**.txt'
+      - 'LICENSE'
+      - 'NOTICE'
+  workflow_dispatch:
+    inputs:
+      post_init:
+        description: 'Is this a post-initialization validation?'
+        required: false
+        type: boolean
+        default: false
+      initialization_complete:
+        description: 'Force initialization status (used during post-init)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-initialization:
+    name: "🔍 Check Initialization Status"
+    # Skip automatic runs during initialization - only run on manual trigger or PR
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request_target' && 
+       (github.actor == 'app/github-actions' || github.actor == 'github-actions[bot]' || github.actor == 'dependabot[bot]' || contains(github.actor, '[bot]'))) ||
+      (github.event_name == 'push' && 
+       !contains(github.event.head_commit.message, 'chore: complete repository initialization') &&
+       !contains(github.event.head_commit.message, 'chore: clean up template files after initialization'))
+    runs-on: ubuntu-latest
+    outputs:
+      initialized: ${{ steps.check.outputs.initialized }}
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v4
+        with:
+          # For pull_request_target, we need to check out the PR head to validate the actual changes
+          # For pull_request, this will be the same as the default behavior
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+        
+      - name: "Verify Initialization Status"
+        id: check
+        run: |
+          # Debug: Check all possible initialization indicators
+          echo "🔍 Debug: Event name = '${{ github.event_name }}'"
+          echo "🔍 Debug: Repository variable INITIALIZATION_COMPLETE = '${{ vars.INITIALIZATION_COMPLETE }}'"
+          echo "🔍 Debug: Workflow input initialization_complete = '${{ inputs.initialization_complete }}'"
+          echo "🔍 Debug: Workflow input post_init = '${{ inputs.post_init }}'"
+          
+          # Check initialization status with multiple fallbacks
+          INITIALIZED=false
+          
+          # 1. If this is a manual trigger with initialization_complete input, use that
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.initialization_complete }}" = "true" ]; then
+            INITIALIZED=true
+            echo "✅ Initialization confirmed via workflow input"
+          # 2. Check repository variable (for non-manual triggers)
+          elif [ "${{ vars.INITIALIZATION_COMPLETE }}" = "true" ]; then
+            INITIALIZED=true
+            echo "✅ Initialization confirmed via repository variable"
+          # 3. Fallback: check for structural indicators (branches + Java code)
+          else
+            echo "🔍 Checking structural indicators for initialization..."
+            if git ls-remote --heads origin | grep -q "refs/heads/fork_upstream" && \
+               git ls-remote --heads origin | grep -q "refs/heads/fork_integration" && \
+               ([ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f 2>/dev/null)" ]); then
+              INITIALIZED=true
+              echo "✅ Initialization detected via structural indicators"
+            fi
+          fi
+          
+          if [ "$INITIALIZED" = "true" ]; then
+            echo "initialized=true" >> $GITHUB_OUTPUT
+            echo "✅ Repository is initialized"
+          else
+            echo "initialized=false" >> $GITHUB_OUTPUT
+            echo "⏸️ Repository not yet initialized"
+          fi
+
+  check-repo-state:
+    name: "🔍 Check Repository State"
+    needs: check-initialization
+    if: needs.check-initialization.outputs.initialized == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      is_initialized: ${{ steps.check_init.outputs.initialized }}
+      is_java_repo: ${{ steps.check_java.outputs.is_java }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # For pull_request_target, we need to check out the PR head to validate the actual changes
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      
+      - name: "Check Repository Initialization"
+        id: check_init
+        run: |
+          # Check for key files that indicate repo is initialized
+          if [ -f "pom.xml" ] || [ -d "src" ]; then
+            echo "initialized=true" >> $GITHUB_OUTPUT
+          else
+            echo "initialized=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "Check if Java Repository"
+        id: check_java
+        run: |
+          if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
+            echo "is_java=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_java=false" >> $GITHUB_OUTPUT
+          fi
+
+  java-build:
+    name: "🔨 Java Build"
+    needs: [check-initialization, check-repo-state]
+    # Modified condition to exclude Dependabot PRs
+    if: |
+      needs.check-repo-state.outputs.is_initialized == 'true' && 
+      needs.check-repo-state.outputs.is_java_repo == 'true' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      is_java_project: ${{ steps.build.outputs.is_java_project }}
+      build_result: ${{ steps.build.outputs.build_result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # For pull_request_target, we need to check out the PR head to validate the actual changes
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+          
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+          
+      - name: Setup Maven Settings
+        run: |
+          mkdir -p ~/.m2
+          cp .mvn/community-maven.settings.xml ~/.m2/settings.xml
+        
+      - name: "Run Java Build"
+        id: build
+        uses: ./.github/actions/java-build
+        env:
+          MAVEN_USERNAME: ${{ secrets.OPENGROUP_MAVEN_USERNAME }}
+          MAVEN_TOKEN: ${{ secrets.OPENGROUP_MAVEN_TOKEN }}
+        with:
+          generate_coverage: ${{ github.event_name == 'pull_request' }}
+          gitlab_token: ${{ secrets.GITLAB_TOKEN }}
+
+  code-validation:
+    name: "✅ Code Quality Checks"
+    needs: [check-initialization, check-repo-state, java-build]
+    if: |
+      always() && 
+      needs.check-initialization.outputs.initialized == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v4
+        with:
+          # For pull_request_target, we need to check out the PR head to validate the actual changes
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: "Validate Commit Messages"
+        if: |
+          needs.check-repo-state.outputs.is_initialized == 'true' && 
+          github.actor != 'dependabot[bot]' &&
+          github.actor != 'copilot' &&
+          !contains(github.actor, 'copilot') &&
+          !contains(github.event.pull_request.user.login, 'copilot') &&
+          github.base_ref == 'main' &&
+          !contains(github.head_ref, 'fork_') &&
+          !startsWith(github.event.pull_request.title, 'chore(sync)') &&
+          !startsWith(github.event.pull_request.title, '⬆️ Sync with upstream') &&
+          !startsWith(github.event.pull_request.title, '🚀 Production Release: Upstream Integration') &&
+          !startsWith(github.head_ref, 'release/upstream-')
+        uses: webiny/action-conventional-commits@v1.1.0
+        with:
+          config-file-path: '.conventionalcommits.yml'
+        
+      - name: "Check for Merge Conflicts"
+        run: |
+          if git diff --check; then
+            echo "No conflict markers found"
+          else
+            echo "::error::Conflict markers found in files"
+            exit 1
+          fi
+          
+      - name: "Verify Branch Status"
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin
+          BASE_BRANCH="origin/${{ github.base_ref }}"
+          CURRENT_BRANCH="origin/${{ github.head_ref }}"
+          
+          git fetch origin ${{ github.base_ref }}
+          git fetch origin ${{ github.head_ref }}
+          
+          if ! git rev-parse --verify $BASE_BRANCH >/dev/null 2>&1; then
+            echo "::error::Base branch $BASE_BRANCH not found"
+            exit 1
+          fi
+          
+          if ! git rev-parse --verify $CURRENT_BRANCH >/dev/null 2>&1; then
+            echo "::error::Current branch $CURRENT_BRANCH not found"
+            exit 1
+          fi
+          
+          BEHIND_BY=$(git rev-list --count $CURRENT_BRANCH..$BASE_BRANCH)
+          
+          if [ "$BEHIND_BY" -gt 0 ]; then
+            echo "::error::Branch is behind $BASE_BRANCH by $BEHIND_BY commits. Please update your branch."
+            exit 1
+          fi
+
+      - name: "Prepare Validation Report"
+        id: status
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        run: |
+          # Initialize empty array
+          ITEMS="[]"
+          
+          # Add basic checks
+          ITEMS=$(echo "$ITEMS" | jq '. + ["✓ No Merge Conflicts"]')
+          ITEMS=$(echo "$ITEMS" | jq '. + ["✓ Branch is Up-to-date"]')
+          
+          # Handle Dependabot PRs differently
+          if [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
+            ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Dependabot Build Handled by dependabot-validation.yml"]')
+          # For non-Dependabot PRs, report build status
+          elif [[ "${{ needs.check-repo-state.outputs.is_initialized }}" == "true" ]]; then
+            if [[ "${{ needs.check-repo-state.outputs.is_java_repo }}" == "true" ]]; then
+              if [[ "${{ needs.java-build.result }}" == "success" ]]; then
+                ITEMS=$(echo "$ITEMS" | jq '. + ["✓ Java Build Successful"]')
+              else
+                ITEMS=$(echo "$ITEMS" | jq '. + ["❌ Java Build Failed"]')
+              fi
+            else
+              ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Non-Java Repository"]')
+            fi
+          else
+            ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Repository Not Yet Initialized"]')
+          fi
+
+          # Set output with proper JSON escaping
+          echo "items=$(echo "$ITEMS" | jq -c '.')" >> $GITHUB_OUTPUT
+
+      - name: "Post PR Status"
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        uses: ./.github/actions/pr-status
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.pull_request.number }}
+          status_items: ${{ steps.status.outputs.items }}

@@ -1,33 +1,38 @@
-# Project
+# OSDU Azure Service Provider Interface
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/azure/osdu-spi/badge)](https://scorecard.dev/viewer/?uri=github.com/azure/osdu-spi)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-As the maintainer of this project, please make a few updates:
+> [!IMPORTANT]
+> This is the central engineering system and platform home that manages all OSDU Azure service implementations. It provides documentation, automated workflows, CI/CD pipelines, and synchronization mechanisms that keep Azure's OSDU services aligned with upstream OSDU standards while enabling Azure-specific interface development.
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+## OSDU Repositories
+
+This engineering system manages the following Azure OSDU service implementations:
+
+### Core Services
+- [Partition Service](https://github.com/azure/osdu-partition) - Data partition management and isolation
+- [Entitlements Service](https://github.com/azure/osdu-entitlements) - Access control and permissions
+- [Legal Service](https://github.com/azure/osdu-legal) - Legal tag management and compliance
+- [Schema Service](https://github.com/azure/osdu-schema) - Data model and schema management
+- [File Service](https://github.com/azure/osdu-file) - File storage and retrieval
+- [Storage Service](https://github.com/azure/osdu-storage) - Data persistence and management
+- [Indexer Service](https://github.com/azure/osdu-indexer) - Data indexing pipeline
+- [Search Service](https://github.com/azure/osdu-search) - Elasticsearch integration
+
 
 ## Contributing
 
-This project welcomes contributions and suggestions.  Most contributions require you to agree to a
-Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
+Only Microsoft employees can be be contributors for the OSDU SPI services at this time. 
 
-When you submit a pull request, a CLA bot will automatically determine whether you need to provide
-a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
-provided by the bot. You will only need to do this once across all repos using our CLA.
+## License
 
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## Trademarks
+---
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
-trademarks or logos is subject to and must follow
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
-Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
-Any use of third-party trademarks or logos are subject to those third-party's policies.
+<div align="center">
+
+[OSDU Website](https://osduforum.org/) • [Azure OSDU SPI](https://azure.github.io/osdu-spi) • [The Open Group](https://www.opengroup.org/)
+
+</div>

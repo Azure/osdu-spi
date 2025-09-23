@@ -1,0 +1,666 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at midnight
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout main (contains workflows and actions)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install Security Tools
+        run: |
+          # Install Trivy
+          echo "Installing Trivy..."
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.49.1
+          
+          # Install dependencies if needed
+          echo "Dependencies installed"
+
+      - name: Setup Python and PR Generator
+        run: |
+          python -m pip install --upgrade pip
+          echo "📦 Installing AIPR 1.4.0+..."
+          pip install pr-generator-agent>=1.4.0
+          echo "✅ Installation complete. Checking AIPR availability..."
+          
+          # Add user bin directory to PATH for this session
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          
+          # Debug AIPR installation
+          which aipr || echo "⚠️ aipr command not found in PATH"
+          python -m pip list | grep pr-generator-agent || echo "⚠️ pr-generator-agent not found in pip list"
+          
+          # Test AIPR version with updated PATH
+          if aipr --help 2>/dev/null; then
+            echo "✅ AIPR version check successful"
+          else
+            echo "⚠️ AIPR version check failed - testing fallback"
+            python -c "import aipr; print('✅ AIPR module importable')" 2>/dev/null || echo "❌ AIPR module not importable"
+          fi
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create a global exclude file to prevent .mcp.json from being tracked
+          echo ".mcp.json" > ~/.gitignore_global
+          git config core.excludesfile ~/.gitignore_global
+
+          # Add upstream remote using stored variable
+          if [ -z "${{ vars.UPSTREAM_REPO_URL }}" ]; then
+            echo "::error::UPSTREAM_REPO_URL variable is not configured. Please set it in repository settings."
+            echo "This variable should contain the URL of your upstream repository (e.g., https://github.com/Azure/osdu-infrastructure.git)"
+            exit 1
+          fi
+          
+          echo "Adding upstream remote: ${{ vars.UPSTREAM_REPO_URL }}"
+          git remote add upstream "${{ vars.UPSTREAM_REPO_URL }}" || {
+            echo "::error::Failed to add upstream remote. Please check the UPSTREAM_REPO_URL variable."
+            exit 1
+          }
+
+      - name: Fetch Upstream
+        run: |
+          # Fetch latest from upstream
+          git fetch upstream --prune
+
+          # Determine default branch
+          if git rev-parse --verify upstream/main >/dev/null 2>&1; then
+            DEFAULT_BRANCH="main"
+          elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
+            DEFAULT_BRANCH="master"
+          else
+            echo "::error::Could not find main or master branch in upstream"
+            exit 1
+          fi
+          echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
+
+      - name: Check for active cascades
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking for active cascade integrations..."
+          
+          ACTIVE_CASCADE=$(gh issue list \
+            --label "upstream-sync,cascade-active" \
+            --state open \
+            --json number,title)
+          
+          if [ -n "$ACTIVE_CASCADE" ] && [ "$ACTIVE_CASCADE" != "[]" ]; then
+            echo "❌ Upstream sync blocked - active cascade in progress"
+            echo "Active cascades:"
+            echo "$ACTIVE_CASCADE" | jq -r '.[] | "- Issue #\(.number): \(.title)"'
+            echo ""
+            echo "**Resolution Options:**"
+            echo "1. Wait for current cascade to complete or fail"
+            echo "2. If cascade has failed with human-required label, upstream sync is allowed (for potential fixes)"
+            echo "3. Manually resolve any stuck cascades before retrying upstream sync"
+            exit 1
+          fi
+          
+          echo "✅ No active cascades detected - proceeding with upstream sync"
+
+      - name: Check sync state and prevent duplicates
+        id: sync-state
+        uses: ./.github/actions/sync-state-manager
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          upstream_repo_url: ${{ vars.UPSTREAM_REPO_URL }}
+          default_branch: ${{ env.DEFAULT_BRANCH }}
+
+      - name: Sync upstream changes
+        id: sync-changes
+        # Only run if we should create a PR or update an existing branch
+        if: steps.sync-state.outputs.should_create_pr == 'true' || steps.sync-state.outputs.should_update_branch == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Generate branch names with timestamp for uniqueness or use existing branch
+          DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
+          
+          if [ "${{ steps.sync-state.outputs.should_update_branch }}" = "true" ]; then
+            # Use existing branch name
+            SYNC_BRANCH="${{ steps.sync-state.outputs.existing_branch_name }}"
+            echo "🔄 Updating existing sync branch: $SYNC_BRANCH"
+          else
+            # Create new branch name
+            SYNC_BRANCH="sync/upstream-${DATE_SUFFIX}"
+            echo "🆕 Creating new sync branch: $SYNC_BRANCH"
+          fi
+          
+          # Fetch and checkout fork_upstream branch
+          git fetch origin fork_upstream
+          git checkout -b fork_upstream origin/fork_upstream
+
+          # Create or checkout the sync branch
+          if [ "${{ steps.sync-state.outputs.should_update_branch }}" = "true" ]; then
+            # Fetch and checkout existing branch
+            git fetch origin $SYNC_BRANCH
+            git checkout -b $SYNC_BRANCH origin/$SYNC_BRANCH
+            # Reset to fork_upstream to get clean merge
+            git reset --hard fork_upstream
+          else
+            # Create new branch for the sync
+            git checkout -b $SYNC_BRANCH
+          fi
+          
+          # Capture state before sync for meta commit analysis
+          BEFORE_SHA=$(git rev-parse fork_upstream)
+          echo "Captured pre-sync state: $BEFORE_SHA"
+          
+          # Try to merge upstream changes, automatically preferring upstream versions on conflict
+          git merge upstream/$DEFAULT_BRANCH -X theirs --no-edit
+          
+          # Check if there are any changes to commit
+          if git diff --quiet fork_upstream; then
+            echo "No changes to sync from upstream"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Generate conventional commit message using AIPR 1.4.0 with comprehensive error handling
+          META_COMMIT_MSG=""
+          AIPR_SUCCESS=false
+          
+          echo "Attempting to generate AI-powered conventional commit message..."
+          
+          # Try AIPR with timeout and validation (single call for efficiency)
+          META_COMMIT_MSG=$(timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync" 2>/dev/null || echo "")
+          
+          if [[ -n "$META_COMMIT_MSG" ]]; then
+            # Extract first line for validation, but use full message for commit
+            FIRST_LINE=$(echo "$META_COMMIT_MSG" | head -n1)
+            # Use variable to avoid bash parsing issues with regex
+            CONVENTIONAL_REGEX='^(feat|fix|chore|docs|style|refactor|perf|test|build|ci)(\([^)]+\))?:[[:space:]].+'
+            if [[ -n "$FIRST_LINE" ]] && [[ "$FIRST_LINE" =~ $CONVENTIONAL_REGEX ]]; then
+              AIPR_SUCCESS=true
+              echo "✅ Generated AI commit message (first line): $FIRST_LINE"
+              if [[ $(echo "$META_COMMIT_MSG" | wc -l) -gt 1 ]]; then
+                echo "   📝 Multi-line commit with additional details"
+              fi
+            else
+              echo "⚠️ AIPR returned invalid format (first line): $FIRST_LINE"
+            fi
+          else
+            echo "⚠️ AIPR command failed or timed out"
+          fi
+          
+          # Fallback to conservative feat: message if AIPR failed
+          if [ "$AIPR_SUCCESS" = false ]; then
+            META_COMMIT_MSG="feat: sync upstream changes from $UPSTREAM_VERSION"
+            echo "⚠️ Using fallback commit message: $META_COMMIT_MSG"
+          fi
+          
+          # Add meta commit for Release Please to use for versioning
+          git commit --allow-empty -m "$META_COMMIT_MSG"
+          echo "✅ Added meta commit for Release Please integration"
+          
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          
+          # Push changes with force flag to handle branch updates
+          if [ "${{ steps.sync-state.outputs.should_update_branch }}" = "true" ]; then
+            git push -f origin $SYNC_BRANCH
+            echo "🔄 Force-pushed updates to existing branch"
+          else
+            git push -f origin $SYNC_BRANCH
+            echo "🆕 Pushed new sync branch"
+          fi
+
+          # Get upstream version for PR description (use SHA instead of vague "latest")
+          UPSTREAM_SHA=$(git rev-parse upstream/$DEFAULT_BRANCH)
+          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 upstream/$DEFAULT_BRANCH 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
+          
+          # Get the changes for the PR description
+          CHANGES=$(git log --pretty=format:"* %s" fork_upstream..$SYNC_BRANCH)
+          
+          # Prepare fallback description for PR
+          FALLBACK_DESCRIPTION="Automated PR to sync with upstream repository changes."$'\n\n'"### Changes from upstream:"$'\n'"${CHANGES}"
+          
+          # Set environment variables for subsequent steps
+          echo "SYNC_BRANCH=$SYNC_BRANCH" >> $GITHUB_ENV
+          echo "UPSTREAM_VERSION=$UPSTREAM_VERSION" >> $GITHUB_ENV
+          echo "FALLBACK_DESCRIPTION<<EOF" >> $GITHUB_ENV
+          echo "$FALLBACK_DESCRIPTION" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          
+      - name: Create enhanced sync PR
+        if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_create_pr == 'true'
+        id: create-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Get environment variables from previous step
+          SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
+          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
+          FALLBACK_DESCRIPTION="${{ env.FALLBACK_DESCRIPTION }}"
+          
+          # Detect available LLM provider
+          USE_LLM=false
+          LLM_MODEL=""
+          
+          # Check for Azure OpenAI API key
+          if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
+            USE_LLM=true
+            LLM_MODEL="azure-gpt-4"
+            echo "Using Azure OpenAI for PR description generation"
+          # Check for OpenAI API key
+          elif [[ -n "$AZURE_API_KEY" && -n "$AZURE_API_BASE" ]]; then
+            USE_LLM=true
+            LLM_MODEL="azure/gpt-4o"
+            echo "Using Azure OpenAI GPT-4o for PR description generation"
+          # Check for OpenAI API key (tertiary)
+          elif [[ -n "$OPENAI_API_KEY" ]]; then
+            USE_LLM=true
+            LLM_MODEL="gpt-4.1"
+            echo "Using OpenAI GPT-4 for PR description generation"
+          else
+            echo "No LLM API keys found. Using fallback PR description."
+          fi
+          
+          # Calculate diff size to avoid generating prompts that exceed model limits
+          MAX_DIFF_LINES=20000
+          DIFF_LINES=$(git diff fork_upstream | wc -l | tr -d ' ')
+          # Ensure DIFF_LINES is a valid numeric value
+          if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
+            DIFF_LINES=0
+          fi
+          echo "Diff contains $DIFF_LINES lines"
+          
+          # Generate PR description using AI if available with comprehensive error handling
+          if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
+            echo "Generating AI-enhanced PR description using $LLM_MODEL..."
+            
+            # Use aipr tool with vulnerability analysis and timeout protection
+            PR_DESCRIPTION=""
+            echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
+            
+            # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
+            echo "   📝 Command: aipr pr -t fork_upstream -p meta -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
+            
+            # Debug what we got back and handle all failure cases
+            if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
+              echo "   ❌ AIPR pr command execution failed or timed out"
+              PR_DESCRIPTION=""
+            elif [[ "$PR_DESCRIPTION" =~ ^[Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" ]]; then
+              echo "   ❌ AIPR pr error: $PR_DESCRIPTION"
+              PR_DESCRIPTION=""
+            fi
+            
+            if [[ -n "$PR_DESCRIPTION" ]] && [[ ${#PR_DESCRIPTION} -gt 50 ]]; then
+              echo "✅ Generated enhanced PR description using $LLM_MODEL (${#PR_DESCRIPTION} characters)"
+            else
+              if [[ -n "$PR_DESCRIPTION" ]]; then
+                echo "⚠️ AIPR PR description too short (${#PR_DESCRIPTION} chars): $PR_DESCRIPTION"
+              else
+                echo "⚠️ AIPR PR generation failed or timed out"
+              fi
+              echo "   🔄 Using enhanced fallback description"
+              PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
+            fi
+          else
+            if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
+              echo "⚠️ Diff is larger than $MAX_DIFF_LINES lines; using fallback description to avoid token limits"
+            else
+              echo "⚠️ No LLM API keys available; using fallback description"
+            fi
+            PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
+          fi
+          
+          # Create the PR
+          echo "Creating PR from branch $SYNC_BRANCH to fork_upstream"
+          PR_URL=$(gh pr create \
+            --base fork_upstream \
+            --head "$SYNC_BRANCH" \
+            --title "⬆️ Sync with upstream $UPSTREAM_VERSION" \
+            --body "$PR_DESCRIPTION" \
+            --label "upstream-sync,human-required")
+          
+          echo "PR created: $PR_URL"
+          
+          # Extract PR number for output
+          PR_NUMBER=$(basename "$PR_URL")
+          echo "PR number: $PR_NUMBER"
+          
+          # PR number will be tracked via issue description updates
+          
+          # Set outputs for next step
+          echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "PR_DESCRIPTION<<EOF" >> $GITHUB_ENV
+          echo "$PR_DESCRIPTION" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Update existing PR
+        if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_update_branch == 'true'
+        id: update-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
+          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
+          SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
+          FALLBACK_DESCRIPTION="${{ env.FALLBACK_DESCRIPTION }}"
+          
+          # Detect available LLM provider
+          USE_LLM=false
+          LLM_MODEL=""
+          
+          # Check for Azure OpenAI API key
+          if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
+            USE_LLM=true
+            LLM_MODEL="azure-gpt-4"
+            echo "Using Azure OpenAI for PR description regeneration"
+          # Check for OpenAI API key
+          elif [[ -n "$AZURE_API_KEY" && -n "$AZURE_API_BASE" ]]; then
+            USE_LLM=true
+            LLM_MODEL="azure/gpt-4o"
+            echo "Using Azure OpenAI GPT-4o for PR description regeneration"
+          # Check for OpenAI API key (tertiary)
+          elif [[ -n "$OPENAI_API_KEY" ]]; then
+            USE_LLM=true
+            LLM_MODEL="gpt-4.1"
+            echo "Using OpenAI GPT-4 for PR description regeneration"
+          else
+            echo "No LLM API keys found. Using fallback PR description."
+          fi
+          
+          # Calculate diff size to avoid generating prompts that exceed model limits
+          MAX_DIFF_LINES=20000
+          DIFF_LINES=$(git diff fork_upstream | wc -l | tr -d ' ')
+          # Ensure DIFF_LINES is a valid numeric value
+          if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
+            DIFF_LINES=0
+          fi
+          echo "Diff contains $DIFF_LINES lines"
+          
+          # Generate updated PR description using AI if available with comprehensive error handling
+          if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
+            echo "Generating AI-enhanced PR description using $LLM_MODEL..."
+            
+            # Use aipr tool with vulnerability analysis and timeout protection
+            PR_DESCRIPTION=""
+            echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
+            
+            # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
+            echo "   📝 Command: aipr pr -t fork_upstream -p meta -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
+            
+            # Debug what we got back and handle all failure cases
+            if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
+              echo "   ❌ AIPR pr command execution failed or timed out"
+              PR_DESCRIPTION=""
+            elif [[ "$PR_DESCRIPTION" =~ ^[Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" ]]; then
+              echo "   ❌ AIPR pr error: $PR_DESCRIPTION"
+              PR_DESCRIPTION=""
+            fi
+            
+            if [[ -n "$PR_DESCRIPTION" ]] && [[ ${#PR_DESCRIPTION} -gt 50 ]]; then
+              echo "✅ Generated enhanced PR description using $LLM_MODEL (${#PR_DESCRIPTION} characters)"
+            else
+              if [[ -n "$PR_DESCRIPTION" ]]; then
+                echo "⚠️ AIPR PR description too short (${#PR_DESCRIPTION} chars): $PR_DESCRIPTION"
+              else
+                echo "⚠️ AIPR PR generation failed or timed out"
+              fi
+              echo "   🔄 Using enhanced fallback description"
+              PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
+            fi
+          else
+            if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
+              echo "⚠️ Diff is larger than $MAX_DIFF_LINES lines; using fallback description to avoid token limits"
+            else
+              echo "⚠️ No LLM API keys available; using fallback description"
+            fi
+            PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
+          fi
+          
+          # Update PR title and regenerate description with all commits
+          gh pr edit "$PR_NUMBER" \
+            --title "⬆️ Sync with upstream $UPSTREAM_VERSION (Updated)" \
+            --body "$PR_DESCRIPTION"
+          
+          # Check for existing "Sync Updated" comments to prevent duplicates
+          EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.body | contains("🔄 **Sync Updated**")) | .body' | grep -c "New upstream version.*$UPSTREAM_VERSION" || echo "0")
+          
+          if [ "$EXISTING_COMMENT" = "0" ]; then
+            # Add comment to the PR about the update
+            gh pr comment "$PR_NUMBER" --body "🔄 **Sync Updated**
+            
+            The upstream repository has advanced since this PR was created. This branch has been updated with the latest changes from upstream.
+            
+            **New upstream version**: \`$UPSTREAM_VERSION\`
+            **Updated at**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`
+            **PR description**: Regenerated to include all commits (original + new changes)
+            
+            Please review the updated changes and merge when ready."
+            echo "✅ Added sync update comment for upstream version $UPSTREAM_VERSION"
+          else
+            echo "ℹ️ Skipping duplicate comment - sync update for $UPSTREAM_VERSION already exists"
+          fi
+          
+          # Set outputs for consistency
+          echo "pr-url=${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          
+          echo "✅ Updated existing PR #$PR_NUMBER with new upstream changes and regenerated description"
+
+      - name: Create human notification issue
+        if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_create_issue == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL="${{ steps.create-pr.outputs.pr-url }}"
+          PR_NUMBER="${{ steps.create-pr.outputs.pr-number }}"
+          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
+          
+          # Get commit count for the notification
+          COMMIT_COUNT=$(git rev-list --count fork_upstream..${{ env.SYNC_BRANCH }})
+          
+          # Create issue first to get the issue number
+          ISSUE_URL=$(gh issue create \
+            --title "📥 Upstream Sync Ready for Review - $(date +%Y-%m-%d)" \
+            --body "Creating sync tracking issue..." \
+            --label "upstream-sync,human-required")
+          
+          # Extract issue number
+          ISSUE_NUMBER=$(basename "$ISSUE_URL")
+          
+          # Issue state will be maintained by updating the issue description
+          
+          # Build notification body with the actual issue number
+          printf -v NOTIFICATION_BODY '%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s' \
+            "📥 **Upstream Sync Ready for Review**" \
+            "This issue tracks the integration of upstream changes into your fork." \
+            "---" \
+            "**What You Need to Do Now**" \
+            "1. Review & merge the sync PR: [$PR_URL]($PR_URL)" \
+            "2. After merging, [run the Cascade Integration workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/cascade.yml):" \
+            "   - In the \`issue_number\` field, enter: \`$ISSUE_NUMBER\`" \
+            "   - Click **Run workflow**" \
+            "> **Note**: If not triggered manually, the automated monitor will start the cascade process within 6 hours." \
+            "---" \
+            "**Sync Summary**" \
+            "- **Upstream Version**: \`$UPSTREAM_VERSION\`" \
+            "- **Changes**: $COMMIT_COUNT new commits from upstream" \
+            "- **Branch**: \`${{ env.SYNC_BRANCH }}\` → \`fork_upstream\`" \
+            "---" \
+            "**Complete Integration Process**" \
+            "### Phase 1: Review & Merge (**Current**)" \
+            "1. Review the sync PR for breaking changes or merge conflicts" \
+            "2. Merge the PR when approved" \
+            "### Phase 2: Cascade Integration" \
+            "3. Trigger the Cascade Integration workflow" \
+            "4. Monitor progress – updates will appear as comments below" \
+            "### Phase 3: Final Integration to Main" \
+            "5. Review cascade results posted by the workflow" \
+            "6. Approve final integration if tests pass and no conflicts exist" \
+            "7. Done – changes merged to \`main\`" \
+            "---" \
+            "**Progress Tracking**" \
+            "**Status Updates**" \
+            "This issue will be updated with:" \
+            "- ✅ Successful completions" \
+            "- ⚠️ Conflicts requiring manual resolution" \
+            "- 📝 Cascade results and next steps" \
+            "**Label Tracking**" \
+            "Monitor PR/issue labels for current status:" \
+            "\`upstream-sync\` → \`cascade-active\` → \`validated\`" \
+            "---" \
+            "**Timeline**" \
+            "- **Sync detected**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`" \
+            "- **Current status**: Awaiting PR review and merge"
+          
+          # Update the issue with the complete description
+          gh issue edit "$ISSUE_NUMBER" --body "$NOTIFICATION_BODY"
+
+      - name: Update issue description with current sync status
+        if: steps.sync-state.outputs.sync_decision == 'add_reminder' || steps.sync-state.outputs.sync_decision == 'update_existing'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
+          PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
+          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
+          SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
+          
+          echo "Updating issue description for issue #$ISSUE_NUMBER"
+          echo "Repository: $GH_REPO"
+          echo "Parameters: UPSTREAM_VERSION=$UPSTREAM_VERSION, SYNC_BRANCH=$SYNC_BRANCH"
+          
+          # Get current issue body using GitHub API (avoids argument parsing issues)
+          echo "Fetching current issue body..."
+          CURRENT_BODY=$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.body')
+          
+          if [ -z "$CURRENT_BODY" ] || [ "$CURRENT_BODY" = "null" ]; then
+            echo "❌ Error: Could not fetch issue body"
+            exit 1
+          fi
+          
+          # Calculate current commit count - handle case where SYNC_BRANCH might not exist
+          if [ -n "$SYNC_BRANCH" ] && git rev-parse --verify "$SYNC_BRANCH" >/dev/null 2>&1; then
+            COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH 2>/dev/null || echo "0")
+          else
+            # For reminder case, get count from existing PR branch or use stored value
+            COMMIT_COUNT=$(git rev-list --count fork_upstream..origin/$SYNC_BRANCH 2>/dev/null || echo "0")
+          fi
+          
+          echo "Calculated commit count: $COMMIT_COUNT"
+          
+          # Update the Sync Summary section with current values using awk (more reliable than sed with backticks)
+          echo "$CURRENT_BODY" > /tmp/current_body.txt
+          
+          # Use awk to update the three key fields
+          awk -v upstream="$UPSTREAM_VERSION" -v count="$COMMIT_COUNT" -v branch="$SYNC_BRANCH" '
+          {
+            # Update Upstream Version
+            gsub(/\*\*Upstream Version\*\*: `[^`]*`/, "**Upstream Version**: `" upstream "`")
+            
+            # Update Changes count
+            gsub(/\*\*Changes\*\*: [0-9]+ new commits from upstream/, "**Changes**: " count " new commits from upstream")
+            
+            # Update Branch
+            gsub(/\*\*Branch\*\*: `[^`]*` → `fork_upstream`/, "**Branch**: `" branch "` → `fork_upstream`")
+            
+            print
+          }' /tmp/current_body.txt > /tmp/updated_body.txt
+          
+          # Replace the original file with the updated version
+          mv /tmp/updated_body.txt /tmp/current_body.txt
+          
+          # Update the issue description using the file
+          echo "Updating issue description..."
+          gh issue edit "$ISSUE_NUMBER" --body-file /tmp/current_body.txt
+          
+          # Clean up
+          rm -f /tmp/current_body.txt
+          
+          echo "✅ Updated issue description with current sync status:"
+          echo "  - Upstream Version: $UPSTREAM_VERSION"
+          echo "  - Changes: $COMMIT_COUNT new commits"
+          echo "  - Branch: $SYNC_BRANCH"
+
+      - name: Log sync completion
+        if: steps.sync-changes.outputs.has_changes == 'true' || steps.sync-state.outputs.sync_decision == 'add_reminder'
+        run: |
+          SYNC_DECISION="${{ steps.sync-state.outputs.sync_decision }}"
+          
+          case "$SYNC_DECISION" in
+            "create_new")
+              PR_URL="${{ steps.create-pr.outputs.pr-url }}"
+              echo "✅ New sync PR created successfully: $PR_URL"
+              echo "✅ Human notification issue created"
+              echo "The PR can be reviewed and merged to integrate upstream changes."
+              ;;
+            "update_existing")
+              PR_URL="${{ steps.update-pr.outputs.pr-url }}"
+              echo "✅ Existing sync PR updated successfully: $PR_URL"
+              echo "✅ Issue description updated with current sync status"
+              echo "The updated PR can be reviewed and merged to integrate upstream changes."
+              ;;
+            "add_reminder")
+              echo "✅ Issue description updated with current sync status"
+              echo "No new changes from upstream - existing PR is still current"
+              ;;
+            "no_action")
+              echo "✅ No action taken - upstream unchanged and no existing PR"
+              ;;
+            *)
+              echo "⚠️ Unknown sync decision: $SYNC_DECISION"
+              ;;
+          esac
+
+      - name: Handle Failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_BODY="The automated upstream sync workflow failed.
+
+          ### Error Details
+          Please check the workflow logs for more information:
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ### Manual Steps Required
+          1. Review the error logs
+          2. Resolve any conflicts
+          3. Re-run the sync workflow"
+
+          gh issue create \
+            --title "🔄 Upstream Sync Failed $(date +%Y-%m-%d)" \
+            --body "$ISSUE_BODY" \
+            --label "sync-failed,human-required"

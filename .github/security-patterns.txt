@@ -1,0 +1,43 @@
+# Generic Secret Patterns
+# API Keys, Access Tokens, etc (variable lengths)
+[a-zA-Z0-9_\-]+['\"][0-9a-zA-Z]{32,}['\"]
+['\"](sk|pk|key|token|secret|password|credential|access|auth)[_\-]?[^\s\<\>]{32,}['|\"]
+
+# Base64 encoded secrets (common in cloud services)
+['\"](sk|pk|key|token|secret|password|credential|access|auth)[_\-]?[a-zA-Z0-9+/]{32,}={0,2}['|\"]
+
+# Cloud Service Patterns
+# Azure (AD, Storage, etc)
+['\"](client_secret|app_secret|application_secret|shared_access_key|access_key|storage_key)['\"]:\s*['\""][^'\"]+['\""]
+DefaultEndpointsProtocol=https?://[^;]+;AccountKey=[^;]+
+AccountKey=[a-zA-Z0-9+/=]+
+SharedAccessKey=[a-zA-Z0-9+/=]+
+
+# Azure AD Application Secrets
+
+# Azure AD Application Secrets (in code context)
+['"](client_secret|app_secret|application_secret|service_principal_secret|TESTER_SERVICEPRINCIPAL_SECRET)['"]?\s*[=:]\s*['"][a-zA-Z0-9]{3}7Q~[a-zA-Z0-9_\-\.]{20,36}['"]
+
+# Azure Service Principal Secret Java Pattern
+# Only match the exact pattern we know:
+# - String sp_secret = "..." with exact format
+# - 3 chars + 7Q~ + 32 chars
+# - Chars can include alphanumeric, dots, underscores, hyphens
+String\s+sp_secret\s*=\s*['""][a-zA-Z0-9]{3}7Q~[a-zA-Z0-9][a-zA-Z0-9_\-\.]{30}[a-zA-Z0-9]['""];
+
+# AWS
+['\"](aws_access_key_id|aws_secret_access_key|aws_session_token)['\"]:\s*['\""][^'\"]+['\""]
+AKIA[0-9A-Z]{16}
+
+# Google Cloud
+['\"](google_api_key|google_client_secret|google_application_credentials)['\"]:\s*['\""][^'\"]+['\""]
+
+# Generic Connection Strings
+['\"](connection_string|conn_str|connection|database_url)['\"]:\s*['\""][^'\"]+['\""]
+
+# OAuth and JWT
+['\"](oauth_token|jwt_token|bearer_token|api_token)['\"]:\s*['\""][^'\"]+['\""]
+eyJ[a-zA-Z0-9-_]+\.[a-zA-Z0-9-_]+\.[a-zA-Z0-9-_]+
+
+# Private Keys and Certificates
+-----BEGIN [A-Z ]+-----[\s\S]+-----END [A-Z ]+-----

@@ -1,0 +1,180 @@
+{
+  "description": "Configuration for syncing .github files between template and forked repositories",
+  "note": "ISSUE_TEMPLATE removed from sync - now managed via fork-resources staging pattern (ADR-018)",
+  "sync_rules": {
+    "directories": [
+      {
+        "path": ".github/actions",
+        "sync_all": true,
+        "description": "Custom GitHub Actions used by workflows"
+      },
+      {
+        "path": ".github/fork-resources",
+        "sync_all": true,
+        "description": "Fork-specific templates and configuration that get copied during sync updates"
+      }
+    ],
+    "files": [
+      {
+        "path": ".github/dependabot.yml",
+        "description": "Dependency update configuration"
+      },
+      {
+        "path": ".github/labels.json", 
+        "description": "Repository label definitions"
+      },
+      {
+        "path": ".github/branch-protection.json",
+        "description": "Branch protection rule configuration"
+      },
+      {
+        "path": ".github/security-on.json",
+        "description": "Security feature enablement configuration"
+      },
+      {
+        "path": ".github/security-patterns.txt",
+        "description": "Security scanning patterns"
+      }
+    ],
+    "workflows": {
+      "note": "Fork workflows are stored in template-workflows/ and copied during initialization",
+      "template_workflows": [
+        {
+          "path": ".github/template-workflows/sync.yml",
+          "description": "Upstream repository synchronization"
+        },
+        {
+          "path": ".github/template-workflows/validate.yml", 
+          "description": "PR validation and commit message checks"
+        },
+        {
+          "path": ".github/template-workflows/build.yml",
+          "description": "Project build and test automation"
+        },
+        {
+          "path": ".github/template-workflows/release.yml",
+          "description": "Automated semantic versioning and releases"
+        },
+        {
+          "path": ".github/template-workflows/sync-template.yml",
+          "description": "Template repository update synchronization"
+        },
+        {
+          "path": ".github/template-workflows/dependabot-validation.yml",
+          "description": "Dependabot PR automation and validation"
+        },
+        {
+          "path": ".github/template-workflows/cascade.yml", 
+          "description": "Multi-repository cascade operations"
+        },
+        {
+          "path": ".github/template-workflows/cascade-monitor.yml",
+          "description": "Cascade monitoring and SLA management"
+        }
+      ],
+      "template_only": [
+        {
+          "path": ".github/workflows/init.yml",
+          "description": "Repository initialization trigger (template only)"
+        },
+        {
+          "path": ".github/workflows/init-complete.yml",
+          "description": "Repository setup and configuration (template only)"
+        }
+      ],
+      "development_only": [
+        {
+          "path": ".github/workflows/dev-ci.yml",
+          "description": "Template development CI/CD (removed during initialization)"
+        },
+        {
+          "path": ".github/workflows/dev-test.yml",
+          "description": "Template testing workflows (removed during initialization)"
+        },
+        {
+          "path": ".github/workflows/dev-release.yml",
+          "description": "Template release management (removed during initialization)"
+        }
+      ]
+    },
+    "tracking_files": [
+      {
+        "path": ".github/.template-sync-commit",
+        "description": "Tracks last synced template commit",
+        "auto_create": true
+      }
+    ]
+  },
+  "exclusions": [
+    ".github/copilot-instructions.md"
+  ],
+  "cleanup_rules": {
+    "description": "Files and directories to remove during repository initialization",
+    "directories": [
+      {
+        "path": "doc/",
+        "reason": "Template documentation replaced by upstream project docs"
+      }
+    ],
+    "files": [
+      {
+        "path": "CONTRIBUTING.md",
+        "reason": "Template-specific contributing guide"
+      },
+      {
+        "path": "AI_EVOLUTION.md",
+        "reason": "Template development history and AI context"
+      },
+      {
+        "path": "AI_PRINCIPLES.md",
+        "reason": "Template-specific AI development principles"
+      },
+      {
+        "path": "LICENSE",
+        "reason": "Template license - fork instances use upstream license"
+      },
+      {
+        "path": "CHANGELOG.md",
+        "reason": "Template development changelog - fork instances use upstream changelog"
+      },
+      {
+        "path": ".github/ISSUE_TEMPLATE/branch-protection-reminder.md",
+        "reason": "Template initialization issue template"
+      },
+      {
+        "path": ".github/ISSUE_TEMPLATE/init-error.md",
+        "reason": "Template initialization issue template"
+      },
+      {
+        "path": ".github/ISSUE_TEMPLATE/init-request.md",
+        "reason": "Template initialization issue template"
+      },
+      {
+        "path": ".github/ISSUE_TEMPLATE/init-started.md",
+        "reason": "Template initialization issue template"
+      },
+      {
+        "path": ".github/PULL_REQUEST_TEMPLATE/init-pr.md",
+        "reason": "Template initialization PR template"
+      },
+      {
+        "path": ".github/PULL_REQUEST_TEMPLATE/cleanup-pr.md",
+        "reason": "Template initialization PR template"
+      }
+    ],
+    "workflows": [
+      {
+        "path": ".github/workflows/init.yml",
+        "reason": "One-time initialization workflow no longer needed"
+      },
+      {
+        "path": ".github/workflows/init-complete.yml",
+        "reason": "One-time setup workflow no longer needed"
+      },
+      {
+        "path": ".github/workflows/docs.yml",
+        "reason": "Template documentation deployment workflow - not needed in fork instances"
+      }
+    ]
+  }
+}

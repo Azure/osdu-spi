@@ -1,0 +1,144 @@
+{
+  "labels": [
+    {
+      "name": "initialization",
+      "description": "Issues related to repository initialization",
+      "color": "0075ca"
+    },
+    {
+      "name": "sync-failed",
+      "description": "Issues related to sync failures",
+      "color": "d73a4a"
+    },
+    {
+      "name": "needs-resolution",
+      "description": "Requires manual conflict resolution",
+      "color": "fbca04"
+    },
+    {
+      "name": "sync-update",
+      "description": "Tracks upstream sync updates",
+      "color": "0075ca"
+    },
+    {
+      "name": "build-failed",
+      "description": "Build or test failures",
+      "color": "d73a4a"
+    },
+    {
+      "name": "dependencies",
+      "description": "Dependency updates and issues",
+      "color": "0075ca"
+    },
+    {
+      "name": "upstream-sync",
+      "description": "Related to upstream synchronization",
+      "color": "0e8a16"
+    },
+    {
+      "name": "conflict",
+      "description": "Has merge conflicts",
+      "color": "b60205"
+    },
+    {
+      "name": "cascade-active",
+      "description": "Currently processing through cascade pipeline",
+      "color": "0e8a16"
+    },
+    {
+      "name": "cascade-blocked",
+      "description": "Waiting on conflict resolution in cascade",
+      "color": "fbca04"
+    },
+    {
+      "name": "cascade-ready",
+      "description": "Passed all checks, ready for merge",
+      "color": "0e8a16"
+    },
+    {
+      "name": "cascade-failed",
+      "description": "Failed checks or build in cascade",
+      "color": "d73a4a"
+    },
+    {
+      "name": "cascade-escalated",
+      "description": "SLA exceeded, needs immediate attention",
+      "color": "b60205"
+    },
+    {
+      "name": "manual-review-required",
+      "description": "Requires human review before merge",
+      "color": "fbca04"
+    },
+    {
+      "name": "escalation",
+      "description": "Escalated issue requiring immediate attention",
+      "color": "b60205"
+    },
+    {
+      "name": "high-priority",
+      "description": "High priority issue or PR",
+      "color": "d93f0b"
+    },
+    {
+      "name": "emergency",
+      "description": "Emergency issue requiring immediate action",
+      "color": "b60205"
+    },
+    {
+      "name": "rollback",
+      "description": "Related to rollback operations",
+      "color": "e99695"
+    },
+    {
+      "name": "production-ready",
+      "description": "Ready for production deployment",
+      "color": "0e8a16"
+    },
+    {
+      "name": "release-tracking",
+      "description": "Tracks release-related activities",
+      "color": "5319e7"
+    },
+    {
+      "name": "template-sync-failed",
+      "description": "Template synchronization failures",
+      "color": "d73a4a"
+    },
+    {
+      "name": "template-update",
+      "description": "Updates from template repository",
+      "color": "0075ca"
+    },
+    {
+      "name": "copilot",
+      "description": "Suitable for GitHub Copilot implementation",
+      "color": "24292e"
+    },
+    {
+      "name": "human-required",
+      "description": "Requires human action or approval",
+      "color": "fbca04"
+    },
+    {
+      "name": "upstream-held",
+      "description": "Upstream changes held due to integration in progress",
+      "color": "f9d71c"
+    },
+    {
+      "name": "integration-blocked",
+      "description": "Integration pipeline blocked by ongoing process",
+      "color": "d93f0b"
+    },
+    {
+      "name": "validated",
+      "description": "Passed all validation checks",
+      "color": "0e8a16"
+    },
+    {
+      "name": "validation-failed",
+      "description": "Integration validation (build/test) failed",
+      "color": "d73a4a"
+    }
+  ]
+}

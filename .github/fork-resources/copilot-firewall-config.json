@@ -1,0 +1,17 @@
+{
+  "description": "GitHub Copilot Agent firewall configuration for OSDU projects",
+  "firewall_additions": [
+    "community.opengroup.org",
+    "repo1.maven.org",
+    "central.maven.org",
+    "repo.maven.apache.org",
+    "plugins.gradle.org"
+  ],
+  "reasoning": {
+    "community.opengroup.org": "Required for OSDU Open Group community resources and specifications",
+    "repo1.maven.org": "Maven Central repository access",
+    "central.maven.org": "Maven Central mirror",
+    "repo.maven.apache.org": "Apache Maven repository",
+    "plugins.gradle.org": "Gradle plugins repository"
+  }
+}

@@ -1,0 +1,110 @@
+name: Template Development CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main]
+
+# Only run in the template repository, not in forks
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Template
+    runs-on: ubuntu-latest
+    if: github.repository == 'danielscholl-osdu/osdu-fork-template'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install yq for YAML validation
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+      - name: Validate Workflow YAML
+        run: |
+          validation_failed=false
+          
+          echo "Validating active workflows..."
+          for file in .github/workflows/*.yml; do
+            echo "Validating $file"
+            if yq e '.' "$file" >/dev/null 2>&1; then
+              echo "✅ $file is valid"
+            else
+              echo "❌ $file has YAML syntax errors"
+              validation_failed=true
+            fi
+          done
+          
+          echo "Validating template workflows..."
+          for file in .github/template-workflows/*.yml; do
+            echo "Validating $file"
+            if yq e '.' "$file" >/dev/null 2>&1; then
+              echo "✅ $file is valid"
+            else
+              echo "❌ $file has YAML syntax errors"
+              validation_failed=true
+            fi
+          done
+          
+          if [ "$validation_failed" = "true" ]; then
+            echo "❌ YAML validation failed - fix syntax errors above"
+            exit 1
+          fi
+          echo "✅ All YAML files are valid"
+          
+      - name: Validate JSON Configuration
+        run: |
+          echo "Validating JSON configuration files..."
+          for file in .github/*.json; do
+            echo "Validating $file"
+            jq empty "$file" && echo "✅ $file is valid" || echo "❌ $file has errors"
+          done
+          
+      - name: Check Documentation Links
+        run: |
+          echo "Checking for broken internal documentation links..."
+          # Check that ADR references exist
+          grep -r "adr/[0-9]" doc/ | while read -r line; do
+            file=$(echo "$line" | cut -d: -f1)
+            adr_ref=$(echo "$line" | grep -o "adr/[0-9][0-9][0-9]-[^.]*")
+            if [ ! -f "doc/$adr_ref.md" ]; then
+              echo "❌ Broken ADR reference in $file: $adr_ref"
+            else
+              echo "✅ Valid ADR reference: $adr_ref"
+            fi
+          done
+          
+      - name: Validate Template Structure
+        run: |
+          echo "Validating template repository structure..."
+          
+          # Check required files exist
+          required_files=(
+            "README.md"
+            ".github/sync-config.json"
+            ".github/labels.json"
+            ".github/workflows/init.yml"
+            ".github/workflows/init-complete.yml"
+            ".github/template-workflows/sync.yml"
+            ".github/template-workflows/validate.yml"
+          )
+          
+          for file in "${required_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ Required file exists: $file"
+            else
+              echo "❌ Missing required file: $file"
+              exit 1
+            fi
+          done

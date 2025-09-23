@@ -1,0 +1,745 @@
+name: Cascade Integration
+
+on:
+  workflow_dispatch:       # Allow manual trigger
+    inputs:
+      issue_number:
+        description: 'GitHub issue number for the upstream sync (e.g., 123)'
+        required: true
+        type: 'string'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: cascade-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Never cancel cascade operations
+
+jobs:
+  cascade-to-integration:
+    name: "🔄 Cascade to Integration"
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      integration_success: ${{ steps.validate.outputs.success }}
+      conflicts_found: ${{ steps.merge_upstream.outputs.conflicts }}
+      issue_valid: ${{ steps.update_tracking_start.outputs.issue_valid }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check Integration State
+        id: check_state
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch all branches to get latest state
+          git fetch origin --prune
+          
+          # Check if fork_integration is ahead of main (integration in process)
+          INTEGRATION_COMMITS=$(git rev-list --count origin/main..origin/fork_integration 2>/dev/null || echo "0")
+          
+          # Check for open release PRs to main
+          RELEASE_PRS=$(gh pr list --base main --head "release/upstream-*" --json number,title,headRefName 2>/dev/null || echo "[]")
+          RELEASE_PR_COUNT=$(echo "$RELEASE_PRS" | jq length)
+          
+          # Check for open conflict issues
+          CONFLICT_ISSUES=$(gh issue list --label "conflict,cascade-blocked" --json number,title 2>/dev/null || echo "[]")
+          CONFLICT_COUNT=$(echo "$CONFLICT_ISSUES" | jq length)
+          
+          if [ "$INTEGRATION_COMMITS" -gt 0 ] || [ "$RELEASE_PR_COUNT" -gt 0 ] || [ "$CONFLICT_COUNT" -gt 0 ]; then
+            echo "::notice::Integration pipeline busy - cannot start new cascade"
+            echo "  - fork_integration is $INTEGRATION_COMMITS commits ahead of main"
+            echo "  - $RELEASE_PR_COUNT release PRs open to main"
+            echo "  - $CONFLICT_COUNT conflict issues blocking pipeline"
+            
+            # Track held upstream changes
+            HELD_ISSUE=$(gh issue list --label "upstream-held" --json number,title 2>/dev/null | jq -r '.[0].number // empty')
+            
+            if [ -n "$HELD_ISSUE" ]; then
+              # Update existing held issue
+              echo "::notice::Updating existing upstream-held issue #$HELD_ISSUE"
+              gh issue comment "$HELD_ISSUE" --body "🔄 **Additional upstream changes detected** - $(date '+%Y-%m-%d %H:%M:%S UTC')
+              
+              Integration pipeline still busy:
+              - fork_integration: $INTEGRATION_COMMITS commits ahead of main
+              - Release PRs pending: $RELEASE_PR_COUNT
+              - Conflict issues: $CONFLICT_COUNT
+              
+              These upstream changes will be processed once current integration completes."
+            else
+              # Create new held issue
+              echo "::notice::Creating new upstream-held tracking issue"
+              gh issue create \
+                --title "🚫 Upstream Changes Held - Integration Pipeline Busy" \
+                --body "Upstream changes are being held because integration is currently in progress.
+                
+              **Current Pipeline Status:**
+              - fork_integration: $INTEGRATION_COMMITS commits ahead of main
+              - Release PRs pending: $RELEASE_PR_COUNT  
+              - Conflict issues blocking: $CONFLICT_COUNT
+              
+              **Held Changes:**
+              - $(date '+%Y-%m-%d'): Latest upstream sync detected
+              
+              **Next Steps:**
+              - Complete current integration to main
+              - Process held upstream changes automatically
+              - Monitor for cascade completion
+              
+              This issue will be updated as additional upstream changes accumulate." \
+                --label "upstream-held,integration-blocked,human-required"
+            fi
+            
+            echo "integration_in_process=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if we have an upstream-held issue to update
+          HELD_ISSUE=$(gh issue list --label "upstream-held" --json number 2>/dev/null | jq -r '.[0].number // empty')
+          if [ -n "$HELD_ISSUE" ]; then
+            echo "::notice::Integration cleared, updating held issue #$HELD_ISSUE"
+            gh issue comment "$HELD_ISSUE" --body "✅ **Integration pipeline cleared** - $(date '+%Y-%m-%d %H:%M:%S UTC')
+            
+            Processing held upstream changes now. This issue will be closed when cascade completes successfully."
+          fi
+          
+          echo "::notice::Integration pipeline clear - proceeding with cascade"
+          echo "integration_in_process=false" >> $GITHUB_OUTPUT
+
+      - name: Update tracking issue - cascade started
+        id: update_tracking_start
+        if: steps.check_state.outputs.integration_in_process == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use the provided issue number from workflow input
+          ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
+          
+          if [ -n "$ISSUE_NUMBER" ]; then
+            echo "Validating tracking issue #$ISSUE_NUMBER..."
+            
+            # Check if issue exists and get its state
+            ISSUE_STATE=$(gh issue view "$ISSUE_NUMBER" --json state,number --jq '.state' 2>/dev/null || echo "NOT_FOUND")
+            
+            if [ "$ISSUE_STATE" = "NOT_FOUND" ]; then
+              echo "::warning::Issue #$ISSUE_NUMBER does not exist. Skipping issue updates but continuing cascade."
+              echo "Cascade will proceed without tracking issue updates."
+              echo "issue_valid=false" >> $GITHUB_OUTPUT
+            elif [ "$ISSUE_STATE" = "CLOSED" ]; then
+              echo "::warning::Issue #$ISSUE_NUMBER is closed. Skipping issue updates but continuing cascade."
+              echo "Cascade will proceed without tracking issue updates."
+              echo "issue_valid=false" >> $GITHUB_OUTPUT
+            elif [ "$ISSUE_STATE" = "OPEN" ]; then
+              echo "Updating tracking issue #$ISSUE_NUMBER - cascade started"
+              echo "issue_valid=true" >> $GITHUB_OUTPUT
+              
+              # Update labels: remove human-required, add cascade-active
+              gh issue edit "$ISSUE_NUMBER" \
+                --remove-label "human-required" \
+                --add-label "cascade-active"
+              
+              # Add progress comment
+              gh issue comment "$ISSUE_NUMBER" --body "🚀 **Cascade Integration Started** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
+              
+              Integration workflow has been triggered and is now processing upstream changes.
+              
+              **Status:** Merging \`fork_upstream\` → \`fork_integration\` → \`main\`
+              **Workflow:** [View Progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            else
+              echo "::warning::Issue #$ISSUE_NUMBER has unexpected state: $ISSUE_STATE. Skipping issue updates but continuing cascade."
+              echo "issue_valid=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No tracking issue provided - cascade triggered independently"
+            echo "issue_valid=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Merge main into fork_integration
+        if: steps.check_state.outputs.integration_in_process == 'false'
+        run: |
+          # Fetch all branches
+          git fetch origin --prune
+          
+          # Checkout fork_integration
+          git checkout fork_integration
+          
+          # Merge latest from main to preserve local changes
+          echo "Merging main into fork_integration to preserve local changes..."
+          if git merge origin/main --no-edit; then
+            echo "✅ Successfully merged main into fork_integration"
+          else
+            echo "::error::Failed to merge main into fork_integration"
+            echo "This indicates conflicts between main and integration branches"
+            echo "Manual intervention required to resolve conflicts"
+            exit 1
+          fi
+
+      - name: Merge upstream into fork_integration
+        id: merge_upstream
+        if: steps.check_state.outputs.integration_in_process == 'false'
+        run: |
+          # Merge fork_upstream into fork_integration
+          echo "Merging upstream changes into fork_integration..."
+          CONFLICTS_FOUND=false
+          
+          if git merge origin/fork_upstream --no-edit; then
+            echo "✅ Clean merge of upstream changes achieved"
+          else
+            # Check if there are unresolved conflicts
+            if git status --porcelain | grep -q "^UU\|^AA\|^DD"; then
+              echo "::warning::Merge conflicts detected"
+              CONFLICTS_FOUND=true
+              
+              # List conflicted files
+              echo "Conflicted files:"
+              git diff --name-only --diff-filter=U | tee conflicted_files.txt
+              
+              # Create conflict resolution issue
+              CONFLICT_BODY="Upstream merge conflicts detected in fork_integration branch.
+              
+              **Conflicted Files:**
+              \`\`\`
+              $(cat conflicted_files.txt)
+              \`\`\`
+              
+              **Next Steps:**
+              1. Checkout the fork_integration branch locally
+              2. Resolve conflicts in the listed files
+              3. Commit and push the resolution
+              4. The cascade will automatically continue once conflicts are resolved
+              
+              **SLA:** 48 hours for resolution"
+              
+              gh issue create \
+                --title "🚨 Cascade Conflicts: Manual Resolution Required - $(date +%Y-%m-%d)" \
+                --body "$CONFLICT_BODY" \
+                --label "conflict,cascade-blocked,high-priority,human-required"
+              
+              # Update tracking issue
+              TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
+              if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
+                gh issue edit "$TRACKING_ISSUE" \
+                  --remove-label "cascade-active" \
+                  --add-label "cascade-blocked"
+                
+                gh issue comment "$TRACKING_ISSUE" --body "🚨 **Conflicts Detected** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
+                
+                Merge conflicts were detected during integration. A separate conflict resolution issue has been created.
+                
+                **Status:** Cascade blocked - manual conflict resolution required
+                **SLA:** 48 hours for resolution"
+              fi
+              
+              echo "conflicts=true" >> $GITHUB_OUTPUT
+              exit 1
+            else
+              echo "✅ Merge completed with automatic resolution"
+            fi
+          fi
+          
+          echo "conflicts=false" >> $GITHUB_OUTPUT
+
+      - name: Push integration changes
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        run: |
+          # Push the updated fork_integration
+          git push origin fork_integration
+          echo "✅ Integration branch updated successfully"
+
+      - name: Set up JDK for validation
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+          cache-dependency-path: '**/pom.xml'
+
+      - name: Cache Maven packages
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      - name: Setup Maven Settings
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        run: |
+          if [ -f ".mvn/community-maven.settings.xml" ]; then
+            mkdir -p ~/.m2
+            cp .mvn/community-maven.settings.xml ~/.m2/settings.xml
+            echo "📝 Maven settings configured from .mvn/community-maven.settings.xml"
+          else
+            echo "📝 No custom Maven settings found, using defaults"
+          fi
+
+      - name: Validate integration
+        id: validate
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMUNITY_MAVEN_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          echo "🔍 Running comprehensive validation checks on integration branch..."
+          
+          # Comment on tracking issue about validation start
+          TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
+          if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
+            gh issue comment "$TRACKING_ISSUE" --body "🔍 **Integration Validation Started** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
+            
+            Running comprehensive validation on \`fork_integration\` branch:
+            - Repository analysis and project detection
+            - Java build and compilation checks
+            - Unit test execution
+            - Build artifact validation
+            
+            This ensures upstream changes integrate successfully before creating production PR."
+          fi
+          
+          # Basic validation - check if integration branch is ahead of main
+          CHANGES=$(git rev-list --count origin/main..fork_integration)
+          if [ "$CHANGES" = "0" ]; then
+            echo "::notice::No changes to integrate - fork is up to date"
+            if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
+              gh issue comment "$TRACKING_ISSUE" --body "✅ **Integration Complete - No Changes Required** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
+              
+              Fork is already up to date with upstream. No changes detected between \`fork_integration\` and \`main\` branches."
+            fi
+            echo "success=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Found $CHANGES commits to integrate"
+          
+          # Initialize validation results
+          VALIDATION_SUCCESS=true
+          VALIDATION_DETAILS=""
+          BUILD_OUTPUT=""
+          
+          # Check if this is a Java project
+          IS_JAVA_PROJECT=false
+          if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f 2>/dev/null)" ]; then
+            IS_JAVA_PROJECT=true
+            echo "📋 Detected Java/Maven project"
+            VALIDATION_DETAILS="${VALIDATION_DETAILS}✓ Java/Maven project detected\n"
+          fi
+          
+          # Run Java-specific validation if Java project
+          if [ "$IS_JAVA_PROJECT" = "true" ]; then
+            echo "🔧 Java environment already configured in previous steps"
+            VALIDATION_DETAILS="${VALIDATION_DETAILS}✓ Java environment configured\n✓ Maven settings configured\n"
+            
+            # Run Maven build and test
+            echo "🔨 Running Maven build and tests..."
+            if BUILD_OUTPUT=$(mvn -B clean install 2>&1); then
+              echo "✅ Maven build and tests passed"
+              VALIDATION_DETAILS="${VALIDATION_DETAILS}✅ Maven build successful\n✅ Unit tests passed\n"
+            else
+              echo "❌ Maven build or tests failed"
+              VALIDATION_SUCCESS=false
+              VALIDATION_DETAILS="${VALIDATION_DETAILS}❌ Maven build failed\n❌ Unit tests failed\n"
+              echo "Build output:"
+              echo "$BUILD_OUTPUT"
+            fi
+          else
+            echo "📋 Non-Java project detected - running basic validation"
+            VALIDATION_DETAILS="${VALIDATION_DETAILS}✓ Non-Java project - basic validation only\n"
+          fi
+          
+          # Set outputs based on validation results
+          if [ "$VALIDATION_SUCCESS" = "true" ]; then
+            echo "✅ All validation checks passed"
+            echo "success=true" >> $GITHUB_OUTPUT
+            
+            if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
+              VALIDATION_DISPLAY=$(echo -e "${VALIDATION_DETAILS}")
+              gh issue comment "$TRACKING_ISSUE" --body "✅ **Integration Validation Passed** - $(date -u +%Y-%m-%dT%H:%M:%SZ). All validation checks completed successfully: ${VALIDATION_DISPLAY}. **Next Step:** Creating production PR to merge validated changes to \`main\` branch."
+            fi
+          else
+            echo "❌ Validation checks failed"
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "build_output<<EOF" >> $GITHUB_OUTPUT
+            echo "$BUILD_OUTPUT" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "validation_details<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$VALIDATION_DETAILS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create validation failure issue
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false' && steps.validate.outputs.success == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🚨 Creating validation failure issue..."
+          
+          # Get validation details and build output
+          VALIDATION_DETAILS="${{ steps.validate.outputs.validation_details }}"
+          BUILD_OUTPUT="${{ steps.validate.outputs.build_output }}"
+          
+          # Truncate build output if too long (GitHub issue limit)
+          if [ ${#BUILD_OUTPUT} -gt 50000 ]; then
+            BUILD_OUTPUT="${BUILD_OUTPUT:0:50000}
+            
+            ... [Output truncated - see workflow logs for complete details]"
+          fi
+          
+          # Create detailed failure issue
+          VALIDATION_BODY="🚨 **Integration Validation Failed**
+          
+          The cascade integration process has encountered validation failures on the \`fork_integration\` branch. This indicates that upstream changes cannot be safely integrated without resolution.
+          
+          **Branch:** \`fork_integration\`
+          **Validation Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          **Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ## Validation Results
+          
+          ${VALIDATION_DETAILS}
+          
+          ## Build Output
+          
+          <details>
+          <summary>Click to view build logs</summary>
+          
+          \`\`\`
+          ${BUILD_OUTPUT}
+          \`\`\`
+          
+          </details>
+          
+          ## Resolution Steps
+          
+          1. **Review Error Details:** Examine the build output above to understand the specific failure
+          2. **Fix Issues:** Resolve build errors, test failures, or other validation problems
+          3. **Re-trigger Cascade:** Once issues are resolved, manually trigger the cascade workflow again
+          4. **Monitor Progress:** Track resolution through the original upstream sync issue
+          
+          ## Important Notes
+          
+          - The \`fork_integration\` branch contains the problematic changes
+          - **Do not merge to main** until validation passes
+          - The upstream sync tracking issue has been updated with \`cascade-blocked\` label
+          - All changes must pass validation before reaching production
+          
+          **SLA:** 48 hours for resolution"
+          
+          gh issue create \
+            --title "🚨 Integration Validation Failed: Build/Test Errors - $(date +%Y-%m-%d)" \
+            --body "$VALIDATION_BODY" \
+            --label "validation-failed,cascade-blocked,high-priority,human-required"
+          
+          # Update tracking issue if available
+          # Note: Context reference depends on workflow structure:
+          # - Template: uses steps.update_tracking_start.outputs.issue_valid (same job)
+          # - Fork: may need needs.cascade-to-integration.outputs.issue_valid (different job)
+          TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
+          if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
+            gh issue edit "$TRACKING_ISSUE" \
+              --remove-label "cascade-active" \
+              --add-label "cascade-blocked"
+            
+            gh issue comment "$TRACKING_ISSUE" --body "❌ **Integration Validation Failed** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
+            
+            Validation checks failed on \`fork_integration\` branch. Build or test errors detected.
+            
+            **Status:** Cascade blocked - validation failures must be resolved
+            **Action Required:** Review and fix validation issues
+            **SLA:** 48 hours for resolution
+            
+            A detailed validation failure issue has been created with error logs and resolution steps."
+          fi
+
+      - name: Create validation status comment
+        if: steps.check_state.outputs.integration_in_process == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.merge_upstream.outputs.conflicts }}" = "true" ]; then
+            echo "Conflicts detected - issue created for resolution"
+          elif [ "${{ steps.validate.outputs.success }}" = "true" ]; then
+            echo "✅ Integration validation passed - ready for cascade to main"
+          else
+            echo "❌ Integration validation failed - validation failure issue created"
+          fi
+
+  cascade-to-main:
+    name: "🎯 Cascade to Main"
+    needs: cascade-to-integration
+    if: >
+      needs.cascade-to-integration.outputs.integration_success == 'true' &&
+      needs.cascade-to-integration.outputs.conflicts_found == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Verify integration state
+        id: verify_integration
+        run: |
+          # Fetch latest state
+          git fetch origin --prune
+          
+          # Switch to fork_integration to get latest changes
+          git checkout fork_integration
+          
+          # Compare fork_integration with main
+          CHANGES=$(git rev-list --count origin/main..fork_integration)
+          
+          if [ "$CHANGES" = "0" ]; then
+            echo "::warning::No changes to cascade from fork_integration to main"
+            echo "needs_cascade=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found $CHANGES commits ready to cascade to main"
+            echo "needs_cascade=true" >> $GITHUB_OUTPUT
+            
+            # Verify integration branch is in good state
+            if git diff --quiet HEAD origin/fork_integration; then
+              echo "✅ Integration branch is clean and ready"
+            else
+              echo "::error::Integration branch has uncommitted changes"
+              exit 1
+            fi
+          fi
+
+      - name: Create main PR
+        if: steps.verify_integration.outputs.needs_cascade == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create a temporary release branch from fork_integration to preserve the integration branch
+          RELEASE_BRANCH="release/upstream-$(date +%Y%m%d-%H%M%S)"
+          
+          # Ensure we're on fork_integration and it's up to date
+          git checkout fork_integration
+          
+          # Create release branch from fork_integration
+          git checkout -b $RELEASE_BRANCH
+          
+          # Push the release branch
+          git push origin $RELEASE_BRANCH
+          
+          # Get commit summary
+          COMMIT_SUMMARY=$(git log --pretty=format:"- %s" origin/main..HEAD | head -20)
+          if [ $(git rev-list --count origin/main..HEAD) -gt 20 ]; then
+            COMMIT_SUMMARY="${COMMIT_SUMMARY} ... and $(( $(git rev-list --count origin/main..HEAD) - 20 )) more commits"
+          fi
+          
+          # Calculate diff size for auto-merge eligibility
+          DIFF_LINES=$(git diff --stat origin/main..HEAD | tail -1 | awk '{print $4 + $6}' | tr -d ' ')
+          if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
+            DIFF_LINES=0
+          fi
+          
+          # Check for breaking changes
+          # Check for breaking changes
+          BREAKING_CHANGES=false
+          if git log origin/main..HEAD --grep="BREAKING CHANGE" --grep="!:" --oneline | head -1 | grep -q .; then
+            BREAKING_CHANGES=true
+          fi
+          
+          # Create detailed PR body with commit summary and issue closure
+          TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
+          CLOSE_ISSUE_TEXT=""
+          if [ -n "$TRACKING_ISSUE" ] && [ "${{ needs.cascade-to-integration.outputs.issue_valid }}" = "true" ]; then
+            CLOSE_ISSUE_TEXT="Closes #${TRACKING_ISSUE}"$'\n\n'
+          fi
+          
+          PR_BODY="${CLOSE_ISSUE_TEXT}This PR cascades validated upstream changes to main via release branch \`$RELEASE_BRANCH\`.
+          
+          **Branch Strategy:** 
+          - Source: \`fork_integration\` (preserved)
+          - Release: \`$RELEASE_BRANCH\` (temporary, safe to delete after merge)
+          - Target: \`main\`
+          
+          **Integration Summary:**
+          - Total commits: $(git rev-list --count origin/main..HEAD)
+          - Diff size: ${DIFF_LINES} lines
+          - Breaking changes: ${BREAKING_CHANGES}
+          
+          **Recent Changes:**
+          ${COMMIT_SUMMARY}
+          
+          **Validation Status:** ✅ Passed
+          **Conflicts:** ✅ Resolved
+          **Ready for Production:** ✅ Yes
+          
+          > **Note:** The \`fork_integration\` branch is preserved for future use. This release branch can be safely deleted after merge."
+          
+          # Get upstream SHA for consistent title format (from fork_upstream branch)
+          UPSTREAM_SHA=$(git rev-parse origin/fork_upstream)
+          
+          PR_URL=$(gh pr create \
+            --base main \
+            --head $RELEASE_BRANCH \
+            --title "⬆️ Upstream Integration to Main ${UPSTREAM_SHA:0:8}" \
+            --body "$PR_BODY" \
+            --label "upstream-sync,human-required")
+          
+          echo "Main PR created: $PR_URL"
+          PR_NUMBER=$(basename $PR_URL)
+          
+          # All production PRs require human review - no auto-merge
+          echo "Production PR requires manual review before merge"
+          
+          # Update original tracking issue
+          TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
+          if [ -n "$TRACKING_ISSUE" ] && [ "${{ needs.cascade-to-integration.outputs.issue_valid }}" = "true" ]; then
+            gh issue edit "$TRACKING_ISSUE" \
+              --remove-label "cascade-active" \
+              --add-label "validated"
+            
+            gh issue comment "$TRACKING_ISSUE" --body "🎯 **Production PR Created** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
+            
+            Integration completed successfully! Production PR has been created and is ready for final review.
+            
+            **Production PR:** $PR_URL
+            **Release Branch:** \`$RELEASE_BRANCH\` (temporary, safe to delete after merge)
+            **Integration Branch:** \`fork_integration\` (preserved for future use)
+            **Diff Size:** ${DIFF_LINES} lines  
+            **Breaking Changes:** ${BREAKING_CHANGES}
+            **Review Required:** ✅ Manual review required for all production changes
+            **Commits:** $(git rev-list --count origin/main..HEAD)
+            
+            **Final Steps:**
+            1. Review and merge the production PR: $PR_URL
+            2. The release branch can be safely deleted after merge
+            3. This issue will be closed when changes reach main
+            
+            **Timeline:**
+            - Integration completed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+            - Ready for production: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          fi
+          
+          # Close any upstream-held issues since cascade is now complete
+          HELD_ISSUE=$(gh issue list --label "upstream-held" --json number 2>/dev/null | jq -r '.[0].number // empty')
+          if [ -n "$HELD_ISSUE" ]; then
+            echo "::notice::Closing upstream-held issue #$HELD_ISSUE - cascade complete"
+            gh issue comment "$HELD_ISSUE" --body "✅ **Cascade completed successfully** - $(date '+%Y-%m-%d %H:%M:%S UTC')
+            
+            Production PR created: $PR_URL
+            All held upstream changes have been processed and are ready for production deployment.
+            
+            Closing this tracking issue."
+            gh issue close "$HELD_ISSUE"
+          fi
+
+  check-stale-conflicts:
+    name: "⏰ Check Stale Conflicts"
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Check for stale conflict issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find conflict issues older than 48 hours
+          stale_issues=$(gh issue list \
+            --label "conflict,cascade-blocked" \
+            --json number,createdAt,title \
+            --jq '.[] | select((now - (.createdAt | fromdateiso8601)) > 172800)')
+          
+          if [ -n "$stale_issues" ]; then
+            echo "$stale_issues" | jq -r '.number' | while read issue_number; do
+              # Create escalation issue
+              gh issue create \
+                --title "🚨 ESCALATION: Cascade conflicts unresolved for 48+ hours" \
+                --body "Issue #$issue_number has unresolved conflicts blocking the cascade pipeline.
+                
+                **Action Required:** Resolve integration branch conflicts immediately
+                **SLA Status:** EXCEEDED (48+ hours)
+                **Impact:** Upstream changes cannot be integrated until resolved" \
+                --label "escalation,high-priority,cascade-escalated,human-required"
+              
+              # Update issue with escalation notice
+              gh issue comment $issue_number --body "⚠️ **SLA EXCEEDED:** This conflict has exceeded the 48-hour resolution SLA and has been escalated. Immediate action required."
+              
+              # Add escalation label to issue
+              gh issue edit $issue_number --add-label "cascade-escalated"
+            done
+          else
+            echo "No stale conflict issues found"
+          fi
+
+  cascade-failure-handler:
+    name: "🚨 Handle Cascade Failure"
+    if: failure()
+    runs-on: ubuntu-latest
+    needs: [cascade-to-integration, cascade-to-main]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Create failure issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Determine failure type
+          if [ "${{ needs.cascade-to-integration.result }}" = "failure" ]; then
+            FAILURE_TYPE="Integration Failure"
+            FAILURE_DETAILS="The cascade-to-integration job failed during upstream merge or validation."
+          elif [ "${{ needs.cascade-to-main.result }}" = "failure" ]; then
+            FAILURE_TYPE="Main Cascade Failure"
+            FAILURE_DETAILS="The cascade-to-main job failed during PR creation or main branch operations."
+          else
+            FAILURE_TYPE="Unknown Failure"
+            FAILURE_DETAILS="An unexpected failure occurred in the cascade workflow."
+          fi
+          
+          ISSUE_BODY="## 🚨 Cascade Pipeline Failure
+          
+          **Failure Type:** $FAILURE_TYPE
+          **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Trigger Branch:** ${{ github.ref }}
+          **Timestamp:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          
+          **Details:** $FAILURE_DETAILS
+          
+          **Impact:** The cascade pipeline is blocked until this issue is resolved.
+          
+          **Next Steps:**
+          1. Review the failed workflow logs
+          2. Identify and fix the root cause
+          3. Re-run the cascade workflow or manually complete the integration"
+
+          FAILURE_ISSUE_URL=$(gh issue create \
+            --title "🚨 Cascade Pipeline Failure: $FAILURE_TYPE - $(date +%Y-%m-%d)" \
+            --body "$ISSUE_BODY" \
+            --label "high-priority,human-required")
+          
+          # Update original tracking issue with failure information
+          TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
+          # Check if we have a valid issue from the first job
+          ISSUE_VALID="${{ needs.cascade-to-integration.outputs.issue_valid }}"
+          if [ -n "$TRACKING_ISSUE" ] && [ "$ISSUE_VALID" = "true" ]; then
+            # Update tracking issue labels and add comment about failure
+            gh issue edit "$TRACKING_ISSUE" \
+              --remove-label "cascade-active" \
+              --add-label "cascade-failed,human-required"
+            
+            gh issue comment "$TRACKING_ISSUE" --body $'❌ **Cascade Integration Failed** - '"$(date -u +%Y-%m-%dT%H:%M:%SZ)"$'\n\nThe cascade integration workflow encountered an error and could not complete successfully.\n\n**Failure Details:** '"$FAILURE_ISSUE_URL"$'\n**Workflow Run:** ['"${{ github.run_id }}"$']('"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"$')\n\n**Recovery Instructions:**\n1. Review the failure issue for technical details\n2. Investigate and fix the root cause (may require changes to `fork_integration` branch)\n3. Remove the `human-required` label from this issue when ready\n4. The monitoring system will automatically retry the cascade integration\n\n**Human Action Required:** Please resolve the failure and remove the `human-required` label to trigger automatic retry.'
+          fi

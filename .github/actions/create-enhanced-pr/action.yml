@@ -1,0 +1,183 @@
+name: 'Create Enhanced PR'
+description: 'Creates a GitHub PR with AI-enhanced description using aipr when available'
+
+inputs:
+  github-token:
+    description: 'GitHub token for creating PRs'
+    required: true
+  base-branch:
+    description: 'Base branch for the PR'
+    required: true
+  head-branch:
+    description: 'Head branch for the PR'
+    required: true
+  pr-title:
+    description: 'Title for the PR'
+    required: true
+  fallback-description:
+    description: 'Fallback PR description if aipr is not available'
+    required: true
+  azure-api-key:
+    description: 'Azure OpenAI API key for aipr (optional)'
+    required: false  
+  azure-api-base:
+    description: 'Azure OpenAI API base URL (optional)'
+    required: false
+  azure-api-version:
+    description: 'Azure OpenAI API version (optional)'
+    required: false
+  openai-api-key:
+    description: 'OpenAI API key for aipr (optional)'
+    required: false
+  max-diff-lines:
+    description: 'Maximum diff lines for aipr processing'
+    required: false
+    default: '20000'
+  use-vulns-flag:
+    description: 'Whether to use --vulns flag with aipr'
+    required: false
+    default: 'true'
+  target-branch-for-aipr:
+    description: 'Target branch for aipr analysis (defaults to base-branch)'
+    required: false
+  additional-description:
+    description: 'Additional content to append to PR description'
+    required: false
+  fallback-description-b64:
+    description: 'Base64 encoded fallback PR description (safer for complex content)'
+    required: false
+
+outputs:
+  pr-url:
+    description: 'URL of the created PR'
+    value: ${{ steps.create-pr.outputs.pr-url }}
+  pr-number:
+    description: 'Number of the created PR'
+    value: ${{ steps.create-pr.outputs.pr-number }}
+  used-aipr:
+    description: 'Whether aipr was used to generate the description'
+    value: ${{ steps.detect-llm.outputs.used-aipr }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Detect available LLM
+      id: detect-llm
+      shell: bash
+      run: |
+        USE_LLM=false
+        LLM_MODEL=""
+
+        # Check for Azure OpenAI API key
+        if [[ -n "${{ inputs.azure-api-key }}" && -n "${{ inputs.azure-api-base }}" ]]; then
+          USE_LLM=true
+          LLM_MODEL="azure/gpt-4o"
+          echo "Using Azure OpenAI GPT-4o for PR description generation"
+        # Check for OpenAI API key
+        elif [[ -n "${{ inputs.openai-api-key }}" ]]; then
+          USE_LLM=true
+          LLM_MODEL="gpt-4.1"
+          echo "Using OpenAI GPT-4 for PR description generation"
+        else
+          echo "No LLM API keys found. Using fallback PR description."
+        fi
+        
+        echo "use-llm=$USE_LLM" >> $GITHUB_OUTPUT
+        echo "llm-model=$LLM_MODEL" >> $GITHUB_OUTPUT
+
+    - name: Check diff size and generate description
+      id: generate-description
+      shell: bash
+      env:
+        AZURE_API_KEY: ${{ inputs.azure-api-key }}
+        AZURE_API_BASE: ${{ inputs.azure-api-base }}
+        AZURE_API_VERSION: ${{ inputs.azure-api-version }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+      run: |
+        # Calculate diff size to avoid generating prompts that exceed model limits
+        MAX_DIFF_LINES=${{ inputs.max-diff-lines }}
+        DIFF_LINES=$(git diff ${{ inputs.base-branch }} | wc -l | tr -d ' ')
+        
+        # Ensure DIFF_LINES is a valid numeric value
+        if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
+          DIFF_LINES=0
+        fi
+        echo "Diff contains $DIFF_LINES lines"
+        
+        if [[ "${{ steps.detect-llm.outputs.use-llm }}" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
+          # Generate PR description using aipr
+          echo "Generating PR description using ${{ steps.detect-llm.outputs.llm-model }}..."
+          
+          TARGET_BRANCH="${{ inputs.target-branch-for-aipr }}"
+          if [[ -z "$TARGET_BRANCH" ]]; then
+            TARGET_BRANCH="${{ inputs.base-branch }}"
+          fi
+          
+          AIPR_FLAGS="-t $TARGET_BRANCH -p meta -m ${{ steps.detect-llm.outputs.llm-model }} --max-diff-lines $MAX_DIFF_LINES"
+          if [[ "${{ inputs.use-vulns-flag }}" == "true" ]]; then
+            AIPR_FLAGS="$AIPR_FLAGS --vulns"
+          fi
+          
+          PR_DESCRIPTION=$(aipr $AIPR_FLAGS 2>/dev/null || echo "")
+          
+          if [[ -n "$PR_DESCRIPTION" ]]; then
+            echo "Generated enhanced PR description using ${{ steps.detect-llm.outputs.llm-model }}"
+            echo "used-aipr=true" >> $GITHUB_OUTPUT
+          else
+            echo "aipr generation failed, using fallback description"
+            # Check if we have a base64 encoded description first
+            if [[ -n "${{ inputs.fallback-description-b64 }}" ]]; then
+              echo "Using base64 encoded fallback description"
+              PR_DESCRIPTION=$(echo "${{ inputs.fallback-description-b64 }}" | base64 -d)
+            else
+              PR_DESCRIPTION="${{ inputs.fallback-description }}"
+            fi
+            echo "used-aipr=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
+            echo "Diff is larger than $MAX_DIFF_LINES lines; using fallback description"
+          fi
+          
+          # Check if we have a base64 encoded description first
+          if [[ -n "${{ inputs.fallback-description-b64 }}" ]]; then
+            echo "Using base64 encoded fallback description"
+            PR_DESCRIPTION=$(echo "${{ inputs.fallback-description-b64 }}" | base64 -d)
+          else
+            PR_DESCRIPTION="${{ inputs.fallback-description }}"
+          fi
+          echo "used-aipr=false" >> $GITHUB_OUTPUT
+        fi
+        
+        # Append additional description if provided
+        if [[ -n "${{ inputs.additional-description }}" ]]; then
+          PR_DESCRIPTION="${PR_DESCRIPTION}"$'\n\n'"${{ inputs.additional-description }}"
+        fi
+        
+        # Save description to environment (handle multiline properly)
+        echo "PR_DESCRIPTION<<EOF" >> $GITHUB_ENV
+        echo "$PR_DESCRIPTION" >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+
+    - name: Create PR
+      id: create-pr
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        echo "Creating PR from branch ${{ inputs.head-branch }} to ${{ inputs.base-branch }}"
+        
+        PR_URL=$(gh pr create \
+          --base "${{ inputs.base-branch }}" \
+          --head "${{ inputs.head-branch }}" \
+          --title "${{ inputs.pr-title }}" \
+          --body "$PR_DESCRIPTION")
+        
+        echo "PR created: $PR_URL"
+        
+        # Extract PR number
+        PR_NUMBER=$(basename "$PR_URL")
+        echo "PR number: $PR_NUMBER"
+        
+        echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+        echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT

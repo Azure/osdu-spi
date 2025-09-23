@@ -1,0 +1,204 @@
+version: 2
+updates:
+
+  # 1) TOP-LEVEL AGGREGATOR
+  #    Scans the root POM, but ignores any dependencies physically declared in
+  #    testing/**, <service>-acceptance-test/**, etc.
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "09:00"
+    target-branch: "main"
+    labels:
+      - "dependencies"
+      - "common"
+    # ***IMPORTANT***
+    ignore:
+      - dependency-name: "*"
+        paths:
+          - "testing/**"
+          - "<service>-acceptance-test/**"
+          - "<service>-core-plus/**"
+    groups:
+      spring:
+        patterns:
+          - "org.springframework*"
+          - "org.springframework.boot:spring-boot*"
+          - "org.springframework.security:spring-security*"
+          - "org.springdoc:springdoc-openapi*"
+        update-types:
+          - "patch"
+      osdu-core:
+        patterns:
+          - "org.opengroup.osdu:os-core-common"
+        update-types:
+          - "patch"
+          - "minor"
+          - "major"
+      build-tools:
+        patterns:
+          - "org.projectlombok:lombok"
+          - "com.google.guava:guava"
+          - "io.github.git-commit-id:*"
+          - "org.springframework.boot:spring-boot-maven-plugin"
+        update-types:
+          - "minor"
+          - "patch"
+      logging:
+        patterns:
+          - "org.apache.logging.log4j:*"
+          - "ch.qos.logback:*"
+          - "org.slf4j:*"
+        update-types:
+          - "minor"
+          - "patch"
+      data-format:
+        patterns:
+          - "com.fasterxml.jackson*"
+          - "net.minidev:json-smart"
+          - "com.google.code.gson:gson"
+          - "org.yaml:snakeyaml"
+        update-types:
+          - "minor"
+          - "patch"
+      common-utils:
+        patterns:
+          - "commons-beanutils:commons-beanutils"
+          - "io.github.resilience4j:*"
+          - "org.apache.commons:*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # 2) <service> CORE
+  - package-ecosystem: "maven"
+    directory: "/<service>-core"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "09:00"
+    labels:
+      - "dependencies"
+      - "common"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      core-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # 3) SPI AZURE
+  - package-ecosystem: "maven"
+    directory: "/provider/<service>-azure"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "09:00"
+    labels:
+      - "dependencies"
+      - "azure"
+    groups:
+      azure-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  # 4) SPI AWS (corrected directory to /provider/<service>-aws)
+  - package-ecosystem: "maven"
+    directory: "/provider/<service>-aws"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+
+  # 5) SPI GC
+  - package-ecosystem: "maven"
+    directory: "/provider/<service>-gc"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+
+  # 6) SPI IBM
+  - package-ecosystem: "maven"
+    directory: "/provider/<service>-ibm"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+
+  # 7) <service> CORE PLUS
+  - package-ecosystem: "maven"
+    directory: "/<service>-core-plus"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+
+  # 8) <service> ACCEPTANCE TEST
+  - package-ecosystem: "maven"
+    directory: "/<service>-acceptance-test"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+
+  # 9) TESTING 
+  - package-ecosystem: "maven"
+    directory: "/testing"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "maven"
+    directory: "/testing/<service>-test-core-plus"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "maven"
+    directory: "/testing/<service>-test-baremetal"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "maven"
+    directory: "/testing/<service>-test-azure"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "maven"
+    directory: "/testing/<service>-test-core"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "maven"
+    directory: "/testing/<service>-test-ibm"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "maven"
+    directory: "/testing/<service>-test-aws"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "maven"
+    directory: "/testing/<service>-test-gc"
+    schedule:
+      interval: "never"
+    ignore:
+      - dependency-name: "*"
+  

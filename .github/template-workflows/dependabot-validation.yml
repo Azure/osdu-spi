@@ -1,0 +1,157 @@
+name: Dependabot Validation
+
+on:
+  pull_request:
+    branches: [main, fork_integration, fork_upstream]
+    paths-ignore:
+      - '.github/workflows/**'
+      - '.github/template-workflows/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/actions/**'
+      - '.github/*.md'
+      - '.github/*.json'
+      - '.github/*.yml'
+      - '.github/*.yaml'
+      - '.github/.template-sync-commit'
+      - '.vscode/**'
+      - 'docs/**'
+      - '**.md'
+      - '**.txt'
+      - 'LICENSE'
+      - 'NOTICE'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-repo-state:
+    if: github.actor == 'dependabot[bot]'
+    name: "🔍 Check Repository State"
+    runs-on: ubuntu-latest
+    outputs:
+      is_java_repo: ${{ steps.check_java.outputs.is_java }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: "Check if Java Repository"
+        id: check_java
+        run: |
+          if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
+            echo "is_java=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_java=false" >> $GITHUB_OUTPUT
+          fi
+
+  java-build:
+    name: "🔨 Dependabot Build Validation"
+    needs: check-repo-state
+    if: needs.check-repo-state.outputs.is_java_repo == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      build_result: ${{ steps.build.outputs.build_result }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+          
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+          
+      - name: Setup Maven Settings
+        run: |
+          mkdir -p ~/.m2
+          cp .mvn/community-maven.settings.xml ~/.m2/settings.xml
+        
+      - name: "Run Java Build"
+        id: build
+        uses: ./.github/actions/java-build
+        env:
+          MAVEN_USERNAME: ${{ secrets.OPENGROUP_MAVEN_USERNAME }}
+          MAVEN_TOKEN: ${{ secrets.OPENGROUP_MAVEN_TOKEN }}
+        with:
+          generate_coverage: true
+          gitlab_token: ${{ secrets.GITLAB_TOKEN }}
+      
+      - name: "Post Build Status Comment"
+        uses: ./.github/actions/pr-status
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.pull_request.number }}
+          status_items: |
+            ${{ steps.build.outputs.build_result == 'success' && 
+            '["✅ Dependency Update Build Successful"]' || 
+            '["❌ Dependency Update Build Failed"]' }}
+
+  create-issue-on-failure:
+    name: "🔔 Notify Failed Dependabot Build"
+    needs: [check-repo-state, java-build]
+    if: needs.check-repo-state.outputs.is_java_repo == 'true' && needs.java-build.result != 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Create Required Labels"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create build-failed \
+            --description "Issues related to build failures" \
+            --color "d73a4a" || true
+          gh label create dependencies \
+            --description "Dependency-related issues" \
+            --color "0366d6" || true
+
+      - name: "Create Issue for Failed Build"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract dependency information from PR title
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          
+          # Extract dependency details from PR title
+          DEPENDENCY=$(echo "$PR_TITLE" | grep -oP 'bump \K[^ ]+ from [^ ]+ to [^ ]+' || echo "dependency")
+          
+          # Create informative issue body
+          ISSUE_BODY="## Dependabot PR Build Failure
+          
+          A Dependabot PR has failed to build successfully.
+          
+          ### Dependency Update
+          \`$DEPENDENCY\`
+          
+          ### PR Details
+          - **PR Title**: $PR_TITLE
+          - **PR Number**: $PR_NUMBER
+          - **PR URL**: $PR_URL
+          
+          ### Build Information
+          - **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          
+          ### Next Steps
+          1. Review the build logs to identify the failure cause
+          2. Either:
+             - Fix the issue and update the PR
+             - Close the PR if the dependency update is problematic
+             - Pin the dependency to a compatible version
+             - Add compatibility patches
+          
+          @${{ github.repository_owner }}"
+          
+          # Create the issue
+          gh issue create \
+            --title "🔴 Dependabot Build Failure: $DEPENDENCY" \
+            --body "$ISSUE_BODY" \
+            --label "build-failed" \
+            --label "dependencies"
