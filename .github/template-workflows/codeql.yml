@@ -1,0 +1,109 @@
+name: CodeQL Analysis
+
+on:
+  push:
+    branches: [ main, fork_upstream, fork_integration ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Mondays at 6 AM UTC
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  detect-languages:
+    name: Detect Project Languages
+    runs-on: ubuntu-latest
+    outputs:
+      languages: ${{ steps.detect.outputs.languages }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect languages
+        id: detect
+        run: |
+          LANGUAGES='[]'
+
+          # Check for Java (Maven or Gradle)
+          if [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["java-kotlin"]')
+          fi
+
+          # Check for Python
+          if [ -f "setup.py" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || find . -name "*.py" -not -path "./.*" | grep -q .; then
+            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["python"]')
+          fi
+
+          # Check for JavaScript/TypeScript
+          if [ -f "package.json" ] || find . -name "*.js" -o -name "*.ts" -not -path "./node_modules/*" -not -path "./.*" | grep -q .; then
+            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["javascript-typescript"]')
+          fi
+
+          # Check for Go
+          if [ -f "go.mod" ] || find . -name "*.go" -not -path "./.*" | grep -q .; then
+            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["go"]')
+          fi
+
+          # Default to java-kotlin if nothing detected (OSDU is primarily Java)
+          if [ "$LANGUAGES" = "[]" ]; then
+            LANGUAGES='["java-kotlin"]'
+          fi
+
+          echo "languages=$LANGUAGES" >> $GITHUB_OUTPUT
+          echo "Detected languages: $LANGUAGES"
+
+  analyze:
+    name: Analyze Code
+    needs: detect-languages
+    if: needs.detect-languages.outputs.languages != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.detect-languages.outputs.languages) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Setup Python
+        if: matrix.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Setup Node.js
+        if: matrix.language == 'javascript-typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
