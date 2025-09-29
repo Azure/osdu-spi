@@ -1,6 +1,6 @@
 # Pull Request Validation Workflow
 
-The pull request validation workflow serves as the automated quality gatekeeper for your repository, ensuring that all changes meet established standards before they can be merged into protected branches. This workflow runs comprehensive checks on every pull request, acting as your first line of defense against build failures, security vulnerabilities, and process violations that could disrupt your development workflow or compromise your fork's stability.
+The pull request validation workflow acts as the automated quality gatekeeper for your repository. It ensures that all changes meet established standards before they can be merged into protected branches. This workflow runs comprehensive checks on every pull request and serves as your first line of defense against build failures, security vulnerabilities, and process violations that could disrupt your development workflow or compromise your fork's stability.
 
 The validation system is intelligent enough to apply different rules based on context - it treats upstream sync pull requests differently than regular development contributions, and applies stricter requirements to changes targeting your production `main` branch versus integration branches. This contextual awareness helps balance thorough quality control with practical workflow needs.
 
@@ -44,11 +44,10 @@ The validation system includes security-focused checks that scan for known vulne
 ### Build Failures
 ```bash
 # Run build locally to debug
-npm install
-npm run build
+mvn clean install
 
 # Check for missing dependencies
-npm audit
+mvn dependency:tree
 ```
 
 ### Commit Message Issues
@@ -63,25 +62,25 @@ git rebase -i HEAD~3
 ### Test Failures
 ```bash
 # Run tests locally
-npm test
+mvn test
 
-# Run specific test file
-npm test -- path/to/test.spec.js
+# Run specific test class
+mvn test -Dtest=TestClassName
 
-# Update snapshots if needed
-npm test -- --update-snapshots
+# Run with coverage report
+mvn test jacoco:report
 ```
 
 ### Security Vulnerabilities
 ```bash
 # Check for vulnerabilities
-npm audit
+mvn dependency-check:check
 
-# Fix automatically when possible
-npm audit fix
+# Update dependencies to latest versions
+mvn versions:use-latest-versions
 
-# Update specific packages
-npm update package-name
+# Display dependency updates available
+mvn versions:display-dependency-updates
 ```
 
 ### Merge Conflicts

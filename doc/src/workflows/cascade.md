@@ -1,6 +1,6 @@
 # Cascade Integration Workflow
 
-The cascade integration workflow is the second phase of the fork management process, responsible for safely moving synchronized upstream changes through your repository's three-branch hierarchy toward production. After an upstream synchronization PR has been merged into the `fork_upstream` branch, this workflow takes over to validate and integrate those changes into your main development branch.
+The cascade integration workflow is the second phase of the fork management process. It is responsible for safely moving synchronized upstream changes through your repository's three-branch hierarchy toward production. After an upstream synchronization PR has been merged into the `fork_upstream` branch, this workflow takes over to validate and integrate those changes into your main development branch.
 
 This workflow acts as a quality gate, running comprehensive validation including Maven builds, unit tests, and compatibility checks before allowing changes to reach your production `main` branch. It embodies a "trust but verify" approach - trusting that the upstream sync was correct, but verifying that the integration works properly with your fork's specific modifications and enhancements.
 

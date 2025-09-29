@@ -30,7 +30,7 @@ The **SPI Interface** (highlighted in orange) serves as the critical boundary wh
 
 :material-open-source-initiative: **Open Source Components** include OSDU core interfaces, community-validated business logic, standard data models, and reference implementations for testing.
 
-:material-microsoft-azure: **Azure-Specific Components** encompass Azure SPI layer implementations, Azure-native service integrations, proprietary optimizations, and Microsoft specific configuration and deployment patterns.
+:material-microsoft-azure: **Azure-Specific Components** encompass Azure SPI layer implementations, Azure-native service integrations, proprietary optimizations, and Microsoft-specific configuration and deployment patterns.
 
 !!! info "The Separation Challenge"
     Microsoft must maintain clear boundaries between open-source OSDU core components and Azure-specific SPI implementations, while ensuring both remain compatible and current with upstream community standards.

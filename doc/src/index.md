@@ -7,7 +7,7 @@
 
 ## The Challenge
 
-Managing long-lived forks for OSDU repositories is complex. Organizations need to balance upstream compatibility with proprietary implementations while avoiding integration overhead, release delays, and community divergence.
+Managing long-lived forks of OSDU repositories is complex. Organizations need to balance upstream compatibility with proprietary implementations while avoiding integration overhead, release delays, and community divergence.
 
 Traditional manual approaches are error-prone and resource-intensive.
 

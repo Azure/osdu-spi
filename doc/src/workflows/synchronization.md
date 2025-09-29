@@ -1,6 +1,7 @@
 # Upstream Synchronization Workflow
 
-The upstream synchronization workflow is the cornerstone of the fork management system, automatically keeping your repository synchronized with changes from the upstream OSDU repository. This workflow runs daily to detect new commits, bug fixes, and features from upstream, then intelligently integrates them into your fork using a safe three-branch strategy.
+The upstream synchronization workflow is the cornerstone of the fork management system, automatically keeping your repository synchronized with changes from the upstream OSDU repository.
+This workflow runs daily to detect new commits, bug fixes, and features from upstream. It then intelligently integrates them into your fork using a safe three-branch strategy.
 
 The workflow includes sophisticated duplicate prevention that avoids creating multiple PRs for the same upstream state. When changes are detected, it either creates a new sync PR or updates an existing one, ensuring a clean workflow without PR proliferation. The system intelligently uses AI for change analysis on reasonably-sized diffs (under 20,000 lines) while falling back to standard templates for massive changes to avoid token limits.
 

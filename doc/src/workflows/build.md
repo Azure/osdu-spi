@@ -136,7 +136,7 @@ open target/site/jacoco/index.html
 
 | Issue | Solution |
 |-------|----------|
-| "Dependencies not found" | Check package.json/pom.xml, clear cache |
+| "Dependencies not found" | Check pom.xml, clear cache |
 | "Build timeout" | Reduce test scope or optimize build scripts |
 | "Memory issues" | Increase heap size in build configuration |
 | "Test flakiness" | Fix non-deterministic tests, add proper waits |
