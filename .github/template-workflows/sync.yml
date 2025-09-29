@@ -38,8 +38,8 @@ jobs:
       - name: Setup Python and PR Generator
         run: |
           python -m pip install --upgrade pip
-          echo "📦 Installing AIPR 1.4.0+..."
-          pip install pr-generator-agent>=1.4.0
+          echo "📦 Installing AIPR 1.5.0+..."
+          pip install pr-generator-agent>=1.5.0
           echo "✅ Installation complete. Checking AIPR availability..."
           
           # Add user bin directory to PATH for this session
@@ -267,21 +267,17 @@ jobs:
           USE_LLM=false
           LLM_MODEL=""
           
-          # Check for Azure OpenAI API key
+          # Check for Azure OpenAI API key (primary)
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
-            LLM_MODEL="azure-gpt-4"
-            echo "Using Azure OpenAI for PR description generation"
-          # Check for OpenAI API key
-          elif [[ -n "$AZURE_API_KEY" && -n "$AZURE_API_BASE" ]]; then
-            USE_LLM=true
-            LLM_MODEL="azure/gpt-4o"
-            echo "Using Azure OpenAI GPT-4o for PR description generation"
-          # Check for OpenAI API key (tertiary)
+            LLM_MODEL="azure"
+            echo "Using Azure OpenAI GPT-5 Nano for PR description generation"
+          # Check for OpenAI API key (secondary)
           elif [[ -n "$OPENAI_API_KEY" ]]; then
             USE_LLM=true
-            LLM_MODEL="gpt-4.1"
-            echo "Using OpenAI GPT-4 for PR description generation"
+            LLM_MODEL="gpt-5"
+            echo "Using OpenAI GPT-5 for PR description generation"
+          # No AI provider available (final fallback)
           else
             echo "No LLM API keys found. Using fallback PR description."
           fi
@@ -304,8 +300,8 @@ jobs:
             echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
             
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -t fork_upstream -p meta -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
+            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -p meta -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
             
             # Debug what we got back and handle all failure cases
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
@@ -379,21 +375,17 @@ jobs:
           USE_LLM=false
           LLM_MODEL=""
           
-          # Check for Azure OpenAI API key
+          # Check for Azure OpenAI API key (primary)
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
-            LLM_MODEL="azure-gpt-4"
-            echo "Using Azure OpenAI for PR description regeneration"
-          # Check for OpenAI API key
-          elif [[ -n "$AZURE_API_KEY" && -n "$AZURE_API_BASE" ]]; then
-            USE_LLM=true
-            LLM_MODEL="azure/gpt-4o"
-            echo "Using Azure OpenAI GPT-4o for PR description regeneration"
-          # Check for OpenAI API key (tertiary)
+            LLM_MODEL="azure"
+            echo "Using Azure OpenAI GPT-5 Nano for PR description regeneration"
+          # Check for OpenAI API key (secondary)
           elif [[ -n "$OPENAI_API_KEY" ]]; then
             USE_LLM=true
-            LLM_MODEL="gpt-4.1"
-            echo "Using OpenAI GPT-4 for PR description regeneration"
+            LLM_MODEL="gpt-5"
+            echo "Using OpenAI GPT-5 for PR description regeneration"
+          # No AI provider available (final fallback)
           else
             echo "No LLM API keys found. Using fallback PR description."
           fi
@@ -416,8 +408,8 @@ jobs:
             echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
             
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -t fork_upstream -p meta -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
+            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -p meta -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
             
             # Debug what we got back and handle all failure cases
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then

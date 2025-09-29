@@ -339,7 +339,7 @@ jobs:
           done
           
           # Add template remote to be able to track template updates
-          TEMPLATE_REPO_URL="${{ vars.TEMPLATE_REPO_URL || 'https://github.com/danielscholl-osdu/osdu-fork-template.git' }}"
+          TEMPLATE_REPO_URL="${{ vars.TEMPLATE_REPO_URL || 'https://github.com/azure/osdu-spi.git' }}"
           git remote add template "$TEMPLATE_REPO_URL" || true
           # Explicitly fetch the main branch to avoid tag ambiguity
           git fetch template refs/heads/main:refs/remotes/template/main --depth=1
@@ -445,8 +445,14 @@ jobs:
             cp ".github/fork-resources/copilot-instructions.md" ".github/copilot-instructions.md"
             git add ".github/copilot-instructions.md"
           fi
-          
-          
+
+          # Copy fork-specific Dependabot configuration
+          if [ -f ".github/fork-resources/dependabot.yml" ]; then
+            echo "Installing fork-specific Dependabot configuration..."
+            cp ".github/fork-resources/dependabot.yml" ".github/dependabot.yml"
+            git add ".github/dependabot.yml"
+          fi
+
           # Copy GitHub Copilot firewall configuration
           if [ -f ".github/fork-resources/copilot-firewall-config.json" ]; then
             echo "Installing GitHub Copilot firewall configuration..."

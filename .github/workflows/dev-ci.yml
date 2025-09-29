@@ -15,7 +15,7 @@ jobs:
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
-    if: github.repository == 'danielscholl-osdu/osdu-fork-template'
+    if: github.repository == 'azure/osdu-spi'
     
     steps:
       - name: Checkout

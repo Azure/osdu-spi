@@ -27,7 +27,7 @@ jobs:
 
       - name: Add template remote
         env:
-          TEMPLATE_REPO_URL: ${{ vars.TEMPLATE_REPO_URL || 'https://github.com/danielscholl-osdu/osdu-fork-template.git' }}
+          TEMPLATE_REPO_URL: ${{ vars.TEMPLATE_REPO_URL || 'https://github.com/azure/osdu-spi.git' }}
         run: |
           # Add template remote if it doesn't exist
           if ! git remote get-url template >/dev/null 2>&1; then

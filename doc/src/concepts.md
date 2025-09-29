@@ -112,7 +112,7 @@ graph TD
 
 - Scheduled pulls from upstream repositories
 - Automated conflict detection and categorization  
-- AI-enhanced analysis of change impacts
+- AI enhanced analysis of change impacts
   </div>
 
   <div class="benefit-card" markdown="1">
@@ -132,14 +132,14 @@ graph TD
   </div>
 </div>
 
-**AI-Enhanced Development Support** leverages multiple AI providers for intelligent analysis, automated impact assessment, step-by-step conflict resolution guidance, and generated commit messages and PR descriptions through Model Context Protocol (MCP) integration.
+**AI Enhanced Development Support** leverages multiple AI providers for intelligent analysis, automated impact assessment, step-by-step conflict resolution guidance, and generated commit messages and PR descriptions through custom agent integration.
 
 ## Why This Matters
 
 This automated fork management approach delivers significant operational and strategic value across development teams, operations, and enterprise architecture.
 
 !!! success "Key Impact Areas"
-    Teams achieve 90% reduction in manual integration work while maintaining full compatibility with upstream OSDU community standards. This enables focus on innovation rather than integration overhead.
+    Teams achieve a major reduction in manual integration work while maintaining full compatibility with upstream OSDU community standards. This enables focus on innovation rather than integration overhead.
 
 === "Strategic Value"
 

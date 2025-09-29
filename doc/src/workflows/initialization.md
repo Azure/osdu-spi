@@ -1,267 +1,142 @@
 # Repository Initialization Workflow
 
-The initialization workflow provides automated setup and configuration for new fork instances created from the OSDU SPI Fork Management template. This process implements a two-workflow pattern that separates user interaction from system configuration, ensuring a smooth setup experience while maintaining system reliability.
+The repository initialization workflow transforms a newly created repository from the OSDU Azure SPI Management template into a fully functional fork management system. This workflow handles all the complex setup tasks automatically, including deploying the complete workflow suite, creating the three-branch architecture, configuring security settings, and validating that everything is working correctly before your team begins development.
 
-## Two-Workflow Initialization Pattern
+The initialization process is designed with a two-phase approach that separates the immediate user experience from the more time-consuming system configuration tasks. This ensures you get immediate feedback that setup has started successfully, while the detailed configuration work happens in the background without requiring you to wait or monitor the process.
 
-### Design Philosophy
+## When It Runs
 
-The initialization process is deliberately split into two focused workflows to provide optimal user experience and maintainability:
+The initialization workflow activates in several scenarios to ensure your repository is properly configured:
 
-```mermaid
-graph TD
-    A[Template Creation] --> B[init.yml<br/>User Interface]
-    B --> C[Create Setup Issue]
-    C --> D[init-complete.yml<br/>System Configuration]
-    D --> E[Repository Ready]
-    
-    style B fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-    style D fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+- **Template creation** - Automatically triggers when you create a new repository from this template
+- **Manual trigger** - Available via GitHub Actions tab if setup needs to be rerun or troubleshooting is required
+- **Fork creation** - Activates when forking an existing OSDU SPI repository to ensure proper configuration
+
+## What Happens
+
+The initialization process unfolds in two coordinated phases designed to provide optimal user experience while ensuring thorough setup:
+
+### Immediate Setup Phase (30 seconds)
+The workflow immediately creates a setup issue that serves as a tracking mechanism for initialization progress, validates that all required template files are present and properly formatted, triggers the main configuration workflow to begin the detailed setup process, and provides immediate feedback through the setup issue so you know the process has started successfully.
+
+### Full Configuration Phase (5-10 minutes)
+The comprehensive setup process deploys all workflow files including sync, cascade, build, validation, and release management workflows to your repository. It creates the essential `fork_upstream` and `fork_integration` branches that form the foundation of the three-branch architecture, applies branch protection rules and security settings to ensure safe collaboration, enables repository features like issues and discussions that support the fork management process, and validates the entire setup by running initial checks to confirm everything is functioning correctly.
+
+The initialization process produces clear outcomes to guide your next steps:
+- **Success**: Your repository is fully configured and ready for upstream synchronization and team development
+- **Failure**: The setup issue is updated with specific resolution steps and guidance for addressing any configuration problems
+
+## When You Need to Act
+
+### Required Configuration
+- **Repository secrets** - Must be configured before first sync
+- **Upstream repository** - Must specify which repository to sync from
+- **Team permissions** - Ensure team has appropriate access levels
+
+### Optional Configuration
+- **AI providers** - Configure API keys for enhanced PR descriptions
+- **Notifications** - Set up issue/PR notifications for your team
+- **Custom labels** - Add project-specific labels beyond defaults
+
+## How to Respond
+
+### Complete Required Setup
+1. **Check setup issue** - Look for repository configuration checklist
+2. **Configure secrets**:
+   ```
+   UPSTREAM_REPO_URL - Repository to sync from (required)
+   GITHUB_TOKEN - Provided automatically
+   AZURE_API_KEY - AI provider (optional)
+   OPENAI_API_KEY - AI fallback (optional)
+   ```
+
+3. **Verify branch protection** - Ensure `main` branch is protected
+4. **Test initial sync** - Run upstream sync workflow manually to verify setup
+
+### Handle Setup Failures
+```bash
+# Check workflow logs in Actions tab
+# Common issues and solutions:
+
+# Permission errors
+# - Ensure repository has Actions write permissions
+# - Check team has admin access to repository
+
+# Branch creation failures
+# - Verify default branch is 'main'
+# - Check for existing conflicting branches
+
+# Workflow deployment issues
+# - Ensure Actions are enabled in repository settings
+# - Verify no conflicting workflow files exist
 ```
 
-#### **Phase 1: User Interface** (`init.yml`)
-- **Purpose**: Create user-friendly initialization experience
-- **Scope**: Issue creation, progress communication, basic setup
-- **Duration**: < 30 seconds
-- **User Experience**: Immediate feedback and clear next steps
+### Verify Successful Setup
+1. **Check branches** - Should have `main`, `fork_upstream`, `fork_integration`
+2. **Test workflows** - All workflows should be visible in Actions tab
+3. **Verify protection** - Branch protection rules should be active
+4. **Run sync test** - Manual upstream sync should work without errors
 
-#### **Phase 2: System Configuration** (`init-complete.yml`)
-- **Purpose**: Complete repository setup and configuration
-- **Scope**: Workflow deployment, branch creation, security setup
-- **Duration**: 2-5 minutes
-- **Automation**: Comprehensive automated configuration
+## Repository Structure Created
 
-## Initialization Process Overview
+### Branches
+- **`main`** - Your production branch (protected)
+- **`fork_upstream`** - Mirror of upstream repository
+- **`fork_integration`** - Integration and conflict resolution branch
 
-### Template Detection and Setup
+### Workflows Installed
+- **`sync.yml`** - Daily upstream synchronization
+- **`cascade.yml`** - Three-branch integration process
+- **`build.yml`** - Build and test automation
+- **`validate.yml`** - PR quality gates
+- **`release.yml`** - Automated version management
 
-#### **Template Instance Detection**
-The system automatically detects when a new repository is created from the template:
+### Security Configuration
+- **Branch protection** - Required PR reviews and status checks
+- **Action permissions** - Appropriate workflow execution permissions
+- **Issue templates** - Standardized issue reporting
+- **Security scanning** - Dependabot and vulnerability detection
 
-```yaml
-# Trigger conditions
-on:
-  push:
-    branches: [main]  # Repository creation detection
-```
+## Required Secrets
 
-**Detection Logic**:
-1. **Template Check**: Verify if this is the template repository itself
-2. **Initialization Status**: Check if repository is already initialized
-3. **First Run Detection**: Identify genuine template instantiation
+| Secret | Purpose | Required |
+|--------|---------|----------|
+| `UPSTREAM_REPO_URL` | Repository to sync from | ✅ Yes |
+| `GITHUB_TOKEN` | Automatically provided | ✅ Yes |
+| `AZURE_API_KEY` | AI-enhanced PR descriptions | ❌ Optional |
+| `AZURE_API_BASE` | Azure OpenAI endpoint | ❌ Optional |
+| `OPENAI_API_KEY` | AI fallback provider | ❌ Optional |
 
-#### **State Management**
-The initialization process uses clear state indicators:
+## Troubleshooting
 
-- **Uninitialized**: Fresh template instance requiring setup
-- **In Progress**: Initialization workflow executing
-- **Complete**: Repository fully configured and operational
-- **Error**: Initialization failed requiring manual intervention
+| Issue | Solution |
+|-------|----------|
+| "Setup issue not created" | Check Actions are enabled, rerun workflow |
+| "Branch creation failed" | Verify default branch is 'main', check permissions |
+| "Workflow deployment error" | Remove conflicting `.github/workflows/` files |
+| "Protection rules failed" | Ensure admin access, check repository settings |
+| "Initial sync fails" | Verify `UPSTREAM_REPO_URL` secret is correct |
 
-### Phase 1: User Interface Workflow
+## Post-Setup Checklist
 
-#### **Immediate User Feedback**
-Upon template instantiation, users immediately receive:
-
-```markdown
-# 🚀 Fork Management Template Setup
-
-Welcome to your new OSDU SPI Fork Management repository!
-
-## What's Happening Now
-- ✅ Repository created successfully
-- 🔄 **Currently**: Setting up workflows and configuration
-- ⏱️ **Estimated Time**: 2-5 minutes
+- [ ] **Setup issue closed successfully** - Initialization completed without errors
+- [ ] **Three branches exist** - `main`, `fork_upstream`, `fork_integration`
+- [ ] **Workflows active** - All 5 workflows visible in Actions tab
+- [ ] **Secrets configured** - At minimum `UPSTREAM_REPO_URL` is set
+- [ ] **Protection enabled** - `main` branch requires PR reviews
+- [ ] **Initial sync works** - Manual upstream sync runs successfully
+- [ ] **Team permissions** - Team has appropriate repository access
 
 ## Next Steps
-1. **Wait for Setup**: Automated configuration is running
-2. **Review Configuration**: Check the setup results below
-3. **Configure Secrets**: Add your upstream repository and API keys
-4. **Start Syncing**: Begin upstream synchronization
 
-## Setup Progress
-- [ ] Deploy production workflows
-- [ ] Create branch structure  
-- [ ] Configure security settings
-- [ ] Set up issue labels
-- [ ] Enable automation
+1. **Configure upstream sync** - Set `UPSTREAM_REPO_URL` to target repository
+2. **Run first sync** - Manually trigger upstream synchronization workflow
+3. **Set up notifications** - Configure team alerts for sync issues and PRs
+4. **Review documentation** - Read [synchronization](synchronization.md) and [cascade](cascade.md) workflows
+5. **Add team members** - Invite collaborators with appropriate permissions
 
-*This issue will be updated with progress and results.*
-```
+## Related
 
-#### **Progress Communication**
-The issue provides real-time updates throughout the initialization process:
-
-- **Start Notification**: Immediate confirmation of setup initiation
-- **Progress Updates**: Step-by-step completion status
-- **Error Reporting**: Clear communication of any issues
-- **Completion Summary**: Final configuration results and next steps
-
-### Phase 2: System Configuration Workflow
-
-#### **Comprehensive Repository Setup**
-
-##### **Production Workflow Deployment**
-```mermaid
-graph LR
-    A[Template Workflows] --> B[Copy to .github/workflows/]
-    B --> C[Remove Template Files]
-    C --> D[Configure for Fork Instance]
-    
-    style A fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style D fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
-```
-
-**Workflow Deployment Process**:
-1. **Copy Production Workflows**: Transfer `.github/template-workflows/` to `.github/workflows/`
-2. **Remove Template Files**: Clean up template-specific workflows and configuration
-3. **Configure Instance Settings**: Adapt workflows for specific fork instance
-4. **Validate Deployment**: Ensure all workflows are properly configured
-
-##### **Branch Structure Creation**
-**Three-Branch Strategy Implementation**:
-
-```bash
-# Create and configure core branches
-git checkout -b fork_upstream
-git push origin fork_upstream
-
-git checkout -b fork_integration  
-git push origin fork_integration
-
-# Configure branch protection rules
-git checkout main
-```
-
-**Branch Configuration**:
-- **`main`**: Production branch with maximum protection
-- **`fork_upstream`**: Upstream tracking with automation-only access
-- **`fork_integration`**: Conflict resolution workspace with flexible access
-
-##### **Security Configuration**
-**Automated Security Setup**:
-- **Branch Protection Rules**: Required reviews, status checks, force push prevention
-- **Secret Scanning**: Enable GitHub secret detection and alerting
-- **Vulnerability Alerts**: Configure Dependabot security advisories
-- **Access Controls**: Set appropriate repository permissions and restrictions
-
-##### **Label and Issue Configuration**
-**Repository Organization Setup**:
-- **Issue Labels**: Deploy comprehensive label system for workflow tracking
-- **Issue Templates**: Configure templates for common workflow scenarios
-- **Project Management**: Set up basic project management structure
-- **Automation Rules**: Configure automatic labeling and assignment rules
-
-#### **Configuration Validation**
-
-##### **Setup Verification**
-The initialization process includes comprehensive validation:
-
-```yaml
-# Validation steps
-- name: Verify Branch Structure
-  run: |
-    git branch -r | grep -E "(main|fork_upstream|fork_integration)"
-    
-- name: Verify Workflow Deployment
-  run: |
-    ls -la .github/workflows/
-    
-- name: Verify Security Configuration  
-  run: |
-    gh api repos/${{ github.repository }}/branches/main/protection
-```
-
-##### **Readiness Assessment**
-**Completion Criteria**:
-- :material-check-circle: All production workflows deployed and functional
-- :material-check-circle: Three-branch strategy implemented and protected
-- :material-check-circle: Security configuration applied and verified
-- :material-check-circle: Labels and issue templates configured
-- :material-check-circle: Repository ready for upstream configuration
-
-## Post-Initialization Configuration
-
-### Required User Actions
-
-#### **Upstream Repository Configuration**
-Users must configure their specific upstream repository:
-
-```yaml
-# Required GitHub Secrets
-UPSTREAM_REPO_URL: "https://github.com/your-org/osdu-upstream-repo"
-GH_TOKEN: "ghp_xxxxxxxxxxxxxxxxxxxx"  # With repo, workflow, admin:repo_hook scopes
-```
-
-#### **Optional AI Enhancement**
-For AI-powered capabilities, configure one AI provider:
-
-```yaml
-# AI Provider Options (choose one)
-ANTHROPIC_API_KEY: "sk-ant-xxxxxxxxxxxxxxxx"    # Recommended
-AZURE_API_KEY: "xxxxxxxxxxxxxxxx"               # Enterprise option
-OPENAI_API_KEY: "sk-xxxxxxxxxxxxxxxx"           # Fallback option
-```
-
-### First Sync Preparation
-
-#### **Manual First Sync**
-After configuration, users can initiate their first upstream synchronization:
-
-1. **Verify Configuration**: Ensure all required secrets are configured
-2. **Manual Trigger**: Execute the sync workflow manually for first run
-3. **Monitor Progress**: Watch the first synchronization through GitHub Issues
-4. **Validate Results**: Confirm successful upstream integration
-
-#### **Ongoing Automation**
-Once initialized and configured:
-- **Daily Sync**: Automatic upstream synchronization at midnight UTC
-- **Conflict Management**: Automated detection and resolution guidance
-- **Release Coordination**: Semantic versioning aligned with upstream
-- **Template Updates**: Automatic propagation of template improvements
-
-## Troubleshooting and Recovery
-
-### Common Initialization Issues
-
-#### **Workflow Deployment Failures**
-**Symptoms**: Missing or incomplete workflow files
-**Resolution**: 
-1. Check repository permissions and GitHub Actions enablement
-2. Manually trigger `init-complete.yml` workflow
-3. Verify no conflicting branch protection rules
-
-#### **Branch Creation Issues**
-**Symptoms**: Missing `fork_upstream` or `fork_integration` branches
-**Resolution**:
-1. Manually create missing branches from `main`
-2. Configure appropriate branch protection rules
-3. Validate branch structure matches three-branch strategy
-
-#### **Security Configuration Failures**
-**Symptoms**: Missing branch protection or security features
-**Resolution**:
-1. Verify repository admin permissions
-2. Check GitHub Enterprise settings and restrictions
-3. Apply security configuration manually if needed
-
-### Recovery Procedures
-
-#### **Re-initialization Process**
-If initialization fails or is incomplete:
-
-1. **Delete Initialization Issue**: Remove incomplete initialization tracking
-2. **Reset Repository State**: Ensure clean starting state
-3. **Trigger Re-initialization**: Push new commit to `main` to restart process
-4. **Monitor Progress**: Watch new initialization issue for completion
-
-#### **Manual Configuration Backup**
-For organizations requiring manual setup:
-1. **Follow Initialization Steps**: Execute each step from workflow manually
-2. **Validate Configuration**: Ensure all components are properly configured
-3. **Test Functionality**: Execute basic workflow operations to verify setup
-4. **Document Customizations**: Record any organization-specific modifications
-
----
-
-*The initialization workflow provides a robust foundation for OSDU SPI fork management, ensuring consistent setup across all repository instances while maintaining flexibility for organizational requirements.*
+- [Synchronization Workflow](synchronization.md) - Next step after initialization
+- [Three-Branch Strategy](../decisions/adr_001_three_branch_strategy.md) - Branching architecture
+- [Security Setup](../decisions/adr_016_security.md) - Security configuration details

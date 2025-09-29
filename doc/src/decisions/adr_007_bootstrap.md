@@ -92,7 +92,7 @@ bootstrap_update:
         - name: Fetch latest workflow from template
           run: |
             # Add template as remote source
-            git remote add template https://github.com/danielscholl-osdu/osdu-fork-template.git
+            git remote add template https://github.com/azure/osdu-spi.git
             git fetch template main
             
             # Update workflows to latest version

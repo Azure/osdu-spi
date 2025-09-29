@@ -65,7 +65,7 @@ graph TD
 
     ---
 
-    AI-powered daily synchronization with intelligent duplicate prevention that fetches upstream changes, analyzes them for conflicts, and creates integration PRs with conventional commit messages
+    AI powered daily synchronization with intelligent duplicate prevention that fetches upstream changes, analyzes them for conflicts, and creates integration PRs with conventional commit messages
 
     - **Trigger**: Scheduled daily at midnight UTC with intelligent duplicate prevention
     - **State Management**: Tracks sync state between runs to prevent duplicate PRs and issues
@@ -203,28 +203,16 @@ graph TD
 
 </div>
 
-## AI-Enhanced Integration Workflows
+## AI Enhanced Integration Workflows
 
 ### :material-git: Cross-Platform Integration
 
 <div class="grid cards" markdown>
 
--   :material-gitlab:{ .lg .middle } **OSDU GitLab Integration** (`osdu-alfi.yml`)
-
-    ---
-
-    AI-powered cross-platform workflow that enables seamless GitHub-to-GitLab contribution for OSDU community repositories
-
-    - **Trigger**: `@alfi` mentions in GitHub PR reviews, issue comments, or new issues
-    - **AI Integration**: Claude Code CLI with GitLab MCP server for intelligent automation
-    - **Cross-Platform Sync**: Creates GitLab branches and merge requests from GitHub context
-    - **OSDU Targeting**: Specialized support for `community.opengroup.org` GitLab instance
-
-    [:octicons-arrow-right-24: Learn about cross-platform AI](ai_integration.md)
 
 </div>
 
-!!! info "AI-Enhanced Extensions"
+!!! info "AI Enhanced Extensions"
     These workflows extend the core fork management system with AI-powered capabilities that bridge platforms and enhance developer productivity. They operate alongside the core workflows without disrupting the fundamental three-branch strategy.
 
 ## Workflow Event Architecture
@@ -256,7 +244,6 @@ graph LR
 | **Event-Based** | Cascade Trigger | Issue creation | Cascade triggering on sync completion |
 | **Event-Based** | Build | Push to main | Build workflows on main branch updates |
 | **Event-Based** | Release | Tag creation | Distribution workflows on releases |
-| **AI-Triggered** | GitLab Integration | `@alfi` mentions | Cross-platform GitLab MR creation from GitHub |
 | **Manual** | Emergency Sync | On-demand | Immediate upstream synchronization |
 | **Manual** | Cascade Override | On-demand | Manual cascade operation initiation |
 | **Manual** | Template Update | On-demand | Immediate template propagation |
@@ -268,23 +255,23 @@ graph LR
 
 <div class="grid cards" markdown>
 
--   :material-robot:{ .lg .middle } **Claude (Anthropic)**
-
-    ---
-
-    Primary AI provider for analysis and generation with comprehensive reasoning capabilities
-
 -   :material-microsoft-azure:{ .lg .middle } **Azure OpenAI**
 
     ---
 
-    Enterprise alternative with Microsoft integration and compliance features
+    Primary AI provider with enterprise integration, Microsoft compliance features, and comprehensive reasoning capabilities
 
 -   :material-brain:{ .lg .middle } **OpenAI GPT-4**
 
     ---
 
-    Fallback option providing comprehensive coverage and established performance baselines
+    Secondary AI provider providing comprehensive coverage and established performance baselines
+
+-   :material-robot:{ .lg .middle } **Claude (Anthropic)**
+
+    ---
+
+    Third-tier AI provider for analysis and generation with advanced reasoning capabilities
 
 </div>
 
