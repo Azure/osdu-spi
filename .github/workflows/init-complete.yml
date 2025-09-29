@@ -126,57 +126,14 @@ jobs:
           git config pull.rebase false
 
       - name: Upstream Repository
+        uses: ./.github/actions/init-helpers
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UPSTREAM_REPO: ${{ needs.validate_and_setup.outputs.upstream_repo }}
-        run: |
-          # Convert to URL format
-          if [[ "$UPSTREAM_REPO" == http* ]]; then
-            REPO_URL="$UPSTREAM_REPO.git"
-          else
-            REPO_URL="https://github.com/$UPSTREAM_REPO.git"
-          fi
-
-          # Store repo URL for use in subsequent steps
-          echo "REPO_URL=$REPO_URL" >> $GITHUB_ENV
-          
-          # Add upstream remote
-          git remote add upstream $REPO_URL
-          git fetch upstream --prune --tags
-          
-          # Get all branches from upstream
-          BRANCHES=$(git branch -r | grep upstream | sed 's/upstream\///' | grep -v HEAD | tr '\n' ' ')
-          echo "Available branches: $BRANCHES"
-          
-          # Determine default branch
-          if git rev-parse --verify upstream/main >/dev/null 2>&1; then
-            DEFAULT_BRANCH="main"
-          elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
-            DEFAULT_BRANCH="master"
-          else
-            # Try to detect default branch from HEAD
-            DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/upstream/HEAD 2>/dev/null | sed 's@^refs/remotes/upstream/@@')
-            
-            if [ -z "$DEFAULT_BRANCH" ]; then
-              # Last resort: check common branch names
-              for branch in develop development prod production release stable; do
-                if git rev-parse --verify upstream/$branch >/dev/null 2>&1; then
-                  DEFAULT_BRANCH="$branch"
-                  break
-                fi
-              done
-            fi
-            
-            if [ -z "$DEFAULT_BRANCH" ]; then
-              echo "❌ **Error:** Could not determine default branch in upstream repository" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-              echo "Available branches found: $BRANCHES" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-              echo "Please ensure the upstream repository has at least one branch." | gh issue comment "${{ github.event.issue.number }}" --body-file -
-              exit 1
-            fi
-          fi
-          
-          echo "✅ Using default branch: $DEFAULT_BRANCH" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-          echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
+        with:
+          operation: setup-upstream
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
+          issue_number: ${{ github.event.issue.number }}
           
       - name: Configure Variables
         env:
@@ -436,112 +393,8 @@ jobs:
             git commit -m "chore: complete repository initialization (conflicts resolved using upstream versions)"
           fi
           
-          # Copy fork-specific resources before cleanup
-          echo "Copying fork-specific resources..."
-          
-          # Copy fork-specific copilot instructions
-          if [ -f ".github/fork-resources/copilot-instructions.md" ]; then
-            echo "Installing fork-specific copilot instructions..."
-            cp ".github/fork-resources/copilot-instructions.md" ".github/copilot-instructions.md"
-            git add ".github/copilot-instructions.md"
-          fi
-
-          # Copy fork-specific Dependabot configuration
-          if [ -f ".github/fork-resources/dependabot.yml" ]; then
-            echo "Installing fork-specific Dependabot configuration..."
-            cp ".github/fork-resources/dependabot.yml" ".github/dependabot.yml"
-            git add ".github/dependabot.yml"
-          fi
-
-          # Copy GitHub Copilot firewall configuration
-          if [ -f ".github/fork-resources/copilot-firewall-config.json" ]; then
-            echo "Installing GitHub Copilot firewall configuration..."
-            cp ".github/fork-resources/copilot-firewall-config.json" ".github/copilot-firewall-config.json"
-            git add ".github/copilot-firewall-config.json"
-          fi
-          
-          # Copy triage prompt file to .github/prompts directory
-          if [ -f ".github/fork-resources/triage.prompt.md" ]; then
-            echo "Installing triage prompt for dependency analysis..."
-            mkdir -p ".github/prompts"
-            cp ".github/fork-resources/triage.prompt.md" ".github/prompts/triage.prompt.md"
-            git add ".github/prompts/triage.prompt.md"
-          fi
-          
-          # Copy .vscode configuration directory
-          if [ -d ".github/fork-resources/.vscode" ]; then
-            echo "Installing .vscode MCP configuration..."
-            mkdir -p ".vscode"
-            cp -r ".github/fork-resources/.vscode/"* ".vscode/"
-            # Force add .vscode files even if gitignore might affect them
-            git add -f ".vscode/"
-          fi
-          
-          # Copy issue templates
-          if [ -d ".github/fork-resources/ISSUE_TEMPLATE" ]; then
-            echo "Installing fork-specific issue templates..."
-            mkdir -p ".github/ISSUE_TEMPLATE"
-            cp -r ".github/fork-resources/ISSUE_TEMPLATE/"* ".github/ISSUE_TEMPLATE/"
-            git add ".github/ISSUE_TEMPLATE/"
-          fi
-          
-          # Copy copilot setup steps workflow
-          if [ -f ".github/fork-resources/copilot-setup-steps.yml" ]; then
-            echo "Installing GitHub Copilot setup steps workflow..."
-            mkdir -p ".github/workflows"
-            cp ".github/fork-resources/copilot-setup-steps.yml" ".github/workflows/copilot-setup-steps.yml"
-            git add ".github/workflows/copilot-setup-steps.yml"
-          fi
-          
-          # Clean up fork-resources directory after copying
-          if [ -d ".github/fork-resources" ]; then
-            echo "Removing fork-resources directory after copying..."
-            rm -rf ".github/fork-resources"
-          fi
-          
-          # Clean up template development workflows and template-workflows directory
-          echo "Cleaning up template development workflows..."
-          
-          # Remove all dev-* workflows (template development only)
-          echo "Removing template development workflows..."
-          rm -f .github/workflows/dev-*.yml
-          
-          # Remove the template-workflows directory (no longer needed)
-          echo "Cleaning up template-workflows directory..."
-          rm -rf .github/template-workflows/
-          
-          # Clean up template files using sync configuration
-          echo "Cleaning up remaining template-specific files..."
-          
-          # Read cleanup rules from sync configuration
-          SYNC_CONFIG=".github/sync-config.json"
-          
-          # Remove directories specified in cleanup rules
-          CLEANUP_DIRS=$(jq -r '.cleanup_rules.directories[]? | .path' "$SYNC_CONFIG" 2>/dev/null || echo "")
-          for dir in $CLEANUP_DIRS; do
-            if [ -d "$dir" ]; then
-              echo "Removing template directory: $dir"
-              rm -rf "$dir"
-            fi
-          done
-          
-          # Remove files specified in cleanup rules
-          CLEANUP_FILES=$(jq -r '.cleanup_rules.files[]? | .path' "$SYNC_CONFIG" 2>/dev/null || echo "")
-          for file in $CLEANUP_FILES; do
-            if [ -f "$file" ]; then
-              echo "Removing template file: $file"
-              rm -f "$file"
-            fi
-          done
-          
-          # Remove workflows specified in cleanup rules
-          CLEANUP_WORKFLOWS=$(jq -r '.cleanup_rules.workflows[]? | .path' "$SYNC_CONFIG" 2>/dev/null || echo "")
-          for workflow in $CLEANUP_WORKFLOWS; do
-            if [ -f "$workflow" ]; then
-              echo "Removing initialization workflow: $workflow"
-              rm -f "$workflow"
-            fi
-          done
+          # Deploy fork-specific resources and clean up template files
+          ./.github/actions/init-helpers/deploy-fork-resources.sh
           
           # Add cleanup to the merge commit if there are changes
           git add -A
@@ -557,157 +410,20 @@ jobs:
           fi
 
       - name: Branch Protection
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          BRANCH_PROTECTION_SUCCESS=true
-          
-          # Try to create branch protection rules
-          if [ -n "$GH_TOKEN" ]; then
-            # Use PAT for branch protection
-            
-            # Protect main branch (production) - requires PR reviews
-            if ! GH_TOKEN=$GH_TOKEN gh api \
-              --method PUT \
-              -H "Accept: application/vnd.github.v3+json" \
-              "/repos/${{ github.repository }}/branches/main/protection" \
-              --input - << 'EOF'
-          {
-            "required_status_checks": {
-              "strict": true,
-              "contexts": []
-            },
-            "enforce_admins": false,
-            "required_pull_request_reviews": {
-              "required_approving_review_count": 1,
-              "dismiss_stale_reviews": true
-            },
-            "restrictions": null,
-            "allow_force_pushes": false,
-            "allow_deletions": false
-          }
-          EOF
-            then
-              echo "⚠️ Failed to protect main branch"
-              BRANCH_PROTECTION_SUCCESS=false
-            else
-              echo "✅ Protected main branch with PR requirements"
-            fi
-            
-            # Protect fork_upstream branch - allow automation pushes only
-            if ! GH_TOKEN=$GH_TOKEN gh api \
-              --method PUT \
-              -H "Accept: application/vnd.github.v3+json" \
-              "/repos/${{ github.repository }}/branches/fork_upstream/protection" \
-              --input - << 'EOF'
-          {
-            "required_status_checks": null,
-            "enforce_admins": false,
-            "required_pull_request_reviews": null,
-            "restrictions": null,
-            "allow_force_pushes": false,
-            "allow_deletions": false
-          }
-          EOF
-            then
-              echo "⚠️ Failed to protect fork_upstream branch"
-              BRANCH_PROTECTION_SUCCESS=false
-            else
-              echo "✅ Protected fork_upstream branch (automation pushes allowed)"
-            fi
-            
-            # Do NOT protect fork_integration - it needs direct pushes for cascade workflow
-            echo "✅ fork_integration branch left unprotected (allows direct pushes for cascade workflow)"
-          else
-            echo "⚠️ **Warning:** Unable to set branch protection rules. Please configure manually or provide a GH_TOKEN secret with appropriate permissions." | gh issue comment "${{ github.event.issue.number }}" --body-file -
-            echo "To set up branch protection manually, go to Settings → Branches and protect: main (PR required), fork_upstream (basic protection). Leave fork_integration unprotected." | gh issue comment "${{ github.event.issue.number }}" --body-file -
-            BRANCH_PROTECTION_SUCCESS=false
-          fi
-          
-          echo "BRANCH_PROTECTION_SUCCESS=$BRANCH_PROTECTION_SUCCESS" >> $GITHUB_ENV
+        uses: ./.github/actions/init-helpers
+        with:
+          operation: setup-branch-protection
+          github_token: ${{ secrets.GH_TOKEN }}
+          repo_full_name: ${{ github.repository }}
+          issue_number: ${{ github.event.issue.number }}
 
       - name: Configure Security
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          SECURITY_SUCCESS=true
-          
-          # Enable security features if possible
-          if [ -f .github/security-on.json ]; then
-            if [ -n "$GH_TOKEN" ]; then
-              if ! GH_TOKEN=$GH_TOKEN gh api \
-                --method PATCH \
-                -H "Accept: application/vnd.github.v3+json" \
-                "/repos/${{ github.repository }}" \
-                --input .github/security-on.json; then
-                echo "⚠️ Some security features may require manual configuration"
-                SECURITY_SUCCESS=false
-              fi
-            else
-              echo "⚠️ **Note:** Security features require manual configuration. Go to Settings → Security & analysis" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-              SECURITY_SUCCESS=false
-            fi
-          fi
-          
-          # GitHub Copilot automatic code review configuration
-          if [ -n "$GH_TOKEN" ]; then
-            echo "🤖 Creating GitHub Copilot automatic code review ruleset..."
-            
-            # Step 1: Create basic ruleset
-            RULESET_JSON=$(echo '{
-              "name": "GitHub Copilot Code Review",
-              "target": "branch",
-              "enforcement": "active"
-            }' | GH_TOKEN=$GH_TOKEN gh api --method POST -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
-              "/repos/${{ github.repository }}/rulesets" --input - 2>/dev/null)
-            
-            if [ $? -eq 0 ] && [ -n "$RULESET_JSON" ]; then
-              RULESET_ID=$(echo "$RULESET_JSON" | jq -r '.id')
-              echo "Created basic ruleset with ID: $RULESET_ID"
-              
-              # Step 2: Update with complete Copilot configuration
-              if echo '{
-                "name": "GitHub Copilot Code Review",
-                "target": "branch",
-                "enforcement": "active",
-                "conditions": {
-                  "ref_name": {
-                    "include": ["~DEFAULT_BRANCH"],
-                    "exclude": []
-                  }
-                },
-                "bypass_actors": [],
-                "rules": [
-                  {
-                    "type": "pull_request",
-                    "parameters": {
-                      "allowed_merge_methods": ["merge", "squash", "rebase"],
-                      "automatic_copilot_code_review_enabled": true,
-                      "dismiss_stale_reviews_on_push": false,
-                      "require_code_owner_review": false,
-                      "require_last_push_approval": false,
-                      "required_approving_review_count": 0,
-                      "required_review_thread_resolution": false
-                    }
-                  }
-                ]
-              }' | GH_TOKEN=$GH_TOKEN gh api --method PUT -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
-                "/repos/${{ github.repository }}/rulesets/$RULESET_ID" --input - >/dev/null 2>&1; then
-                echo "✅ GitHub Copilot automatic code review enabled via repository ruleset"
-              else
-                echo "⚠️ Failed to configure Copilot code review in ruleset"
-              fi
-            else
-              echo "⚠️ Could not create GitHub Copilot code review ruleset - may require manual configuration"
-              echo "📝 To enable manually: Go to Settings → Rules → Rulesets → New branch ruleset → Add Copilot code review rule" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-            fi
-          else
-            echo "⚠️ **Note:** GitHub Copilot automatic code review requires manual configuration. Go to Settings → Rules → Rulesets → New branch ruleset → Add Copilot code review rule" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-          fi
-          
-          echo "SECURITY_SUCCESS=$SECURITY_SUCCESS" >> $GITHUB_ENV
+        uses: ./.github/actions/init-helpers
+        with:
+          operation: setup-security
+          github_token: ${{ secrets.GH_TOKEN }}
+          repo_full_name: ${{ github.repository }}
+          issue_number: ${{ github.event.issue.number }}
 
       - name: Update Status
         env:

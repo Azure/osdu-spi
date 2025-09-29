@@ -1,0 +1,48 @@
+name: 'Initialization Helpers'
+description: 'Repository initialization utility scripts'
+
+inputs:
+  operation:
+    description: 'Operation to perform (setup-upstream, setup-branch-protection, setup-security, deploy-fork-resources)'
+    required: true
+  github_token:
+    description: 'GitHub token for API access (required for most operations)'
+    required: false
+  upstream_repo:
+    description: 'Upstream repository URL or owner/repo format (for setup-upstream)'
+    required: false
+  issue_number:
+    description: 'Issue number for status comments (for setup-upstream, setup-branch-protection, setup-security)'
+    required: false
+  repo_full_name:
+    description: 'Repository full name (owner/repo) for API calls (for setup-branch-protection, setup-security)'
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Execute initialization operation
+      shell: bash
+      run: |
+        case "${{ inputs.operation }}" in
+          setup-upstream)
+            ${{ github.action_path }}/setup-upstream.sh "${{ inputs.upstream_repo }}" "${{ inputs.issue_number }}"
+            ;;
+          setup-branch-protection)
+            ${{ github.action_path }}/setup-branch-protection.sh "${{ inputs.repo_full_name }}" "${{ inputs.issue_number }}"
+            ;;
+          setup-security)
+            ${{ github.action_path }}/setup-security.sh "${{ inputs.repo_full_name }}" "${{ inputs.issue_number }}"
+            ;;
+          deploy-fork-resources)
+            ${{ github.action_path }}/deploy-fork-resources.sh
+            ;;
+          *)
+            echo "Error: Unknown operation '${{ inputs.operation }}'"
+            echo "Valid operations: setup-upstream, setup-branch-protection, setup-security, deploy-fork-resources"
+            exit 1
+            ;;
+        esac
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GH_TOKEN: ${{ inputs.github_token }}

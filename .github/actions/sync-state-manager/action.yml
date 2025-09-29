@@ -41,230 +41,45 @@ runs:
     - name: "Get current upstream SHA"
       id: upstream_sha
       shell: bash
-      run: |
-        # Get the current upstream SHA
-        UPSTREAM_SHA=$(git rev-parse upstream/${{ inputs.default_branch }})
-        echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-        echo "Current upstream SHA: $UPSTREAM_SHA"
-
-    - name: "Check stored sync state"
-      id: stored_state
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: |
-        # Get stored state by parsing existing issue description
-        echo "Reading sync state from existing issue description..."
-        
-        # First detect if we have existing sync issues
-        EXISTING_ISSUE_NUMBER="${{ steps.existing_issues.outputs.existing_issue_number }}"
-        
-        if [ -n "$EXISTING_ISSUE_NUMBER" ]; then
-          echo "Found existing issue #$EXISTING_ISSUE_NUMBER, parsing state from description..."
-          
-          # Get issue body and extract upstream version SHA
-          ISSUE_BODY=$(gh issue view "$EXISTING_ISSUE_NUMBER" --json body --jq '.body')
-          
-          # Extract SHA from "Upstream Version" field using awk for robust parsing
-          LAST_UPSTREAM_SHA=$(echo "$ISSUE_BODY" | awk '/Upstream Version/ {match($0, /`[^`]+`/); if (RSTART > 0) print substr($0, RSTART+1, RLENGTH-2)}' | head -1)
-          
-          # Extract timestamp from issue creation/update
-          LAST_SYNC_TIMESTAMP=$(gh issue view "$EXISTING_ISSUE_NUMBER" --json updatedAt --jq '.updatedAt')
-          
-          echo "Parsed from issue:"
-          echo "  Last upstream SHA: $LAST_UPSTREAM_SHA"
-          echo "  Issue number: $EXISTING_ISSUE_NUMBER"
-          echo "  Last sync: $LAST_SYNC_TIMESTAMP"
-        else
-          echo "No existing sync issue found, treating as first sync"
-          LAST_UPSTREAM_SHA=""
-          LAST_SYNC_TIMESTAMP=""
-        fi
-        
-        # Set outputs for decision logic
-        echo "last_upstream_sha=$LAST_UPSTREAM_SHA" >> $GITHUB_OUTPUT
-        echo "current_pr_number=" >> $GITHUB_OUTPUT  # Note: This depends on existing_prs step running after this step
-        echo "current_issue_number=$EXISTING_ISSUE_NUMBER" >> $GITHUB_OUTPUT
-        echo "last_sync_timestamp=$LAST_SYNC_TIMESTAMP" >> $GITHUB_OUTPUT
-        
-        echo "Stored state:"
-        echo "  Last upstream SHA: $LAST_UPSTREAM_SHA"
-        echo "  Current issue: $EXISTING_ISSUE_NUMBER"
-        echo "  Last sync: $LAST_SYNC_TIMESTAMP"
-
-    - name: "Detect existing sync PRs"
-      id: existing_prs
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: |
-        # Query GitHub API for open PRs with upstream-sync label
-        OPEN_SYNC_PRS=$(gh pr list \
-          --state open \
-          --label "upstream-sync" \
-          --json number,title,headRefName,baseRefName \
-          --jq '.[] | select(.baseRefName == "fork_upstream")')
-        
-        echo "Open sync PRs found:"
-        echo "$OPEN_SYNC_PRS" | jq -r '. | "PR #\(.number): \(.title) (\(.headRefName))"' || echo "None"
-        
-        # Extract first PR details if any exist
-        if [ -n "$OPEN_SYNC_PRS" ] && [ "$OPEN_SYNC_PRS" != "null" ]; then
-          PR_NUMBER=$(echo "$OPEN_SYNC_PRS" | jq -r '.number' | head -1)
-          PR_BRANCH=$(echo "$OPEN_SYNC_PRS" | jq -r '.headRefName' | head -1)
-          echo "existing_pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "existing_pr_branch=$PR_BRANCH" >> $GITHUB_OUTPUT
-          echo "has_existing_pr=true" >> $GITHUB_OUTPUT
-        else
-          echo "existing_pr_number=" >> $GITHUB_OUTPUT
-          echo "existing_pr_branch=" >> $GITHUB_OUTPUT
-          echo "has_existing_pr=false" >> $GITHUB_OUTPUT
-        fi
+      run: ${{ github.action_path }}/get-upstream-sha.sh "${{ inputs.default_branch }}"
 
     - name: "Detect existing sync issues"
       id: existing_issues
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: |
-        # Query GitHub API for open issues with upstream-sync label
-        OPEN_SYNC_ISSUES=$(gh issue list \
-          --state open \
-          --label "upstream-sync" \
-          --json number,title)
-        
-        echo "Open sync issues found:"
-        echo "$OPEN_SYNC_ISSUES" | jq -r '.[] | "Issue #\(.number): \(.title)"' || echo "None"
-        
-        # Extract first issue details if any exist
-        if [ -n "$OPEN_SYNC_ISSUES" ] && [ "$OPEN_SYNC_ISSUES" != "[]" ]; then
-          ISSUE_NUMBER=$(echo "$OPEN_SYNC_ISSUES" | jq -r '.[0].number')
-          echo "existing_issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
-          echo "has_existing_issue=true" >> $GITHUB_OUTPUT
-        else
-          echo "existing_issue_number=" >> $GITHUB_OUTPUT
-          echo "has_existing_issue=false" >> $GITHUB_OUTPUT
-        fi
+      run: ${{ github.action_path }}/detect-existing-issues.sh
+
+    - name: "Check stored sync state"
+      id: stored_state
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: ${{ github.action_path }}/check-stored-state.sh "${{ steps.existing_issues.outputs.existing_issue_number }}"
+
+    - name: "Detect existing sync PRs"
+      id: existing_prs
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: ${{ github.action_path }}/detect-existing-prs.sh
 
     - name: "Clean up abandoned sync branches"
       id: cleanup
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: |
-        echo "Cleaning up abandoned sync branches..."
-        
-        # List all sync branches (both local and remote)
-        SYNC_BRANCHES=$(git branch -r | grep -E "origin/sync/upstream-[0-9]+" | sed 's/origin\///' | sed 's/^[[:space:]]*//' || echo "")
-        
-        if [ -n "$SYNC_BRANCHES" ]; then
-          echo "Found sync branches:"
-          echo "$SYNC_BRANCHES"
-          
-          # Get current time in seconds since epoch
-          CURRENT_TIME=$(date +%s)
-          CLEANUP_THRESHOLD=$((CURRENT_TIME - 86400)) # 24 hours ago
-          
-          # Check each branch for age and associated PR
-          for branch in $SYNC_BRANCHES; do
-            # Extract timestamp from branch name (format: sync/upstream-YYYYMMDD-HHMMSS)
-            TIMESTAMP_STR=$(echo "$branch" | sed -n 's/.*sync\/upstream-\([0-9]\{8\}-[0-9]\{6\}\).*/\1/p')
-            
-            if [ -n "$TIMESTAMP_STR" ]; then
-              # Convert to epoch time
-              BRANCH_TIME=$(date -d "${TIMESTAMP_STR:0:4}-${TIMESTAMP_STR:4:2}-${TIMESTAMP_STR:6:2} ${TIMESTAMP_STR:9:2}:${TIMESTAMP_STR:11:2}:${TIMESTAMP_STR:13:2}" +%s 2>/dev/null || echo "0")
-              
-              # Check if branch is older than threshold
-              if [ "$BRANCH_TIME" -lt "$CLEANUP_THRESHOLD" ] && [ "$BRANCH_TIME" -gt "0" ]; then
-                # Check if there's an associated open PR with proper error handling
-                echo "   Checking for associated PR for branch: $branch"
-                ASSOCIATED_PR=$(gh pr list --head "$branch" --state open --json number 2>/dev/null | jq -r '.[0].number // empty' 2>/dev/null)
-                GH_EXIT_CODE=$?
-                
-                if [ $GH_EXIT_CODE -ne 0 ]; then
-                  echo "   ⚠️ Warning: gh command failed for branch $branch (exit code: $GH_EXIT_CODE)"
-                  echo "   Skipping cleanup for safety - manual intervention may be required"
-                elif [ -z "$ASSOCIATED_PR" ]; then
-                  echo "   ⚠️ Found abandoned branch: $branch (age: $((CURRENT_TIME - BRANCH_TIME)) seconds)"
-                  echo "   Deleting abandoned branch..."
-                  git push origin --delete "$branch" 2>/dev/null || echo "   Failed to delete branch (may not exist)"
-                else
-                  echo "   ✅ Branch $branch has associated PR #$ASSOCIATED_PR - keeping"
-                fi
-              fi
-            fi
-          done
-        else
-          echo "No sync branches found to clean up"
-        fi
+      run: ${{ github.action_path }}/cleanup-abandoned-branches.sh
 
     - name: "Make sync decision"
       id: decision
       shell: bash
       run: |
-        # Get all the state information
-        UPSTREAM_SHA="${{ steps.upstream_sha.outputs.upstream_sha }}"
-        LAST_UPSTREAM_SHA="${{ steps.stored_state.outputs.last_upstream_sha }}"
-        HAS_EXISTING_PR="${{ steps.existing_prs.outputs.has_existing_pr }}"
-        HAS_EXISTING_ISSUE="${{ steps.existing_issues.outputs.has_existing_issue }}"
-        EXISTING_PR_NUMBER="${{ steps.existing_prs.outputs.existing_pr_number }}"
-        EXISTING_ISSUE_NUMBER="${{ steps.existing_issues.outputs.existing_issue_number }}"
-        EXISTING_PR_BRANCH="${{ steps.existing_prs.outputs.existing_pr_branch }}"
-        
-        # Decision matrix logic
-        UPSTREAM_CHANGED="false"
-        if [ "$UPSTREAM_SHA" != "$LAST_UPSTREAM_SHA" ]; then
-          UPSTREAM_CHANGED="true"
-        fi
-        
-        echo "Decision inputs:"
-        echo "  Upstream changed: $UPSTREAM_CHANGED ($UPSTREAM_SHA vs $LAST_UPSTREAM_SHA)"
-        echo "  Has existing PR: $HAS_EXISTING_PR"
-        echo "  Has existing issue: $HAS_EXISTING_ISSUE"
-        
-        # Apply decision matrix
-        if [ "$HAS_EXISTING_PR" = "false" ] && [ "$UPSTREAM_CHANGED" = "true" ]; then
-          # Scenario 1: No existing PR, upstream changed -> Create new PR and issue
-          echo "should_create_pr=true" >> $GITHUB_OUTPUT
-          echo "should_create_issue=true" >> $GITHUB_OUTPUT
-          echo "should_update_branch=false" >> $GITHUB_OUTPUT
-          echo "existing_pr_number=" >> $GITHUB_OUTPUT
-          echo "existing_issue_number=" >> $GITHUB_OUTPUT
-          echo "existing_branch_name=" >> $GITHUB_OUTPUT
-          echo "sync_decision=create_new" >> $GITHUB_OUTPUT
-          echo "🆕 Decision: Create new PR and issue (upstream changed, no existing PR)"
-          
-        elif [ "$HAS_EXISTING_PR" = "true" ] && [ "$UPSTREAM_CHANGED" = "false" ]; then
-          # Scenario 2: Existing PR, upstream unchanged -> Add reminder comment
-          echo "should_create_pr=false" >> $GITHUB_OUTPUT
-          echo "should_create_issue=false" >> $GITHUB_OUTPUT
-          echo "should_update_branch=false" >> $GITHUB_OUTPUT
-          echo "existing_pr_number=$EXISTING_PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "existing_issue_number=$EXISTING_ISSUE_NUMBER" >> $GITHUB_OUTPUT
-          echo "existing_branch_name=$EXISTING_PR_BRANCH" >> $GITHUB_OUTPUT
-          echo "sync_decision=add_reminder" >> $GITHUB_OUTPUT
-          echo "📝 Decision: Add reminder comment (upstream unchanged, existing PR)"
-          
-        elif [ "$HAS_EXISTING_PR" = "true" ] && [ "$UPSTREAM_CHANGED" = "true" ]; then
-          # Scenario 3: Existing PR, upstream changed -> Update existing branch and PR
-          echo "should_create_pr=false" >> $GITHUB_OUTPUT
-          echo "should_create_issue=false" >> $GITHUB_OUTPUT
-          echo "should_update_branch=true" >> $GITHUB_OUTPUT
-          echo "existing_pr_number=$EXISTING_PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "existing_issue_number=$EXISTING_ISSUE_NUMBER" >> $GITHUB_OUTPUT
-          echo "existing_branch_name=$EXISTING_PR_BRANCH" >> $GITHUB_OUTPUT
-          echo "sync_decision=update_existing" >> $GITHUB_OUTPUT
-          echo "🔄 Decision: Update existing branch and PR (upstream changed, existing PR)"
-          
-        else
-          # Scenario 4: No existing PR, upstream unchanged -> No action
-          echo "should_create_pr=false" >> $GITHUB_OUTPUT
-          echo "should_create_issue=false" >> $GITHUB_OUTPUT
-          echo "should_update_branch=false" >> $GITHUB_OUTPUT
-          echo "existing_pr_number=" >> $GITHUB_OUTPUT
-          echo "existing_issue_number=" >> $GITHUB_OUTPUT
-          echo "existing_branch_name=" >> $GITHUB_OUTPUT
-          echo "sync_decision=no_action" >> $GITHUB_OUTPUT
-          echo "✅ Decision: No action needed (upstream unchanged, no existing PR)"
-        fi
-
+        ${{ github.action_path }}/make-sync-decision.sh \
+          "${{ steps.upstream_sha.outputs.upstream_sha }}" \
+          "${{ steps.stored_state.outputs.last_upstream_sha }}" \
+          "${{ steps.existing_prs.outputs.has_existing_pr }}" \
+          "${{ steps.existing_issues.outputs.has_existing_issue }}" \
+          "${{ steps.existing_prs.outputs.existing_pr_number }}" \
+          "${{ steps.existing_issues.outputs.existing_issue_number }}" \
+          "${{ steps.existing_prs.outputs.existing_pr_branch }}"

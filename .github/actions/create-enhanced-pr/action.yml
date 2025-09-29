@@ -63,27 +63,31 @@ runs:
   steps:
     - name: Detect available LLM
       id: detect-llm
+      uses: ./.github/actions/llm-provider-detect
+      env:
+        AZURE_API_KEY: ${{ inputs.azure-api-key }}
+        AZURE_API_BASE: ${{ inputs.azure-api-base }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+
+    - name: Map LLM model for aipr
+      id: map-model
       shell: bash
       run: |
-        USE_LLM=false
-        LLM_MODEL=""
+        LLM_MODEL="${{ steps.detect-llm.outputs.llm_model }}"
 
-        # Check for Azure OpenAI API key
-        if [[ -n "${{ inputs.azure-api-key }}" && -n "${{ inputs.azure-api-base }}" ]]; then
-          USE_LLM=true
-          LLM_MODEL="azure/gpt-4o"
+        # Map model names for aipr compatibility
+        if [[ "$LLM_MODEL" == "azure" ]]; then
+          AIPR_MODEL="azure/gpt-4o"
           echo "Using Azure OpenAI GPT-4o for PR description generation"
-        # Check for OpenAI API key
-        elif [[ -n "${{ inputs.openai-api-key }}" ]]; then
-          USE_LLM=true
-          LLM_MODEL="gpt-4.1"
+        elif [[ "$LLM_MODEL" == "gpt-4" ]]; then
+          AIPR_MODEL="gpt-4.1"
           echo "Using OpenAI GPT-4 for PR description generation"
         else
+          AIPR_MODEL=""
           echo "No LLM API keys found. Using fallback PR description."
         fi
-        
-        echo "use-llm=$USE_LLM" >> $GITHUB_OUTPUT
-        echo "llm-model=$LLM_MODEL" >> $GITHUB_OUTPUT
+
+        echo "aipr-model=$AIPR_MODEL" >> $GITHUB_OUTPUT
 
     - name: Check diff size and generate description
       id: generate-description
@@ -104,16 +108,16 @@ runs:
         fi
         echo "Diff contains $DIFF_LINES lines"
         
-        if [[ "${{ steps.detect-llm.outputs.use-llm }}" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
+        if [[ "${{ steps.detect-llm.outputs.use_llm }}" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
           # Generate PR description using aipr
-          echo "Generating PR description using ${{ steps.detect-llm.outputs.llm-model }}..."
-          
+          echo "Generating PR description using ${{ steps.map-model.outputs.aipr-model }}..."
+
           TARGET_BRANCH="${{ inputs.target-branch-for-aipr }}"
           if [[ -z "$TARGET_BRANCH" ]]; then
             TARGET_BRANCH="${{ inputs.base-branch }}"
           fi
-          
-          AIPR_FLAGS="-t $TARGET_BRANCH -p meta -m ${{ steps.detect-llm.outputs.llm-model }} --max-diff-lines $MAX_DIFF_LINES"
+
+          AIPR_FLAGS="-t $TARGET_BRANCH -p meta -m ${{ steps.map-model.outputs.aipr-model }} --max-diff-lines $MAX_DIFF_LINES"
           if [[ "${{ inputs.use-vulns-flag }}" == "true" ]]; then
             AIPR_FLAGS="$AIPR_FLAGS --vulns"
           fi
@@ -121,7 +125,7 @@ runs:
           PR_DESCRIPTION=$(aipr $AIPR_FLAGS 2>/dev/null || echo "")
           
           if [[ -n "$PR_DESCRIPTION" ]]; then
-            echo "Generated enhanced PR description using ${{ steps.detect-llm.outputs.llm-model }}"
+            echo "Generated enhanced PR description using ${{ steps.map-model.outputs.aipr-model }}"
             echo "used-aipr=true" >> $GITHUB_OUTPUT
           else
             echo "aipr generation failed, using fallback description"
