@@ -12,7 +12,7 @@ Architecture Decision Records for Fork Management Template
 | 004 | Release Please for Version Management      | Accepted | 2025-05-28 | [ADR-004](004-release-please-versioning.md) |
 | 005 | Automated Conflict Management Strategy     | Accepted | 2025-05-28 | [ADR-005](005-conflict-management.md) |
 | 006 | Two-Workflow Initialization Pattern        | Accepted | 2025-05-28 | [ADR-006](006-two-workflow-initialization.md) |
-| 007 | Initialization Workflow Bootstrap Pattern  | Proposed | 2025-05-29 | [ADR-007](007-initialization-workflow-bootstrap.md) |
+| 007 | Initialization Workflow Bootstrap Pattern  | Accepted | 2025-05-29 | [ADR-007](007-initialization-workflow-bootstrap.md) |
 | 008 | Centralized Label Management Strategy      | Accepted | 2025-06-03 | [ADR-008](008-centralized-label-management.md) |
 | 009 | Asymmetric Cascade Review Strategy         | Accepted | 2025-06-03 | [ADR-009](009-asymmetric-cascade-review-strategy.md) |
 | 010 | YAML-Safe Shell Scripting in GitHub Actions | Accepted | 2025-06-03 | [ADR-010](010-yaml-safe-shell-scripting.md) |
@@ -30,7 +30,9 @@ Architecture Decision Records for Fork Management Template
 | 022 | Issue Lifecycle Tracking Pattern | Accepted | 2025-06-25 | [ADR-022](022-issue-lifecycle-tracking-pattern.md) |
 | 023 | Meta Commit Strategy for Release Please | Accepted | 2025-06-30 | [ADR-023](023-meta-commit-strategy-for-release-please.md) |
 | 024 | Sync Workflow Duplicate Prevention Architecture | Accepted | 2025-07-03 | [ADR-024](024-sync-workflow-duplicate-prevention-architecture.md) |
-| 025 | GitLab Cross-Platform Integration Strategy for OSDU | Accepted | 2025-07-21 | [ADR-025](025-gitlab-cross-platform-integration-strategy.md) |
+| 025 | Java/Maven Build Architecture | Accepted | 2025-01-29 | [ADR-025](025-java-maven-build-architecture.md) |
+| 026 | Dependabot Security Update Strategy | Accepted | 2025-01-29 | [ADR-026](026-dependabot-security-update-strategy.md) |
+| 027 | Documentation Generation Strategy with MkDocs | Accepted | 2025-01-29 | [ADR-027](027-documentation-generation-strategy.md) |
 
 ## Overview
 
@@ -149,8 +151,21 @@ These Architecture Decision Records document the key design choices made in the 
 - Branch update strategy maintains human workflow continuity
 - Automatic cleanup of abandoned sync branches and state management
 
-**GitLab Cross-Platform Integration Strategy (ADR-025)**
-- AI-driven GitHub-to-GitLab bridging using Model Context Protocol (MCP) servers
-- OSDU-specific GitLab targeting for `community.opengroup.org` integration
-- Unified GitLab token authentication for both Maven and API access
-- Automated merge request creation with AI-enhanced workflow triggers
+**Java/Maven Build Architecture (ADR-025)**
+- Java 17 Temurin as standard runtime with Maven 3.9+ build tool
+- JaCoCo coverage reporting and GitLab Maven repository integration
+- Reusable GitHub Actions for consistent build implementation
+- Zero-configuration support for standard OSDU Java projects
+
+**Dependabot Security Update Strategy (ADR-026)**
+- Security-first configuration with 48-hour patch SLA
+- Grouped dependency updates to reduce PR noise
+- Conservative update policy for stability
+- Automated validation and auto-merge for safe updates
+
+**Documentation Generation with MkDocs (ADR-027)**
+- MkDocs Material theme for professional documentation site
+- Automatic publishing to GitHub Pages
+- Full-text search and mobile-responsive design
+- ADRs automatically included in documentation
+

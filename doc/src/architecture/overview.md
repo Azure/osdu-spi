@@ -2,23 +2,23 @@
 
 ## Principles
 
-The OSDU SPI Fork Management system is built on a foundation of **template-driven automation** that prioritizes zero-configuration deployment, intelligent automation, and continuous maintenance. The architecture leverages GitHub's native capabilities to provide enterprise-grade fork management without external dependencies.
+The OSDU SPI Fork Management system is built on a foundation of **template driven automation** that prioritizes zero-configuration deployment, intelligent automation, and continuous maintenance. The architecture leverages GitHub's native capabilities to provide fork management without external dependencies.
 
 <div class="grid cards" markdown>
 
--   :material-cog-clockwise:{ .lg .middle } **Self-Configuring**
+-   :material-cog-clockwise:{ .lg .middle } **Self Configuring**
 
     ---
 
     Template repositories automatically adapt to specific upstream sources through intelligent initialization workflows that detect and configure appropriate settings.
 
--   :material-shield-check:{ .lg .middle } **Safety-First**
+-   :material-shield-check:{ .lg .middle } **Safety First**
 
     ---
 
     Multiple validation points prevent unstable code promotion through the three-branch strategy, with branch protection rules and automated security scanning.
 
--   :material-lightning-bolt:{ .lg .middle } **Event-Driven**
+-   :material-lightning-bolt:{ .lg .middle } **Event Driven**
 
     ---
 
@@ -59,12 +59,12 @@ graph TD
 
 **Fork Instance Context** encompasses `.github/template-workflows/` for production fork management workflows, instance-specific configuration and customization, and upstream-specific synchronization and integration.
 
-**Event-Driven Architecture** enables intelligent automation through GitHub's native event system. The system responds to scheduled events (daily sync), change events (PR validation), and manual events (on-demand resolution), providing comprehensive lifecycle management.
+**Event Driven Architecture** enables intelligent automation through GitHub's native event system. The system responds to scheduled events (daily sync), change events (PR validation), and manual events (on-demand resolution), providing comprehensive lifecycle management.
 
 !!! tip "Architectural Success Pattern"
-    The combination of template-driven deployment with event-driven automation creates a self-managing system that scales across unlimited fork instances while maintaining consistent behavior and zero-configuration operation.
+    The combination of template driven deployment with event driven automation creates a self managing system that scales across unlimited fork instances while maintaining consistent behavior and zero configuration operation.
 
-**System Components** provide comprehensive automation through three specialized layers that work together to deliver enterprise-grade fork management capabilities.
+**System Components** provide comprehensive automation through three specialized layers that work together to deliver fork management capabilities.
 
 <div class="grid cards" markdown>
 

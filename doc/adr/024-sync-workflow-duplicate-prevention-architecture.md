@@ -176,7 +176,7 @@ Testing will be conducted through real-world scenarios by monitoring the behavio
 - **User satisfaction** - Reduced notification fatigue and confusion
 
 ## References
-- [Issue #121: Fix: Prevent duplicate sync PRs and issues](https://github.com/danielscholl-osdu/osdu-fork-template/issues/121)
+- [Issue #121: Fix: Prevent duplicate sync PRs and issues](https://github.com/azure/osdu-spi/issues/121)
 - [ADR-001: Three-Branch Strategy](001-three-branch-strategy.md)
 - [ADR-020: Human-Required Labels](020-human-required-label-strategy.md)
 - [ADR-023: Meta Commit Strategy](023-meta-commit-strategy-for-release-please.md)

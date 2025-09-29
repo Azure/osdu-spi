@@ -1,7 +1,7 @@
 # ADR-007: Initialization Workflow Bootstrap Pattern
 
 ## Status
-**Proposed** - 2025-05-29
+**Accepted** - 2025-05-29
 
 ## Context
 During testing with OSDU repositories, we discovered a critical bootstrap problem in the template initialization process:
@@ -99,7 +99,7 @@ jobs:
       - name: Fetch latest workflow from template
         run: |
           # Add template as remote
-          git remote add template https://github.com/danielscholl-osdu/osdu-fork-template.git
+          git remote add template https://github.com/azure/osdu-spi.git
           git fetch template main
           
           # Update workflows to latest version

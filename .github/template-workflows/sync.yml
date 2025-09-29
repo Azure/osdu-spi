@@ -267,17 +267,12 @@ jobs:
           USE_LLM=false
           LLM_MODEL=""
           
-          # Check for Azure OpenAI API key
+          # Check for Azure OpenAI API key (primary)
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
-            USE_LLM=true
-            LLM_MODEL="azure-gpt-4"
-            echo "Using Azure OpenAI for PR description generation"
-          # Check for OpenAI API key
-          elif [[ -n "$AZURE_API_KEY" && -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
             LLM_MODEL="azure/gpt-4o"
             echo "Using Azure OpenAI GPT-4o for PR description generation"
-          # Check for OpenAI API key (tertiary)
+          # Check for OpenAI API key (fallback)
           elif [[ -n "$OPENAI_API_KEY" ]]; then
             USE_LLM=true
             LLM_MODEL="gpt-4.1"
@@ -379,17 +374,12 @@ jobs:
           USE_LLM=false
           LLM_MODEL=""
           
-          # Check for Azure OpenAI API key
+          # Check for Azure OpenAI API key (primary)
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
-            USE_LLM=true
-            LLM_MODEL="azure-gpt-4"
-            echo "Using Azure OpenAI for PR description regeneration"
-          # Check for OpenAI API key
-          elif [[ -n "$AZURE_API_KEY" && -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
             LLM_MODEL="azure/gpt-4o"
             echo "Using Azure OpenAI GPT-4o for PR description regeneration"
-          # Check for OpenAI API key (tertiary)
+          # Check for OpenAI API key (fallback)
           elif [[ -n "$OPENAI_API_KEY" ]]; then
             USE_LLM=true
             LLM_MODEL="gpt-4.1"

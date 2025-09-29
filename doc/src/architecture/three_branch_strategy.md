@@ -257,6 +257,7 @@ sequenceDiagram
 
 #### **Upstream Rollback**
 If upstream changes cause issues:
+
 1. Identify last known good state in `fork_upstream`
 2. Create rollback branch from previous stable point
 3. Update `fork_integration` with rollback changes
@@ -264,6 +265,7 @@ If upstream changes cause issues:
 
 #### **Production Hotfix**
 For urgent Azure SPI fixes:
+
 1. Create hotfix branch from current `main`
 2. Implement and test fix in isolation
 3. Fast-track through integration validation

@@ -1,17 +1,16 @@
 # Project information
-site_name: OSDU SPI Fork
+site_name: OSDU Azure SPI
 site_author: Microsoft Azure Energy
-site_name: OSDU SPI Fork
-site_url: https://danielscholl-osdu.github.io/osdu-fork-template/
+site_url: https://azure.github.io/osdu-spi/
 site_author: Daniel Scholl
 site_description: >-
-  OSDU Fork Management Template - Simplified enterprise-grade fork management with AI-enhanced workflows
+  OSDU SPI Management Template - Simplified enterprise-grade fork management with AI-enhanced workflows
 
 docs_dir: src
 
 # Repository
-repo_name: osdu-fork-template
-repo_url: https://github.com/danielscholl-osdu/osdu-fork-template
+repo_name: osdu-spi
+repo_url: https://github.com/azure/osdu-spi
 
 # Copyright
 copyright: Copyright &copy; Microsoft Corporation.

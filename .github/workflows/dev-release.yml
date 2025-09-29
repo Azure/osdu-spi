@@ -15,7 +15,7 @@ jobs:
   validate-release:
     name: Validate Release
     runs-on: ubuntu-latest
-    if: github.repository == 'danielscholl-osdu/osdu-fork-template'
+    if: github.repository == 'azure/osdu-spi'
     
     steps:
       - name: Checkout
@@ -109,7 +109,7 @@ jobs:
     name: Create Release
     needs: validate-release
     runs-on: ubuntu-latest
-    if: github.repository == 'danielscholl-osdu/osdu-fork-template'
+    if: github.repository == 'azure/osdu-spi'
     
     steps:
       - name: Checkout
@@ -166,9 +166,9 @@ jobs:
           echo "4. Provide your upstream repository URL when prompted" >> release_notes.md
           echo "" >> release_notes.md
           echo "## 📖 Documentation" >> release_notes.md
-          echo "- [Product Overview](https://github.com/danielscholl-osdu/osdu-fork-template/blob/main/doc/overview.md)" >> release_notes.md
-          echo "- [Architecture Decisions](https://github.com/danielscholl-osdu/osdu-fork-template/blob/main/doc/adr/index.md)" >> release_notes.md
-          echo "- [Development Guide](https://github.com/danielscholl-osdu/osdu-fork-template/blob/main/README.md)" >> release_notes.md
+          echo "- [Product Overview](https://github.com/azure/osdu-spi/blob/main/doc/overview.md)" >> release_notes.md
+          echo "- [Architecture Decisions](https://github.com/azure/osdu-spi/blob/main/doc/adr/index.md)" >> release_notes.md
+          echo "- [Development Guide](https://github.com/azure/osdu-spi/blob/main/README.md)" >> release_notes.md
           
       - name: Create GitHub Release
         env:

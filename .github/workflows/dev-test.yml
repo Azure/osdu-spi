@@ -9,7 +9,7 @@ jobs:
   test-initialization:
     name: Test Template Initialization
     runs-on: ubuntu-latest
-    if: github.repository == 'danielscholl-osdu/osdu-fork-template'
+    if: github.repository == 'azure/osdu-spi'
     
     steps:
       - name: Checkout
@@ -93,7 +93,7 @@ jobs:
   test-documentation:
     name: Test Documentation
     runs-on: ubuntu-latest
-    if: github.repository == 'danielscholl-osdu/osdu-fork-template'
+    if: github.repository == 'azure/osdu-spi'
     
     steps:
       - name: Checkout

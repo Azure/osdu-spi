@@ -1,13 +1,13 @@
 <div class="hero-section">
   <div class="hero-content">
     <img src="images/logo.png" alt="OSDU SPI Fork Management" class="hero-logo">
-    <p class="hero-subtitle">Automated infrastructure for maintaining long-lived forks</p>
+    <p class="hero-subtitle">Automation for maintaining long-lived forks</p>
   </div>
 </div>
 
 ## The Challenge
 
-Managing long-lived forks of OSDU repositories is complex. Organizations need to balance upstream compatibility with proprietary implementations while avoiding integration overhead, release delays, and community divergence.
+Managing long-lived forks for OSDU repositories is complex. Organizations need to balance upstream compatibility with proprietary implementations while avoiding integration overhead, release delays, and community divergence.
 
 Traditional manual approaches are error-prone and resource-intensive.
 
@@ -29,7 +29,7 @@ Proven branching strategy that isolates changes at each stage, preventing cascad
   </div>
 
   <div class="solution-card" markdown="1">
-:material-robot: **AI-Enhanced Automation**
+:material-robot: **AI Automation**
 
 Intelligent analysis with automated commit messages, PR descriptions, and conflict categorization.
   </div>

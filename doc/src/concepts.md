@@ -26,14 +26,14 @@ graph TB
     style D2 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
 ```
 
-The **SPI Interface** (highlighted in orange) serves as the critical boundary where community-defined standards meet cloud-specific implementations. Everything to the left must stay synchronized with upstream, while only the implementation layer (rightmost) contains Azure-specific code.
+The **SPI Interface** (highlighted in orange) serves as the critical boundary where community-defined standards meet cloud specific implementations. Everything to the left must stay synchronized with upstream, while only the implementation layer (rightmost) contains Azure specific code.
 
 :material-open-source-initiative: **Open Source Components** include OSDU core interfaces, community-validated business logic, standard data models, and reference implementations for testing.
 
-:material-microsoft-azure: **Azure-Specific Components** encompass Azure SPI layer implementations, Azure-native service integrations, proprietary optimizations, and Microsoft-specific configuration and deployment patterns.
+:material-microsoft-azure: **Azure-Specific Components** encompass Azure SPI layer implementations, Azure-native service integrations, proprietary optimizations, and Microsoft specific configuration and deployment patterns.
 
 !!! info "The Separation Challenge"
-    Microsoft must maintain clear boundaries between open-source OSDU core components and Azure-specific SPI implementations, while ensuring both remain compatible and current with upstream community standards.
+    Microsoft must maintain clear boundaries between open-source OSDU core components and Azure specific SPI implementations, while ensuring both remain compatible and current with upstream community standards.
 
 ## The Fork Management Problem
 
@@ -112,7 +112,7 @@ graph TD
 
 - Scheduled pulls from upstream repositories
 - Automated conflict detection and categorization  
-- AI-enhanced analysis of change impacts
+- AI enhanced analysis of change impacts
   </div>
 
   <div class="benefit-card" markdown="1">
@@ -132,14 +132,14 @@ graph TD
   </div>
 </div>
 
-**AI-Enhanced Development Support** leverages multiple AI providers for intelligent analysis, automated impact assessment, step-by-step conflict resolution guidance, and generated commit messages and PR descriptions through Model Context Protocol (MCP) integration.
+**AI Enhanced Development Support** leverages multiple AI providers for intelligent analysis, automated impact assessment, step-by-step conflict resolution guidance, and generated commit messages and PR descriptions through custom agent integration.
 
 ## Why This Matters
 
 This automated fork management approach delivers significant operational and strategic value across development teams, operations, and enterprise architecture.
 
 !!! success "Key Impact Areas"
-    Teams achieve 90% reduction in manual integration work while maintaining full compatibility with upstream OSDU community standards. This enables focus on innovation rather than integration overhead.
+    Teams achieve major reduction in manual integration work while maintaining full compatibility with upstream OSDU community standards. This enables focus on innovation rather than integration overhead.
 
 === "Strategic Value"
 

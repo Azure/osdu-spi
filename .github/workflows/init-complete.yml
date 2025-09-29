@@ -339,7 +339,7 @@ jobs:
           done
           
           # Add template remote to be able to track template updates
-          TEMPLATE_REPO_URL="${{ vars.TEMPLATE_REPO_URL || 'https://github.com/danielscholl-osdu/osdu-fork-template.git' }}"
+          TEMPLATE_REPO_URL="${{ vars.TEMPLATE_REPO_URL || 'https://github.com/azure/osdu-spi.git' }}"
           git remote add template "$TEMPLATE_REPO_URL" || true
           # Explicitly fetch the main branch to avoid tag ambiguity
           git fetch template refs/heads/main:refs/remotes/template/main --depth=1
