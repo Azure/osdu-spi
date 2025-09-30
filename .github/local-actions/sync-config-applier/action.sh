@@ -55,34 +55,9 @@ for file in $FILES; do
     fi
 done
 
-# Copy fork workflows from the main branch (which contains template workflows)
-# During initialization, main branch already has .github/template-workflows/ from the template
-# This must happen before merge to avoid GitHub App workflow permission issues
-echo "Copying fork-specific workflows from $SOURCE_BRANCH branch..."
-if git checkout "$SOURCE_BRANCH" -- .github/template-workflows/ 2>/dev/null; then
-    if [ -d ".github/template-workflows" ]; then
-        # Ensure workflows directory exists
-        mkdir -p .github/workflows
-
-        # Copy workflows and count them
-        for workflow in .github/template-workflows/*.yml; do
-            if [ -f "$workflow" ]; then
-                cp "$workflow" .github/workflows/
-                WORKFLOWS_COPIED=$((WORKFLOWS_COPIED + 1))
-                echo "  ✓ $(basename "$workflow")"
-            fi
-        done
-
-        echo "✅ Copied $WORKFLOWS_COPIED workflow(s)"
-    else
-        echo "⚠️  Warning: .github/template-workflows directory not found in $SOURCE_BRANCH branch"
-    fi
-else
-    echo "⚠️  Warning: Failed to checkout template workflows from $SOURCE_BRANCH branch"
-fi
-
-# Note: Template remote setup is deferred to sync-template workflow
-# This avoids initialization failures when template repository is private
+# Note: Workflow copying is skipped during initialization to avoid GitHub App permission issues
+# Workflows will be copied directly to main branch after merge completion
+echo "Note: Workflow deployment deferred to post-merge step to avoid GitHub App permission issues"
 echo "Note: Template remote configuration will be handled by sync-template workflow"
 
 # Initialize tracking files

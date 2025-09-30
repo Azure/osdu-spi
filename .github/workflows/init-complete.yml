@@ -261,13 +261,24 @@ jobs:
         run: |
           # Deploy fork-specific resources and clean up template files
           ./.github/local-actions/init-helpers/deploy-fork-resources.sh
-          
+
+          # Copy workflows from template-workflows to workflows
+          # This is done on main branch to avoid GitHub App permission issues
+          echo "Deploying production workflows..."
+          if [ -d ".github/template-workflows" ]; then
+            mkdir -p .github/workflows
+            cp .github/template-workflows/*.yml .github/workflows/ 2>/dev/null || true
+            echo "✅ Production workflows deployed"
+          else
+            echo "⚠️  Warning: .github/template-workflows directory not found"
+          fi
+
           # Add cleanup to the merge commit if there are changes
           git add -A
           if ! git diff --staged --quiet; then
             git commit --amend --no-edit
           fi
-          
+
           git push origin main
           
           # Set repository variable for initialization status
