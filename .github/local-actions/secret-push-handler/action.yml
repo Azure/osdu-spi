@@ -1,0 +1,41 @@
+name: 'Secret Push Handler'
+description: 'Detects secret scanning violations in git push output and creates escalation issues with allowlist URLs'
+
+inputs:
+  push_output_file:
+    description: 'Path to file containing git push output'
+    required: true
+  issue_number:
+    description: 'GitHub issue number for commenting'
+    required: true
+  upstream_repo:
+    description: 'Upstream repository being synced'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+
+outputs:
+  push_protected:
+    description: 'Whether push protection was detected (true/false)'
+    value: ${{ steps.detect.outputs.push_protected }}
+  escalation_issue_url:
+    description: 'URL of created escalation issue (if applicable)'
+    value: ${{ steps.detect.outputs.escalation_issue_url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Detect and report secret scanning violation
+      id: detect
+      shell: bash
+      run: ${{ github.action_path }}/action.sh
+      env:
+        PUSH_OUTPUT_FILE: ${{ inputs.push_output_file }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
+        UPSTREAM_REPO: ${{ inputs.upstream_repo }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}

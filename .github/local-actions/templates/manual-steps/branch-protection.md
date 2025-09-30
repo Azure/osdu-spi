@@ -1,0 +1,1 @@
+- **Branch Protection:** Go to Settings → Branches and protect: main (PR required), fork_upstream (basic protection). Leave fork_integration unprotected.

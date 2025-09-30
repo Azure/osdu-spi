@@ -1,0 +1,33 @@
+name: 'Validate Upstream Repository'
+description: 'Safely validates untrusted user input for upstream repository format (prevents code injection)'
+
+inputs:
+  comment_body:
+    description: 'User comment text (untrusted input)'
+    required: true
+  issue_number:
+    description: 'GitHub issue number for error comments'
+    required: true
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+
+outputs:
+  upstream_repo:
+    description: 'Validated repository identifier (empty if validation failed)'
+    value: ${{ steps.validate.outputs.upstream_repo }}
+  should_proceed:
+    description: 'Whether validation passed (true/false)'
+    value: ${{ steps.validate.outputs.should_proceed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate repository input
+      id: validate
+      shell: bash
+      run: ${{ github.action_path }}/action.sh
+      env:
+        COMMENT_BODY: ${{ inputs.comment_body }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}

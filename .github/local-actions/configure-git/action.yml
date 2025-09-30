@@ -1,0 +1,17 @@
+name: 'Configure Git'
+description: 'Configures git user identity for GitHub Actions bot commits'
+
+inputs:
+  pull_rebase:
+    description: 'Set pull.rebase configuration (true/false)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure git user identity
+      shell: bash
+      run: ${{ github.action_path }}/action.sh
+      env:
+        PULL_REBASE: ${{ inputs.pull_rebase }}

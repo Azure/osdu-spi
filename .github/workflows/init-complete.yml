@@ -27,65 +27,41 @@ jobs:
       upstream_repo: ${{ steps.validate.outputs.upstream_repo }}
       should_proceed: ${{ steps.validate.outputs.should_proceed }}
     steps:
-      - name: Template Repository Protection Check
-        run: |
-          if [[ "${{ vars.IS_TEMPLATE }}" == "true" ]]; then
-            echo "🛡️ BLOCKED: This workflow is blocked in template development repositories"
-            echo "The IS_TEMPLATE variable is set to 'true', which prevents initialization workflows from running."
-            echo "This is a safety mechanism to prevent accidental initialization of the template repository itself."
-            echo ""
-            echo "If you're trying to test initialization:"
-            echo "1. Create a test repository from this template"
-            echo "2. Run the initialization workflow in that repository instead"
-            exit 1
-          fi
-          echo "✅ Safety check passed - proceeding with initialization"
-
       - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Template Repository Protection Check
+        id: template_check
+        uses: ./.github/local-actions/template-protection-check
+        with:
+          is_template_var: ${{ vars.IS_TEMPLATE }}
+          github_is_template: ${{ github.event.repository.is_template }}
+
+      - name: Block if template
+        if: steps.template_check.outputs.is_template == 'true'
+        run: |
+          echo "🛡️ BLOCKED: This workflow is blocked in template development repositories"
+          echo "The IS_TEMPLATE variable is set to 'true', which prevents initialization workflows from running."
+          echo "This is a safety mechanism to prevent accidental initialization of the template repository itself."
+          echo ""
+          echo "If you're trying to test initialization:"
+          echo "1. Create a test repository from this template"
+          echo "2. Run the initialization workflow in that repository instead"
+          exit 1
+
+      - name: Re-checkout for validation
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Validate
+      - name: Validate upstream repository
         id: validate
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Get the comment body and clean it
-          COMMENT="${{ github.event.comment.body }}"
-          REPO=$(echo "$COMMENT" | head -1 | xargs)
-          
-          echo "Processing comment: $REPO"
-          
-          # Validate repository format
-          if [[ "$REPO" == http* ]]; then
-            # GitLab URL format validation
-            if ! [[ "$REPO" =~ ^https?://[^/]+/[^/]+/[^/]+(/.*)?$ ]]; then
-              echo "❌ Invalid GitLab URL format: $REPO" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-              echo "should_proceed=false" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          else
-            # GitHub owner/repo format validation
-            if ! [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-              echo "❌ Invalid repository format. Expected 'owner/repo' but got '$REPO'" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-              echo "should_proceed=false" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          fi
-          
-          echo "upstream_repo=$REPO" >> $GITHUB_OUTPUT
-          echo "should_proceed=true" >> $GITHUB_OUTPUT
-          
-          # Post confirmation
-          cat << EOF | gh issue comment "${{ github.event.issue.number }}" --body-file -
-          ✅ **Repository validated:** \`$REPO\`
-
-          🔄 **Starting initialization process...**
-
-          This will take a few minutes. I'll update you with progress!
-          EOF
+        uses: ./.github/local-actions/validate-upstream-repo
+        with:
+          comment_body: ${{ github.event.comment.body }}
+          issue_number: ${{ github.event.issue.number }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set UPSTREAM_REPO_URL Variable
         env:
@@ -120,13 +96,12 @@ jobs:
           token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config pull.rebase false
+        uses: ./.github/local-actions/configure-git
+        with:
+          pull_rebase: 'false'
 
       - name: Upstream Repository
-        uses: ./.github/actions/init-helpers
+        uses: ./.github/local-actions/init-helpers
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -187,214 +162,102 @@ jobs:
           
           # Try to push with error handling for push protection
           echo "::notice::Pushing fork_upstream branch..."
-          
+
           # Capture both stdout and stderr, and preserve exit code
           set +e  # Don't exit on command failure
           git push -u origin fork_upstream 2>&1 | tee push_output.txt
           PUSH_EXIT_CODE=${PIPESTATUS[0]}
           set -e  # Re-enable exit on error
-          
+
           if [ $PUSH_EXIT_CODE -ne 0 ]; then
-            if grep -q "GH013: Repository rule violations found" push_output.txt; then
-              echo "::error::Push blocked by push protection due to secrets"
-              
-              # Extract secret allowlist URLs (improved regex to handle ANSI codes)
-              SECRETS_INFO=$(grep -Eo 'https://github\.com/.+/secret-scanning/unblock-secret/[A-Za-z0-9]+' \
-                             push_output.txt | head -20)
-              
-              # Extract blob IDs (corrected pattern: GitHub uses "blob id: " with space)
-              BLOB_IDS=$(grep -Eo 'blob id: *[a-f0-9]+' push_output.txt \
-                         | sed -E 's/^blob id: *//' | head -20)
-              
-              # Create detailed issue with resolution steps
-              ISSUE_BODY="## 🔒 Push Protection Blocking Initialization\n\n"
-              ISSUE_BODY="${ISSUE_BODY}The initialization workflow was blocked by push protection. This is likely due to secrets detected in the upstream repository's git history.\n\n"
-              ISSUE_BODY="${ISSUE_BODY}### Detected Issues\n\n"
-              
-              if [ -n "$BLOB_IDS" ]; then
-                ISSUE_BODY="${ISSUE_BODY}### Detected Secret Blob IDs\n\`\`\`\n${BLOB_IDS}\n\`\`\`\n\n"
-              fi
-              
-              ISSUE_BODY="${ISSUE_BODY}### Resolution Options\n\n"
-              ISSUE_BODY="${ISSUE_BODY}1. **✅ Recommended: Use Secret Allowlist URLs** (Manual Process)\n"
-              ISSUE_BODY="${ISSUE_BODY}   - **Important**: This requires manual action - GitHub requires human approval for security\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Click each URL below in your browser while logged into GitHub\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Review each secret and click \"Allow secret\" if it's safe to include\n"
-              ISSUE_BODY="${ISSUE_BODY}   - After allowing all secrets, comment the upstream repo URL on the original issue to re-run initialization\n\n"
-              
-              if [ -n "$SECRETS_INFO" ]; then
-                ISSUE_BODY="${ISSUE_BODY}   **Secret Allowlist URLs** (click each one):\n"
-                while IFS= read -r url; do
-                  [ -n "$url" ] && ISSUE_BODY="${ISSUE_BODY}   - [Allow Secret](${url})\n"
-                done <<< "$SECRETS_INFO"
-              else
-                ISSUE_BODY="${ISSUE_BODY}   ⚠️ No allowlist URLs detected in output - check workflow logs\n"
-              fi
-              
-              ISSUE_BODY="${ISSUE_BODY}\n2. **Alternative: Organization Admin Action**\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Ask your organization admin to temporarily disable push protection\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Re-run the initialization after it's disabled\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Re-enable push protection after initialization completes\n\n"
-              
-              ISSUE_BODY="${ISSUE_BODY}3. **Manual Initialization**\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Clone the repository locally\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Run the initialization steps manually\n"
-              ISSUE_BODY="${ISSUE_BODY}   - Use \`git push --no-verify\` if you have appropriate permissions\n\n"
-              
-              ISSUE_BODY="${ISSUE_BODY}### Workflow Run\n"
-              ISSUE_BODY="${ISSUE_BODY}[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n"
-              
-              ISSUE_BODY="${ISSUE_BODY}### Next Steps\n"
-              ISSUE_BODY="${ISSUE_BODY}After resolving the push protection issue using one of the methods above, please:\n"
-              ISSUE_BODY="${ISSUE_BODY}1. Close this issue\n"
-              ISSUE_BODY="${ISSUE_BODY}2. Re-run the initialization by commenting the upstream repository URL on the original initialization issue"
-              
-              # Create issue with improved content and capture the URL
-              ESCALATION_ISSUE_URL=$(printf "%b" "$ISSUE_BODY" | gh issue create \
-                --title "🔒 Push Protection Blocking Initialization - Action Required" \
-                --body-file - \
-                --label "initialization,escalation") || true
-              
-              # Also comment on the original issue with link to escalation issue
-              if [ -n "$ESCALATION_ISSUE_URL" ]; then
-                COMMENT_MSG="❌ **Initialization blocked by push protection**\n\nThe upstream repository contains secrets that are being blocked by GitHub's push protection.\n\n**Next Steps:**\n1. 📋 I've created a detailed issue with allowlist URLs: $ESCALATION_ISSUE_URL\n2. 🔓 Visit each allowlist URL and click 'Allow secret'\n3. 🔄 Re-run initialization by commenting \`${{ needs.validate_and_setup.outputs.upstream_repo }}\` again\n\nThe second run will succeed once secrets are allowlisted!"
-              else
-                COMMENT_MSG="❌ **Initialization blocked by push protection**\n\nThe upstream repository contains secrets that are being blocked by GitHub's push protection.\n\n**Next Steps:**\n1. 📋 I've created a detailed issue with allowlist URLs - check issues labeled 'escalation'\n2. 🔓 Visit each allowlist URL and click 'Allow secret'\n3. 🔄 Re-run initialization by commenting \`${{ needs.validate_and_setup.outputs.upstream_repo }}\` again\n\nThe second run will succeed once secrets are allowlisted!"
-              fi
-              printf "%b" "$COMMENT_MSG" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-              
-              exit 1
-            else
-              # Some other push error
-              echo "::error::Push failed for unknown reason:"
-              cat push_output.txt
-              exit 1
-            fi
+            # Use push protection handler action
+            echo "Push failed, checking for push protection violation..."
+            echo "PUSH_EXIT_CODE=$PUSH_EXIT_CODE" >> $GITHUB_ENV
           else
             echo "::notice::Successfully pushed fork_upstream branch"
+            echo "PUSH_EXIT_CODE=0" >> $GITHUB_ENV
           fi
-          
+
+      - name: Handle fork_upstream push protection
+        if: env.PUSH_EXIT_CODE != '0'
+        uses: ./.github/local-actions/secret-push-handler
+        with:
+          push_output_file: push_output.txt
+          issue_number: ${{ github.event.issue.number }}
+          upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Exit if fork_upstream push failed
+        if: env.PUSH_EXIT_CODE != '0'
+        run: exit 1
+
+      - name: Continue branch setup
+        if: env.PUSH_EXIT_CODE == '0'
+        run: |
           # Create fork_integration from fork_upstream
           git checkout -b fork_integration fork_upstream
-          
-          # Copy files according to sync configuration
-          # First, get the sync configuration
-          git checkout main -- .github/sync-config.json
-          
-          # Copy directories that should be synced entirely
-          DIRECTORIES=$(jq -r '.sync_rules.directories[] | .path' .github/sync-config.json)
-          for dir in $DIRECTORIES; do
-            echo "Copying directory: $dir"
-            git checkout main -- "$dir/" || echo "Directory $dir not found, skipping"
-          done
-          
-          # Copy individual files
-          FILES=$(jq -r '.sync_rules.files[] | .path' .github/sync-config.json)
-          for file in $FILES; do
-            echo "Copying file: $file"
-            git checkout main -- "$file" || echo "File $file not found, skipping"
-          done
-          
-          # Add template remote to be able to track template updates
-          TEMPLATE_REPO_URL="${{ vars.TEMPLATE_REPO_URL || 'https://github.com/azure/osdu-spi.git' }}"
-          git remote add template "$TEMPLATE_REPO_URL" || true
-          # Explicitly fetch the main branch to avoid tag ambiguity
-          git fetch template refs/heads/main:refs/remotes/template/main --depth=1
-          
-          # Copy fork workflows from template repository
-          # This must happen before merge to avoid GitHub App workflow permission issues
-          echo "Copying fork-specific workflows from template repository..."
-          if git checkout template/main -- .github/template-workflows/ 2>/dev/null; then
-            if [ -d ".github/template-workflows" ]; then
-              # Ensure workflows directory exists
-              mkdir -p .github/workflows
-              cp .github/template-workflows/*.yml .github/workflows/
-              echo "Copied workflows:"
-              ls .github/template-workflows/*.yml | xargs -I {} basename {}
-            else
-              echo "⚠️ Warning: .github/template-workflows directory not found in template"
-            fi
-          else
-            echo "⚠️ Warning: Failed to checkout template workflows - template/main reference not available"
-            echo "This may occur if the template fetch failed. Initialization will continue without copying workflows."
-            echo "Fork workflows will need to be added manually from the template repository."
-          fi
-          
-          # Initialize tracking files
-          TRACKING_FILES=$(jq -r '.sync_rules.tracking_files[] | select(.auto_create == true) | .path' .github/sync-config.json)
-          for tracking_file in $TRACKING_FILES; do
-            echo "Initializing tracking file: $tracking_file"
-            mkdir -p "$(dirname "$tracking_file")"
-            
-            # Special handling for template sync commit file
-            if [[ "$tracking_file" == ".github/.template-sync-commit" ]]; then
-              # We need to find the template commit that matches our current template files
-              # Since we just created this from the template, we can use the template's current HEAD
-              # But ideally we'd want the exact commit this was forked from
-              # For now, use the current template HEAD as baseline (may include some changes we already have)
-              TEMPLATE_BASELINE=$(git rev-parse template/main)
-              echo "$TEMPLATE_BASELINE" > "$tracking_file"
-              echo "Initialized $tracking_file with template commit: $TEMPLATE_BASELINE"
-            else
-              # For other tracking files, create empty
-              echo "" > "$tracking_file"
-            fi
-            
-            git add "$tracking_file"
-          done
-          
-          # Commit all copied files including workflows
-          git add .github
-          git commit -m "chore: copy configuration and workflows from main branch"
-          
+
+      - name: Apply sync configuration
+        if: env.PUSH_EXIT_CODE == '0'
+        uses: ./.github/local-actions/sync-config-applier
+        with:
+          sync_config_path: '.github/sync-config.json'
+          source_branch: 'main'
+          template_repo_url: ${{ vars.TEMPLATE_REPO_URL || 'https://github.com/azure/osdu-spi.git' }}
+
+      - name: Push fork_integration branch
+        if: env.PUSH_EXIT_CODE == '0'
+        run: |
           # Push fork_integration with error handling
           echo "::notice::Pushing fork_integration branch..."
           set +e
           git push -u origin fork_integration 2>&1 | tee push_integration_output.txt
           PUSH_INTEGRATION_EXIT_CODE=${PIPESTATUS[0]}
           set -e
-          
+
           if [ $PUSH_INTEGRATION_EXIT_CODE -ne 0 ]; then
-            if grep -q "GH013: Repository rule violations found" push_integration_output.txt; then
-              echo "::error::fork_integration push also blocked by push protection"
-              echo "::notice::This is expected if the upstream repository contains secrets"
-              echo "::notice::The same allowlist URLs from the previous error will resolve this issue"
-              exit 1
-            else
-              echo "::error::fork_integration push failed for unknown reason:"
-              cat push_integration_output.txt
-              exit 1
-            fi
+            echo "::error::fork_integration push failed"
+            echo "::notice::This is expected if the upstream repository contains secrets"
+            echo "::notice::The same allowlist URLs from the previous error will resolve this issue"
+            echo "PUSH_INTEGRATION_EXIT_CODE=$PUSH_INTEGRATION_EXIT_CODE" >> $GITHUB_ENV
           else
             echo "::notice::Successfully pushed fork_integration branch"
+            echo "PUSH_INTEGRATION_EXIT_CODE=0" >> $GITHUB_ENV
           fi
 
+      - name: Handle fork_integration push protection
+        if: env.PUSH_INTEGRATION_EXIT_CODE != '0'
+        uses: ./.github/local-actions/secret-push-handler
+        with:
+          push_output_file: push_integration_output.txt
+          issue_number: ${{ github.event.issue.number }}
+          upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Exit if fork_integration push failed
+        if: env.PUSH_INTEGRATION_EXIT_CODE != '0'
+        run: exit 1
+
+      - name: Final branch setup
+        if: env.PUSH_INTEGRATION_EXIT_CODE == '0'
+        run: echo "✅ Both branches successfully created"
+
       - name: Merge to Main
+        uses: ./.github/local-actions/merge-with-theirs-resolution
+        with:
+          source_branch: fork_integration
+          target_branch: main
+          commit_message: "chore: complete repository initialization"
+          issue_number: ${{ github.event.issue.number }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Finalize Initialization
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # Merge fork_integration into main with conflict resolution
-          git checkout main
-          
-          # Try merge with unrelated histories, preferring fork_integration changes
-          if ! git merge fork_integration --allow-unrelated-histories --no-ff -X theirs -m "chore: complete repository initialization"; then
-            echo "⚠️ **Merge conflicts detected, resolving automatically...**" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-            
-            # If there are still conflicts even with -X theirs, explicitly take fork_integration version
-            git status --porcelain | grep -E '^(DD|AU|UD|UA|DU|AA|UU)' | cut -c4- | while read -r file; do
-              echo "Resolving conflict in $file - using upstream version"
-              # Use the version from fork_integration (which comes from upstream)
-              git checkout --theirs "$file"
-              git add "$file"
-            done
-            
-            # Complete the merge
-            git commit -m "chore: complete repository initialization (conflicts resolved using upstream versions)"
-          fi
-          
           # Deploy fork-specific resources and clean up template files
-          ./.github/actions/init-helpers/deploy-fork-resources.sh
+          ./.github/local-actions/init-helpers/deploy-fork-resources.sh
           
           # Add cleanup to the merge commit if there are changes
           git add -A
@@ -410,7 +273,7 @@ jobs:
           fi
 
       - name: Branch Protection
-        uses: ./.github/actions/init-helpers
+        uses: ./.github/local-actions/init-helpers
         with:
           operation: setup-branch-protection
           github_token: ${{ secrets.GH_TOKEN }}
@@ -418,7 +281,7 @@ jobs:
           issue_number: ${{ github.event.issue.number }}
 
       - name: Configure Security
-        uses: ./.github/actions/init-helpers
+        uses: ./.github/local-actions/init-helpers
         with:
           operation: setup-security
           github_token: ${{ secrets.GH_TOKEN }}
@@ -429,161 +292,57 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Build completion message based on actual success/failure
+          # Build status lines based on success flags
           if [ "$BRANCH_PROTECTION_SUCCESS" = "true" ]; then
-            PROTECTION_STATUS="✅ **Branch Protection:** main and fork_upstream protected, fork_integration allows direct pushes"
+            PROTECTION_STATUS="**Branch Protection:** main and fork_upstream protected, fork_integration allows direct pushes"
           else
             PROTECTION_STATUS="⚠️ **Branch Protection:** Requires manual setup"
           fi
-          
+
           if [ "$VARIABLES_SUCCESS" = "true" ]; then
-            VARIABLE_STATUS="✅ **Repository Variables:** UPSTREAM_REPO_URL and GitHub Copilot firewall allowlist configured"
+            VARIABLE_STATUS="**Repository Variables:** UPSTREAM_REPO_URL and GitHub Copilot firewall allowlist configured"
           else
-            VARIABLE_STATUS="⚠️ **Repository Variables:** Requires manual setup (including Copilot firewall allowlist)"  
+            VARIABLE_STATUS="⚠️ **Repository Variables:** Requires manual setup (including Copilot firewall allowlist)"
           fi
-          
+
           if [ "$SECURITY_SUCCESS" = "true" ]; then
-            SECURITY_STATUS="✅ **Security Features:** Secret scanning, dependency updates, and GitHub Copilot automatic code review enabled"
+            SECURITY_STATUS="**Security Features:** Secret scanning, dependency updates, and GitHub Copilot automatic code review enabled"
           else
             SECURITY_STATUS="⚠️ **Security Features:** Requires manual setup"
           fi
-          
-          # Only show manual steps if something actually failed
+
+          # Assemble manual steps if needed
           MANUAL_STEPS=""
           if [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] || [ "$VARIABLES_SUCCESS" != "true" ] || [ "$SECURITY_SUCCESS" != "true" ]; then
-            MANUAL_STEPS="
-          ## Manual Configuration Required
-          
-          Some features require manual setup:"
-            
-            if [ "$BRANCH_PROTECTION_SUCCESS" != "true" ]; then
-              MANUAL_STEPS="$MANUAL_STEPS
-          - **Branch Protection:** Go to Settings → Branches and protect: main (PR required), fork_upstream (basic protection). Leave fork_integration unprotected."
-            fi
-            
-            if [ "$VARIABLES_SUCCESS" != "true" ]; then
-              MANUAL_STEPS="$MANUAL_STEPS
-          - **Repository Variables:** Set UPSTREAM_REPO_URL and COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS in Settings → Secrets and variables → Actions → Variables"
-            fi
-            
-            if [ "$SECURITY_SUCCESS" != "true" ]; then
-              MANUAL_STEPS="$MANUAL_STEPS
-          - **Security Features:** Enable in Settings → Security & analysis
-          - **GitHub Copilot:** Create repository ruleset in Settings → Rules → Rulesets → New branch ruleset → Request pull request review from Copilot"
-            fi
+            MANUAL_STEPS="## Manual Configuration Required
+
+          Some features require manual setup:
+          "
+            [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/branch-protection.md)"$'\n'
+            [ "$VARIABLES_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/repository-variables.md)"$'\n'
+            [ "$SECURITY_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/security-features.md)"$'\n'
           fi
-          
-          cat << EOF | gh issue comment "${{ github.event.issue.number }}" --body-file -
-          🎉 **Initialization Complete!**
 
-          Your fork management repository is now ready! Here is what was set up:
+          # Read template and substitute placeholders
+          MESSAGE=$(cat .github/local-actions/templates/initialization-complete.md)
+          MESSAGE="${MESSAGE//\{PROTECTION_STATUS\}/$PROTECTION_STATUS}"
+          MESSAGE="${MESSAGE//\{VARIABLE_STATUS\}/$VARIABLE_STATUS}"
+          MESSAGE="${MESSAGE//\{SECURITY_STATUS\}/$SECURITY_STATUS}"
+          MESSAGE="${MESSAGE//\{MANUAL_STEPS\}/$MANUAL_STEPS}"
+          MESSAGE="${MESSAGE//\{UPSTREAM_REPO\}/${{ needs.validate_and_setup.outputs.upstream_repo }}}"
 
-          ✅ **Branch Structure:**
-          - \`main\` - Your stable development branch
-          - \`fork_upstream\` - Tracks upstream changes
-          - \`fork_integration\` - Integration and conflict resolution
-
-          $PROTECTION_STATUS
-
-          ✅ **Upstream Connection:** Connected to \`${{ needs.validate_and_setup.outputs.upstream_repo }}\`
-
-          ✅ **Automated Workflows:** Sync, validation, and release workflows are active
-
-          ✅ **AI Enhancement:** GitHub Copilot Agent firewall allowlist configured for OSDU domains
-          
-          ⚠️ **MCP Configuration:** Maven MCP Server requires manual setup (see new issue created above)
-
-          ✅ **Template Cleanup:** Removed template documentation (upstream README will be used)
-
-          $VARIABLE_STATUS
-
-          $SECURITY_STATUS
-
-          $MANUAL_STEPS
-
-          ## Next Steps
-
-          1. **Review the workflows** in the Actions tab
-          2. **Customize the README** with your project-specific information  
-          3. **Start developing** by creating feature branches from \`main\`
-          4. **Sync with upstream** will happen automatically via the sync workflow
-
-          **Happy coding!** 🚀
-          EOF
+          # Post completion message
+          echo "$MESSAGE" | gh issue comment "${{ github.event.issue.number }}" --body-file -
 
       - name: Create MCP Configuration Issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create issue for manual MCP configuration
-          cat << 'EOF' > mcp-setup.md
-          # 🤖 Configure MCP Server for GitHub Copilot Agent
-          
-          To enable the Maven MCP Server for GitHub Copilot Agent in this repository, you need to manually configure it in the repository settings.
-          
-          ## Configuration Steps
-          
-          1. **Navigate to Repository Settings**:
-             - Go to your repository on GitHub.com
-             - Click on **Settings** (you must be a repository admin)
-             - In the left sidebar under "Code & automation", click **Copilot** → **Copilot agent**
-          
-          2. **Add MCP Configuration**:
-             - Scroll to the **MCP configuration** section
-             - Replace the existing JSON with:
-          
-          ```json
-          {
-            "mcpServers": {
-              "mvn-mcp-server": {
-                "type": "local",
-                "command": "uvx",
-                "args": [
-                  "--from",
-                  "git+https://github.com/danielscholl-osdu/mvn-mcp-server@main",
-                  "mvn-mcp-server"
-                ],
-                "env": {},
-                "tools": [
-                  "*"
-                ]
-              }
-            }
-          }
-          ```
-          
-          3. **Save Configuration**:
-             - The configuration will be validated when you save
-             - If validation passes, the MCP server will be available to GitHub Copilot Agent
-          
-          ## What This Enables
-          
-          The Maven MCP Server provides GitHub Copilot Agent with capabilities to:
-          - Analyze Maven project structures
-          - Understand dependencies and build configurations
-          - Provide context-aware assistance for Java/Maven projects
-          - Help with build issues and dependency management
-          
-          ## Verification
-          
-          After configuration, you can verify the setup by:
-          1. Assigning an issue to `@copilot` 
-          2. The agent should have enhanced Maven project understanding
-          
-          ## Manual Configuration Required
-          
-          ⚠️ **Important**: This configuration cannot be automated via API. Repository administrators must configure it manually in the GitHub UI.
-          
-          ---
-          
-          Close this issue after completing the MCP configuration.
-          EOF
-          
           gh issue create \
-            --title "🤖 Configure MCP Server for GitHub Copilot Agent" \
-            --body-file mcp-setup.md \
+            --title "Configure MCP Server for GitHub Copilot Agent" \
+            --body-file .github/local-actions/templates/mcp-setup-issue.md \
             --label "human-required"
-            
+
           echo "Created MCP configuration issue"
 
       - name: Complete Initialization

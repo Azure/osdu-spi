@@ -35,41 +35,62 @@ Implement a **Workflow Script Extraction Pattern** that extracts embedded bash s
 ### 1. **Script Organization Structure**
 
 ```
-.github/actions/
-├── llm-provider-detect/
-│   ├── action.yml              # Composite action wrapper
-│   ├── detect-provider.sh      # Provider detection logic
-│   └── README.md               # Usage + local testing instructions
-├── issue-state-manager/
-│   ├── action.yml              # Composite action wrapper
-│   ├── update-issue-state.sh   # Issue description update logic
-│   └── README.md               # Usage + local testing instructions
-├── init-helpers/
-│   ├── action.yml              # Composite action with operation input
-│   ├── setup-upstream.sh       # Upstream remote configuration
-│   ├── setup-branch-protection.sh  # Branch protection API calls
-│   ├── setup-security.sh       # Security features enablement
-│   ├── deploy-fork-resources.sh    # Fork resource deployment
-│   └── README.md               # Usage + local testing instructions
-└── cascade-state-checker/
-    ├── action.yml
-    ├── check-state.sh
-    └── README.md
+.github/
+├── actions/                    # Fork-operational actions (synced to forks)
+│   ├── llm-provider-detect/
+│   │   ├── action.yml
+│   │   ├── detect-provider.sh
+│   │   └── README.md
+│   ├── issue-state-manager/
+│   │   ├── action.yml
+│   │   ├── update-issue-state.sh
+│   │   └── README.md
+│   └── sync-state-manager/
+│       ├── action.yml
+│       ├── *.sh
+│       └── README.md
+└── local-actions/              # Template-only actions (NOT synced to forks)
+    ├── init-helpers/
+    │   ├── action.yml
+    │   ├── setup-upstream.sh
+    │   ├── setup-branch-protection.sh
+    │   ├── setup-security.sh
+    │   ├── deploy-fork-resources.sh
+    │   └── README.md
+    ├── push-protection-handler/
+    │   ├── action.yml
+    │   ├── detect-and-report.sh
+    │   └── README.md
+    ├── template-protection-check/
+    │   ├── action.yml
+    │   ├── check-template.sh
+    │   └── README.md
+    └── configure-git/
+        ├── action.yml
+        └── README.md
 ```
 
 ### 2. **Script Placement Rationale**
 
-**Why `.github/actions/` Directory:**
-- ✅ **Already synced to forks**: Defined in sync-config.json lines 7-10 as synced directory
-- ✅ **No configuration changes**: No sync-config.json modifications required
-- ✅ **Natural location**: Follows GitHub Actions organizational patterns
-- ✅ **Composite action pattern**: Can wrap scripts in actions for parameter passing
-- ✅ **Proven sync mechanism**: Actions directory already propagates via template sync
+**Fork-Operational Actions (`.github/actions/`):**
+- ✅ **Synced to forks**: Defined in sync-config.json lines 7-10 as synced directory
+- ✅ **Used by fork workflows**: Actions needed by sync.yml, cascade.yml, validate.yml, etc.
+- ✅ **Template propagation**: Updates flow to fork instances via template-sync.yml
+- ✅ **Examples**: llm-provider-detect, issue-state-manager, sync-state-manager
 
-**Not Using `.github/scripts/`:**
-- ❌ Would require adding new directory to sync-config.json
-- ❌ Would trigger template update to all existing fork instances
-- ❌ Adds new pattern when existing `.github/actions/` works
+**Template-Only Actions (`.github/local-actions/`):**
+- ✅ **NOT synced to forks**: Excluded in sync-config.json line 114
+- ✅ **Used by init workflows**: Actions only needed by init.yml and init-complete.yml
+- ✅ **Removed after init**: Cleaned up per sync-config.json cleanup_rules (line 123-126)
+- ✅ **No fork pollution**: Fork instances never receive these actions
+- ✅ **Follows ADR-015 pattern**: Similar to `.github/template-workflows/` separation
+- ✅ **Examples**: init-helpers, push-protection-handler, template-protection-check, configure-git
+
+**Why Two Directories:**
+- Prevents syncing init-only actions to fork instances
+- Fork instances only receive actions they actually use
+- Follows established ADR-015 pattern for template vs fork separation
+- Makes lifecycle intent explicit (one-time vs ongoing use)
 
 ### 3. **Composite Action Wrapper Pattern**
 
@@ -357,8 +378,8 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 - **Decision Matrix**: ✅ Complexity (Critical), ✅ Testability (High), ✅ Size (Medium)
 
 #### ✅ Init Helpers Suite
-**Status**: COMPLETED
-- **Action**: `.github/actions/init-helpers/`
+**Status**: COMPLETED - Moved to `.github/local-actions/`
+- **Action**: `.github/local-actions/init-helpers/`
 - **Scripts**:
   - setup-upstream.sh (120 lines)
   - setup-branch-protection.sh (140 lines)
@@ -366,6 +387,28 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
   - deploy-fork-resources.sh (80 lines)
 - **Impact**: Reduced init-complete.yml from 878 → 593 lines (32.5% reduction)
 - **Decision Matrix**: ✅ Size (High), ✅ Complexity (High), ✅ Testability (High)
+- **Note**: Moved to local-actions to prevent syncing init-only logic to fork instances
+
+#### ✅ Push Protection Handler
+**Status**: COMPLETED
+- **Action**: `.github/local-actions/push-protection-handler/`
+- **Scripts**: detect-and-report.sh (76 lines)
+- **Impact**: Extracted complex push protection error handling from init-complete.yml
+- **Decision Matrix**: ✅ Complexity (Critical), ✅ Testability (High), ✅ Reusability (Medium)
+- **Key Features**: Regex parsing with ANSI code handling, secret allowlist URL extraction, detailed escalation issues
+
+#### ✅ Template Protection Check
+**Status**: COMPLETED
+- **Action**: `.github/local-actions/template-protection-check/`
+- **Scripts**: check-template.sh (40 lines)
+- **Impact**: Eliminated duplication across init.yml and init-complete.yml
+- **Decision Matrix**: ✅ Duplication (Critical), ✅ Reusability (High)
+
+#### ✅ Configure Git
+**Status**: COMPLETED
+- **Action**: `.github/local-actions/configure-git/`
+- **Impact**: Eliminated git config duplication across init workflows
+- **Decision Matrix**: ✅ Duplication (Critical), ✅ Reusability (High)
 
 #### ✅ Sync State Manager
 **Status**: COMPLETED
@@ -423,15 +466,22 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### Summary Statistics
 
 **Extractions Completed:**
-- 4 composite actions created
-- 12 shell scripts extracted (1,043 lines total)
-- 2 workflow files refactored (init-complete.yml, create-enhanced-pr/action.yml)
+- 8 composite actions created (4 fork-operational, 4 template-only)
+- 15+ shell scripts extracted (~1,200+ lines total)
+- 3 workflow files refactored (init.yml, init-complete.yml, create-enhanced-pr/action.yml)
 
 **Impact:**
-- init-complete.yml: 878 → 593 lines (32.5% reduction)
+- init.yml: 194 → 195 lines (added job summaries, net neutral after extractions)
+- init-complete.yml: 594 → 561 lines (33 lines reduced, 5.6% reduction)
 - sync-state-manager: 270 → 85 lines (68% reduction)
 - Eliminated LLM detection duplication (~150 lines)
+- Eliminated template protection duplication (~40 lines)
+- Eliminated git config duplication (~10 lines)
 - 100% of extracted scripts locally testable
+
+**Directory Organization:**
+- `.github/actions/` - 5 fork-operational actions (synced to forks)
+- `.github/local-actions/` - 4 template-only actions (excluded from sync, removed after init)
 
 ### Testing Strategy
 
@@ -611,7 +661,27 @@ export AZURE_API_KEY="test"
 - **ADR-011**: Configuration-Driven Template Sync - Provides sync mechanism
 - **ADR-012**: Template Update Propagation - Describes how scripts propagate
 - **ADR-013**: Reusable GitHub Actions Pattern - Establishes composite action patterns
-- **ADR-015**: Template-Workflows Separation - Explains workflow permission constraints
+- **ADR-015**: Template-Workflows Separation - Explains workflow permission constraints and template/fork separation pattern
+- **ADR-018**: Fork-Resources Staging Pattern - Similar two-stage deployment pattern for specialized resources
+
+## Notes on Local-Actions Pattern
+
+The `.github/local-actions/` pattern was introduced to solve a lifecycle mismatch problem:
+
+**Problem**: Init-only actions (init-helpers, push-protection-handler, etc.) were placed in `.github/actions/`, causing them to:
+- Sync to all fork instances via template-sync.yml
+- Remain in fork repositories despite never being used (init workflows are removed after initialization)
+- Consume sync bandwidth and pollute fork repositories with unused code
+
+**Solution**: Following ADR-015's template/fork separation pattern:
+- Template-only actions → `.github/local-actions/` (excluded from sync, removed during init)
+- Fork-operational actions → `.github/actions/` (synced to forks, used by ongoing workflows)
+
+**Configuration**:
+- `sync-config.json` line 114: Excludes `.github/local-actions` from template sync
+- `sync-config.json` line 123-126: Removes `.github/local-actions/` during initialization cleanup
+
+This ensures fork instances only receive actions they actually use, following the principle established in ADR-015.
 
 ## References
 
