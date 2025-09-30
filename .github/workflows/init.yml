@@ -11,8 +11,8 @@ permissions:
   issues: write
 
 env:
-  TEMPLATE_NAME: "OSDU Fork Management Template"
-  INTRO_MESSAGE: "Welcome to the OSDU Fork Management Template! 🚀 This template will help you maintain a long-lived fork of an upstream OSDU repository with automated synchronization and release management. Let's get started! 💻✨"
+  TEMPLATE_NAME: "OSDU SPI Management Template"
+  INTRO_MESSAGE: "Welcome to the OSDU SPI Management Template! This template will help you maintain a long-lived fork of an upstream OSDU repository."
 
 jobs:
   check_template:
@@ -21,27 +21,24 @@ jobs:
     outputs:
       is_template: ${{ steps.check.outputs.is_template }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Check repository type
         id: check
+        uses: ./.github/local-actions/template-protection-check
+        with:
+          is_template_var: ${{ vars.IS_TEMPLATE }}
+          github_is_template: ${{ github.event.repository.is_template }}
+
+      - name: Add job summary
         run: |
-          echo "Repository is template: ${{ github.event.repository.is_template }}"
-          echo "Event name: ${{ github.event_name }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "IS_TEMPLATE variable: ${{ vars.IS_TEMPLATE }}"
-          
-          # Check if IS_TEMPLATE variable is set to true (template development repo protection)
-          if [[ "${{ vars.IS_TEMPLATE }}" == "true" ]]; then
-            echo "🛡️ IS_TEMPLATE variable is true - blocking init workflow execution"
-            echo "This prevents accidental initialization in the template development repository"
-            echo "is_template=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          # Check GitHub's template flag
-          if [[ "${{ github.event.repository.is_template }}" == "true" ]]; then
-            echo "is_template=true" >> $GITHUB_OUTPUT
+          if [[ "${{ steps.check.outputs.is_template }}" == "true" ]]; then
+            echo "### 🛡️ Template Repository Detected" >> $GITHUB_STEP_SUMMARY
+            echo "Initialization blocked - this is a template development repository" >> $GITHUB_STEP_SUMMARY
           else
-            echo "is_template=false" >> $GITHUB_OUTPUT
+            echo "### ✅ Repository Check Passed" >> $GITHUB_STEP_SUMMARY
+            echo "This is a fork instance - proceeding with initialization checks" >> $GITHUB_STEP_SUMMARY
           fi
 
   check_initialization:
@@ -101,10 +98,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Configure Git user
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email github-actions[bot]@users.noreply.github.com
+      - name: Configure Git
+        uses: ./.github/local-actions/configure-git
 
       - name: Create all system labels
         env:
@@ -133,61 +128,19 @@ jobs:
           
           echo "✅ All system labels created"
 
-      - name: Build welcome message
-        id: build-issue-description
-        run: |
-          cat << 'EOF' > welcome.md
-          # 🚀 Welcome to the OSDU Fork Management Template!
-
-          Thank you for creating a repository from the **${{ env.TEMPLATE_NAME }}**! 
-
-          ${{ env.INTRO_MESSAGE }}
-
-          ## Next Steps
-
-          To complete the initialization of your fork management repository, please provide the upstream repository you want to fork from.
-
-          ### Supported Formats
-
-          **GitHub Repository:**
-          ```
-          owner/repository-name
-          ```
-          Example: `microsoft/OSDU` or `Azure/osdu-infrastructure`
-
-          **GitLab Repository:**
-          ```
-          https://gitlab.company.com/group/repository-name
-          ```
-
-          ### Instructions
-
-          1. **Reply to this issue** with just the repository reference (one of the formats above)
-          2. The automation will validate your input and begin the setup process
-          3. You'll receive updates as the initialization progresses
-          4. Once complete, this issue will be automatically closed
-
-          ### What happens during initialization?
-
-          - ✅ Configure the three-branch structure (`main`, `fork_upstream`, `fork_integration`)
-          - ✅ Set up branch protection rules
-          - ✅ Configure upstream repository connection
-          - ✅ Enable automated sync workflows
-          - ✅ Set up security scanning and dependabot
-
-          ---
-          
-          **Ready to get started?** Just reply with your upstream repository! 🎯
-          EOF
-
       - name: Create initialization issue
         id: create-issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           issue_url=$(gh issue create \
-            --title "🚀 Repository Initialization Required" \
-            --body-file welcome.md \
+            --title "Repository Initialization Required" \
+            --body-file .github/local-actions/templates/initialization-welcome.md \
             --label "initialization")
           echo "ISSUE_URL=$issue_url" >> "$GITHUB_OUTPUT"
           echo "Created initialization issue: $issue_url"
+
+          echo "### 🎯 Initialization Required" >> $GITHUB_STEP_SUMMARY
+          echo "Created initialization issue: $issue_url" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please reply to the issue with your upstream repository URL to begin setup." >> $GITHUB_STEP_SUMMARY

@@ -33,6 +33,7 @@ Architecture Decision Records for Fork Management Template
 | 025 | Java/Maven Build Architecture | Accepted | 2025-01-29 | [ADR-025](025-java-maven-build-architecture.md) |
 | 026 | Dependabot Security Update Strategy | Accepted | 2025-01-29 | [ADR-026](026-dependabot-security-update-strategy.md) |
 | 027 | Documentation Generation Strategy with MkDocs | Accepted | 2025-01-29 | [ADR-027](027-documentation-generation-strategy.md) |
+| 028 | Workflow Script Extraction Pattern | Accepted | 2025-01-29 | [ADR-028](028-workflow-script-extraction-pattern.md) |
 
 ## Overview
 
@@ -168,4 +169,10 @@ These Architecture Decision Records document the key design choices made in the 
 - Automatic publishing to GitHub Pages
 - Full-text search and mobile-responsive design
 - ADRs automatically included in documentation
+
+**Workflow Script Extraction Pattern (ADR-028)**
+- Extract embedded bash scripts to `.github/actions/` for local testing
+- Composite action wrappers enable parameter passing and reuse
+- Leverages existing sync infrastructure for propagation to forks
+- 40% reduction in workflow file sizes with eliminated duplication
 

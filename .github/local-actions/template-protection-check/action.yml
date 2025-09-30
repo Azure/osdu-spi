@@ -1,0 +1,28 @@
+name: 'Template Protection Check'
+description: 'Prevents initialization workflows from running in template development repositories'
+
+inputs:
+  is_template_var:
+    description: 'Repository variable indicating template development repository'
+    required: false
+    default: 'false'
+  github_is_template:
+    description: "GitHub's template repository flag"
+    required: false
+    default: 'false'
+
+outputs:
+  is_template:
+    description: 'Whether this is a template repository (true/false)'
+    value: ${{ steps.check.outputs.is_template }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check template status
+      id: check
+      shell: bash
+      run: ${{ github.action_path }}/action.sh
+      env:
+        IS_TEMPLATE: ${{ inputs.is_template_var }}
+        GITHUB_IS_TEMPLATE: ${{ inputs.github_is_template }}

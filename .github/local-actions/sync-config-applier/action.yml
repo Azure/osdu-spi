@@ -1,0 +1,41 @@
+name: 'Sync Config Applier'
+description: 'Applies sync configuration rules to copy files, workflows, and tracking files'
+
+inputs:
+  sync_config_path:
+    description: 'Path to sync configuration JSON file'
+    required: false
+    default: '.github/sync-config.json'
+  source_branch:
+    description: 'Branch to copy files from'
+    required: false
+    default: 'main'
+  template_repo_url:
+    description: 'URL of the template repository'
+    required: true
+
+outputs:
+  files_copied:
+    description: 'Number of files successfully copied'
+    value: ${{ steps.apply.outputs.files_copied }}
+  directories_copied:
+    description: 'Number of directories successfully copied'
+    value: ${{ steps.apply.outputs.directories_copied }}
+  workflows_copied:
+    description: 'Number of workflows successfully copied'
+    value: ${{ steps.apply.outputs.workflows_copied }}
+  tracking_files_created:
+    description: 'Number of tracking files initialized'
+    value: ${{ steps.apply.outputs.tracking_files_created }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Apply sync configuration
+      id: apply
+      shell: bash
+      run: ${{ github.action_path }}/action.sh
+      env:
+        SYNC_CONFIG_PATH: ${{ inputs.sync_config_path }}
+        SOURCE_BRANCH: ${{ inputs.source_branch }}
+        TEMPLATE_REPO_URL: ${{ inputs.template_repo_url }}

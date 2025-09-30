@@ -1,0 +1,1 @@
+- **Repository Variables:** Set UPSTREAM_REPO_URL and COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS in Settings → Secrets and variables → Actions → Variables

@@ -1,0 +1,43 @@
+name: 'Merge with Theirs Resolution'
+description: 'Merges branches with automatic conflict resolution using theirs strategy'
+
+inputs:
+  source_branch:
+    description: 'Branch to merge from (e.g., fork_integration)'
+    required: true
+  target_branch:
+    description: 'Branch to merge into (e.g., main)'
+    required: true
+  commit_message:
+    description: 'Commit message for the merge'
+    required: true
+  issue_number:
+    description: 'GitHub issue number for status comments (optional)'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token for API access (optional, for comments)'
+    required: false
+    default: ''
+
+outputs:
+  merge_successful:
+    description: 'Whether merge completed (true/false)'
+    value: ${{ steps.merge.outputs.merge_successful }}
+  conflicts_resolved:
+    description: 'Number of conflicts auto-resolved'
+    value: ${{ steps.merge.outputs.conflicts_resolved }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Merge with conflict resolution
+      id: merge
+      shell: bash
+      run: ${{ github.action_path }}/action.sh
+      env:
+        SOURCE_BRANCH: ${{ inputs.source_branch }}
+        TARGET_BRANCH: ${{ inputs.target_branch }}
+        COMMIT_MESSAGE: ${{ inputs.commit_message }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}

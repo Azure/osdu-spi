@@ -110,7 +110,8 @@
     ]
   },
   "exclusions": [
-    ".github/copilot-instructions.md"
+    ".github/copilot-instructions.md",
+    ".github/local-actions"
   ],
   "cleanup_rules": {
     "description": "Files and directories to remove during repository initialization",
@@ -118,6 +119,10 @@
       {
         "path": "doc/",
         "reason": "Template documentation replaced by upstream project docs"
+      },
+      {
+        "path": ".github/local-actions/",
+        "reason": "Template-only actions used during initialization, not needed in fork instances"
       }
     ],
     "files": [

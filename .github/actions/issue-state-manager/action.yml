@@ -1,0 +1,33 @@
+name: 'Issue State Manager'
+description: 'Update GitHub issue description with current sync state'
+
+inputs:
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+  issue_number:
+    description: 'Issue number to update'
+    required: true
+  upstream_version:
+    description: 'Upstream commit SHA'
+    required: true
+  sync_branch:
+    description: 'Sync branch name'
+    required: true
+  commit_count:
+    description: 'Number of commits in sync'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Update issue state
+      shell: bash
+      run: |
+        ${{ github.action_path }}/update-issue-state.sh \
+          "${{ inputs.issue_number }}" \
+          "${{ inputs.upstream_version }}" \
+          "${{ inputs.sync_branch }}" \
+          "${{ inputs.commit_count }}"
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}

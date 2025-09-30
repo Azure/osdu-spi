@@ -1,0 +1,2 @@
+- **Security Features:** Enable in Settings → Security & analysis
+- **GitHub Copilot:** Create repository ruleset in Settings → Rules → Rulesets → New branch ruleset → Request pull request review from Copilot
