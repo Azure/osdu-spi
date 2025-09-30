@@ -253,22 +253,6 @@ jobs:
           issue_number: ${{ github.event.issue.number }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git merge operations and posting comments
 
-      - name: Branch Protection
-        uses: ./.github/local-actions/init-helpers
-        with:
-          operation: setup-branch-protection
-          github_token: ${{ secrets.GH_TOKEN }}  # Required: Branch protection rules need admin permission
-          repo_full_name: ${{ github.repository }}
-          issue_number: ${{ github.event.issue.number }}
-
-      - name: Configure Security
-        uses: ./.github/local-actions/init-helpers
-        with:
-          operation: setup-security
-          github_token: ${{ secrets.GH_TOKEN }}  # Required: Security settings need admin permission
-          repo_full_name: ${{ github.repository }}
-          issue_number: ${{ github.event.issue.number }}
-
       - name: Finalize Initialization
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GH_TOKEN required for workflows)
@@ -317,6 +301,22 @@ jobs:
           if [ -n "$GH_TOKEN" ]; then
             GH_TOKEN=$GH_TOKEN gh variable set INITIALIZATION_COMPLETE --body "true"
           fi
+
+      - name: Branch Protection
+        uses: ./.github/local-actions/init-helpers
+        with:
+          operation: setup-branch-protection
+          github_token: ${{ secrets.GH_TOKEN }}  # Required: Branch protection rules need admin permission
+          repo_full_name: ${{ github.repository }}
+          issue_number: ${{ github.event.issue.number }}
+
+      - name: Configure Security
+        uses: ./.github/local-actions/init-helpers
+        with:
+          operation: setup-security
+          github_token: ${{ secrets.GH_TOKEN }}  # Required: Security settings need admin permission
+          repo_full_name: ${{ github.repository }}
+          issue_number: ${{ github.event.issue.number }}
 
       - name: Update Status
         env:
