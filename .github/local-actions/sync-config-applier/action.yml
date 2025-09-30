@@ -11,7 +11,7 @@ inputs:
     required: false
     default: 'main'
   template_repo_url:
-    description: 'URL of the template repository (used for sync operations, not required during initialization)'
+    description: 'Template repository URL (optional during initialization)'
     required: false
     default: ''
 
