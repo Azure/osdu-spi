@@ -272,6 +272,13 @@ jobs:
             echo "⚠️  Warning: .github/template-workflows directory not found"
           fi
 
+          # Save setup scripts to temp location before cleanup deletes them
+          echo "Preserving setup scripts for post-push configuration..."
+          mkdir -p /tmp/init-helpers
+          cp .github/local-actions/init-helpers/setup-branch-protection.sh /tmp/init-helpers/
+          cp .github/local-actions/init-helpers/setup-security.sh /tmp/init-helpers/
+          chmod +x /tmp/init-helpers/*.sh
+
           # Deploy fork-specific resources and clean up template files
           ./.github/local-actions/init-helpers/deploy-fork-resources.sh
 
@@ -303,20 +310,20 @@ jobs:
           fi
 
       - name: Branch Protection
-        uses: ./.github/local-actions/init-helpers
-        with:
-          operation: setup-branch-protection
-          github_token: ${{ secrets.GH_TOKEN }}  # Required: Branch protection rules need admin permission
-          repo_full_name: ${{ github.repository }}
-          issue_number: ${{ github.event.issue.number }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Branch protection rules need admin permission
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+        run: |
+          # Use preserved script from temp location
+          /tmp/init-helpers/setup-branch-protection.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
 
       - name: Configure Security
-        uses: ./.github/local-actions/init-helpers
-        with:
-          operation: setup-security
-          github_token: ${{ secrets.GH_TOKEN }}  # Required: Security settings need admin permission
-          repo_full_name: ${{ github.repository }}
-          issue_number: ${{ github.event.issue.number }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Security settings need admin permission
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+        run: |
+          # Use preserved script from temp location
+          /tmp/init-helpers/setup-security.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
 
       - name: Update Status
         env:
