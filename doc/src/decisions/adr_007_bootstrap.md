@@ -85,7 +85,7 @@ bootstrap_update:
       runs-on: ubuntu-latest
       steps:
         - name: Checkout current repository
-          uses: actions/checkout@v4
+          uses: actions/checkout@v5
           with:
             token: ${{ secrets.GITHUB_TOKEN }}
             

@@ -163,7 +163,7 @@ authentication_enhancement:
   implementation: |
     # Enhanced checkout with workflow permissions
     - name: Checkout with workflow permissions
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         fetch-depth: 0
