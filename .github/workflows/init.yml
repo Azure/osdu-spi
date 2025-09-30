@@ -50,7 +50,7 @@ jobs:
       already_initialized: ${{ steps.check.outputs.already_initialized }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -96,7 +96,7 @@ jobs:
       issue-url: ${{ steps.create-issue.outputs.ISSUE_URL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure Git
         uses: ./.github/local-actions/configure-git
