@@ -11,8 +11,9 @@ inputs:
     required: false
     default: 'main'
   template_repo_url:
-    description: 'URL of the template repository'
-    required: true
+    description: 'URL of the template repository (not used during initialization, kept for backward compatibility)'
+    required: false
+    default: ''
 
 outputs:
   files_copied:
