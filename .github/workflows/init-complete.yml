@@ -197,7 +197,7 @@ jobs:
           # Create fork_integration from fork_upstream
           git checkout -b fork_integration fork_upstream
 
-          # Restore local actions from main branch for sync-config-applier
+          # Restore local actions from main branch - required because fork_integration was created from fork_upstream which lacks template's local actions
           git checkout main -- .github/local-actions
 
       - name: Apply sync configuration
