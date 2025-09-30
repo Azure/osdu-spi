@@ -196,7 +196,7 @@ jobs:
           # Create fork_integration from fork_upstream
           git checkout -b fork_integration fork_upstream
 
-          # Restore local actions from main branch - required because fork_integration was created from fork_upstream which lacks template's local actions
+          # Restore local actions from main branch since fork_integration lacks template's local actions
           git checkout main -- .github/local-actions
 
       - name: Apply sync configuration
@@ -258,8 +258,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GH_TOKEN required for workflows)
           GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Pushing workflow files needs 'workflows' permission + setting variables needs admin
         run: |
-          # Copy workflows from template-workflows to workflows BEFORE deploy-fork-resources
-          # (deploy-fork-resources deletes template-workflows directory)
+          # Copy workflows from template-workflows before deploy-fork-resources deletes the directory
           echo "Deploying production workflows from template..."
           if [ -d ".github/template-workflows" ]; then
             mkdir -p .github/workflows
