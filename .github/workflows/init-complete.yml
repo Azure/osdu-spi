@@ -259,27 +259,35 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # Deploy fork-specific resources and clean up template files
-          ./.github/local-actions/init-helpers/deploy-fork-resources.sh
-
-          # Copy workflows from template-workflows to workflows
-          # This is done on main branch to avoid GitHub App permission issues
-          echo "Deploying production workflows..."
+          # Copy workflows from template-workflows to workflows BEFORE deploy-fork-resources
+          # (deploy-fork-resources deletes template-workflows directory)
+          echo "Deploying production workflows from template..."
           if [ -d ".github/template-workflows" ]; then
             mkdir -p .github/workflows
             cp .github/template-workflows/*.yml .github/workflows/ 2>/dev/null || true
-            echo "✅ Production workflows deployed"
+            echo "✅ Template workflows copied"
           else
             echo "⚠️  Warning: .github/template-workflows directory not found"
           fi
 
-          # Add cleanup to the merge commit if there are changes
+          # Deploy fork-specific resources and clean up template files
+          ./.github/local-actions/init-helpers/deploy-fork-resources.sh
+
+          # Add all changes to the merge commit
           git add -A
           if ! git diff --staged --quiet; then
             git commit --amend --no-edit
           fi
 
-          git push origin main
+          # Push using GH_TOKEN if available (needed for workflow permissions)
+          if [ -n "$GH_TOKEN" ]; then
+            echo "Pushing to main using GH_TOKEN (required for workflow deployment)..."
+            git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git main
+          else
+            echo "::error::GH_TOKEN not available - cannot push workflows without it"
+            echo "::error::Workflows require a Personal Access Token with 'workflow' scope"
+            exit 1
+          fi
           
           # Set repository variable for initialization status
           if [ -n "$GH_TOKEN" ]; then
