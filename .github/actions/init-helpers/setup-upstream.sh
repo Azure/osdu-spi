@@ -63,6 +63,7 @@ elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
   DEFAULT_BRANCH="master"
 else
   # Try to detect default branch from HEAD
+  # Using @ as sed delimiter to avoid escaping slashes in path
   DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/upstream/HEAD 2>/dev/null | sed 's@^refs/remotes/upstream/@@' || echo "")
 
   if [[ -z "$DEFAULT_BRANCH" ]]; then

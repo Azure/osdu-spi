@@ -81,6 +81,7 @@ if [[ -n "${GH_TOKEN:-}" ]]; then
     echo "Created basic ruleset with ID: $RULESET_ID"
 
     # Step 2: Update with complete Copilot configuration
+    # Note: "~DEFAULT_BRANCH" is GitHub Rulesets API syntax for referencing the repository's default branch
     if echo '{
       "name": "GitHub Copilot Code Review",
       "target": "branch",
