@@ -280,7 +280,13 @@ jobs:
           # Push using GH_TOKEN if available (needed for workflow permissions)
           if [ -n "$GH_TOKEN" ]; then
             echo "Pushing to main using GH_TOKEN (required for workflow deployment)..."
-            git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git main
+
+            # Reconfigure git to use GH_TOKEN instead of GITHUB_TOKEN from checkout
+            # The checkout action's credential helper must be overridden
+            git config --unset-all http.https://github.com/.extraheader || true
+            git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+
+            git push origin main
           else
             echo "::error::GH_TOKEN not available - cannot push workflows without it"
             echo "::error::Workflows require a Personal Access Token with 'workflow' scope"
