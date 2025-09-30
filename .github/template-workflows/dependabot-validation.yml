@@ -33,7 +33,7 @@ jobs:
     outputs:
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: "Check if Java Repository"
         id: check_java
@@ -52,7 +52,7 @@ jobs:
     outputs:
       build_result: ${{ steps.build.outputs.build_result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Set up JDK
         uses: actions/setup-java@v3

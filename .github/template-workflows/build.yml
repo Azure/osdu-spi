@@ -57,7 +57,7 @@ jobs:
       initialized: ${{ steps.check_init.outputs.initialized }}
       is_java_project: ${{ steps.check_java.outputs.is_java }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         
       - name: "Check Repository Initialization"
         id: check_init
@@ -86,7 +86,7 @@ jobs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
       build_result: ${{ steps.build.outputs.build_result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: "Run Java Build"
         id: build
@@ -100,7 +100,7 @@ jobs:
     if: needs.check-repo-state.outputs.is_java_project == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: "Setup Java Environment"
         uses: actions/setup-java@v4

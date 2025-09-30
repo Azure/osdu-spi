@@ -19,12 +19,7 @@ set -euo pipefail
 
 SYNC_CONFIG_PATH="${SYNC_CONFIG_PATH:-.github/sync-config.json}"
 SOURCE_BRANCH="${SOURCE_BRANCH:-main}"
-TEMPLATE_REPO_URL="${TEMPLATE_REPO_URL}"
-
-if [ -z "$TEMPLATE_REPO_URL" ]; then
-    echo "::error::TEMPLATE_REPO_URL is required"
-    exit 1
-fi
+TEMPLATE_REPO_URL="${TEMPLATE_REPO_URL:-}"
 
 # Counters for output
 FILES_COPIED=0
@@ -60,38 +55,8 @@ for file in $FILES; do
     fi
 done
 
-# Add template remote to be able to track template updates
-echo "Setting up template remote: $TEMPLATE_REPO_URL"
-git remote add template "$TEMPLATE_REPO_URL" || true
-# Explicitly fetch the main branch to avoid tag ambiguity
-git fetch template refs/heads/main:refs/remotes/template/main --depth=1
-
-# Copy fork workflows from template repository
-# This must happen before merge to avoid GitHub App workflow permission issues
-echo "Copying fork-specific workflows from template repository..."
-if git checkout template/main -- .github/template-workflows/ 2>/dev/null; then
-    if [ -d ".github/template-workflows" ]; then
-        # Ensure workflows directory exists
-        mkdir -p .github/workflows
-
-        # Copy workflows and count them
-        for workflow in .github/template-workflows/*.yml; do
-            if [ -f "$workflow" ]; then
-                cp "$workflow" .github/workflows/
-                WORKFLOWS_COPIED=$((WORKFLOWS_COPIED + 1))
-                echo "  ✓ $(basename "$workflow")"
-            fi
-        done
-
-        echo "✅ Copied $WORKFLOWS_COPIED workflow(s)"
-    else
-        echo "⚠️  Warning: .github/template-workflows directory not found in template"
-    fi
-else
-    echo "⚠️  Warning: Failed to checkout template workflows - template/main reference not available"
-    echo "This may occur if the template fetch failed. Initialization will continue without copying workflows."
-    echo "Fork workflows will need to be added manually from the template repository."
-fi
+echo "::notice::Workflow deployment deferred to post-merge step to avoid GitHub App permission issues"
+echo "::notice::Template remote configuration will be handled by sync-template workflow"
 
 # Initialize tracking files
 echo "Initializing tracking files..."
@@ -102,13 +67,11 @@ for tracking_file in $TRACKING_FILES; do
 
     # Special handling for template sync commit file
     if [[ "$tracking_file" == ".github/.template-sync-commit" ]]; then
-        # We need to find the template commit that matches our current template files
-        # Since we just created this from the template, we can use the template's current HEAD
-        # But ideally we'd want the exact commit this was forked from
-        # For now, use the current template HEAD as baseline (may include some changes we already have)
-        TEMPLATE_BASELINE=$(git rev-parse template/main)
-        echo "$TEMPLATE_BASELINE" > "$tracking_file"
-        echo "  ✓ Initialized with template commit: $TEMPLATE_BASELINE"
+        # Initialize empty - will be populated by first template sync
+        # We can't determine the exact template commit during initialization
+        # without fetching from the template repository
+        echo "" > "$tracking_file"
+        echo "  ✓ Initialized empty (will be set by first template sync)"
     else
         # For other tracking files, create empty
         echo "" > "$tracking_file"

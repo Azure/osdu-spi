@@ -22,7 +22,7 @@ jobs:
       is_template: ${{ steps.check.outputs.is_template }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check repository type
         id: check
@@ -57,7 +57,7 @@ jobs:
       - name: Check if already initialized
         id: check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Reading issues and repository state
         run: |
           # Check repository variables first (primary indicator)
           if [ "${{ vars.INITIALIZATION_COMPLETE }}" = "true" ]; then
@@ -103,7 +103,7 @@ jobs:
 
       - name: Create all system labels
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Creating labels
         run: |
           echo "Creating system labels from configuration..."
           
@@ -131,7 +131,7 @@ jobs:
       - name: Create initialization issue
         id: create-issue
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Creating issues
         run: |
           issue_url=$(gh issue create \
             --title "Repository Initialization Required" \

@@ -22,7 +22,7 @@ jobs:
       languages: ${{ steps.detect.outputs.languages }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Detect languages
         id: detect
@@ -71,7 +71,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Java
         if: matrix.language == 'java-kotlin'

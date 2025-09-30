@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Checkout operations
 
       - name: Validate upstream repository
         id: validate
@@ -61,11 +61,11 @@ jobs:
         with:
           comment_body: ${{ github.event.comment.body }}
           issue_number: ${{ github.event.issue.number }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
 
       - name: Set UPSTREAM_REPO_URL Variable
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Setting repository variables needs admin permission
         run: |
           REPO="${{ steps.validate.outputs.upstream_repo }}"
           if [[ "$REPO" == http* ]]; then
@@ -93,7 +93,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Checkout operations
 
       - name: Configure Git
         uses: ./.github/local-actions/configure-git
@@ -103,19 +103,19 @@ jobs:
       - name: Upstream Repository
         uses: ./.github/local-actions/init-helpers
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git operations and posting comments
         with:
           operation: setup-upstream
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git operations and posting comments
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
           issue_number: ${{ github.event.issue.number }}
           
       - name: Configure Variables
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Setting repository variables needs admin permission
           REPO_URL: ${{ env.REPO_URL }}
         run: |
-          # Set repository variables using GH_TOKEN
+          # Set repository variables using GH_TOKEN (required for admin operations)
           VARIABLES_SUCCESS=true
           if [ -n "$GH_TOKEN" ]; then
             echo "Setting UPSTREAM_REPO_URL variable to: $REPO_URL"
@@ -145,8 +145,7 @@ jobs:
 
       - name: Branch Structure
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Used for git operations only
         run: |
           # Check if this is an OSDU partition repository (for debugging)
           if [[ "${{ needs.validate_and_setup.outputs.upstream_repo }}" == *"partition"* ]]; then
@@ -185,7 +184,7 @@ jobs:
           push_output_file: push_output.txt
           issue_number: ${{ github.event.issue.number }}
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
 
       - name: Exit if fork_upstream push failed
         if: env.PUSH_EXIT_CODE != '0'
@@ -196,6 +195,9 @@ jobs:
         run: |
           # Create fork_integration from fork_upstream
           git checkout -b fork_integration fork_upstream
+
+          # Restore local actions from main branch since fork_integration lacks template's local actions
+          git checkout main -- .github/local-actions
 
       - name: Apply sync configuration
         if: env.PUSH_EXIT_CODE == '0'
@@ -232,7 +234,7 @@ jobs:
           push_output_file: push_integration_output.txt
           issue_number: ${{ github.event.issue.number }}
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
 
       - name: Exit if fork_integration push failed
         if: env.PUSH_INTEGRATION_EXIT_CODE != '0'
@@ -249,23 +251,61 @@ jobs:
           target_branch: main
           commit_message: "chore: complete repository initialization"
           issue_number: ${{ github.event.issue.number }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git merge operations and posting comments
 
       - name: Finalize Initialization
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GH_TOKEN required for workflows)
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Pushing workflow files needs 'workflows' permission + setting variables needs admin
         run: |
+          # Copy workflows from template-workflows before deploy-fork-resources deletes the directory
+          echo "Deploying production workflows from template..."
+          if [ -d ".github/template-workflows" ]; then
+            mkdir -p .github/workflows
+            if ls .github/template-workflows/*.yml 1> /dev/null 2>&1; then
+              cp .github/template-workflows/*.yml .github/workflows/
+              echo "✅ Template workflows copied"
+            else
+              echo "⚠️  No .yml files found in template-workflows"
+            fi
+          else
+            echo "⚠️  Warning: .github/template-workflows directory not found"
+          fi
+
+          # Save setup scripts and templates to temp location before cleanup deletes them
+          echo "Preserving setup scripts and templates for post-push configuration..."
+          mkdir -p /tmp/init-helpers /tmp/templates/manual-steps
+          cp .github/local-actions/init-helpers/setup-branch-protection.sh /tmp/init-helpers/
+          cp .github/local-actions/init-helpers/setup-security.sh /tmp/init-helpers/
+          cp .github/local-actions/templates/initialization-complete.md /tmp/templates/
+          cp .github/local-actions/templates/mcp-setup-issue.md /tmp/templates/
+          cp .github/local-actions/templates/manual-steps/*.md /tmp/templates/manual-steps/
+          chmod +x /tmp/init-helpers/*.sh
+
           # Deploy fork-specific resources and clean up template files
           ./.github/local-actions/init-helpers/deploy-fork-resources.sh
-          
-          # Add cleanup to the merge commit if there are changes
+
+          # Add all changes to the merge commit
           git add -A
           if ! git diff --staged --quiet; then
             git commit --amend --no-edit
           fi
-          
-          git push origin main
+
+          # Push using GH_TOKEN if available (needed for workflow permissions)
+          if [ -n "$GH_TOKEN" ]; then
+            echo "Pushing to main using GH_TOKEN (required for workflow deployment)..."
+
+            # Reconfigure git to use GH_TOKEN instead of GITHUB_TOKEN from checkout
+            # The checkout action's credential helper must be overridden
+            git config --unset-all http.https://github.com/.extraheader || true
+            git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+
+            git push origin main
+          else
+            echo "::error::GH_TOKEN not available - cannot push workflows without it"
+            echo "::error::Workflows require a Personal Access Token with 'workflow' scope"
+            exit 1
+          fi
           
           # Set repository variable for initialization status
           if [ -n "$GH_TOKEN" ]; then
@@ -273,24 +313,24 @@ jobs:
           fi
 
       - name: Branch Protection
-        uses: ./.github/local-actions/init-helpers
-        with:
-          operation: setup-branch-protection
-          github_token: ${{ secrets.GH_TOKEN }}
-          repo_full_name: ${{ github.repository }}
-          issue_number: ${{ github.event.issue.number }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Branch protection rules need admin permission
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+        run: |
+          # Use preserved script from temp location
+          /tmp/init-helpers/setup-branch-protection.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
 
       - name: Configure Security
-        uses: ./.github/local-actions/init-helpers
-        with:
-          operation: setup-security
-          github_token: ${{ secrets.GH_TOKEN }}
-          repo_full_name: ${{ github.repository }}
-          issue_number: ${{ github.event.issue.number }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Security settings need admin permission
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+        run: |
+          # Use preserved script from temp location
+          /tmp/init-helpers/setup-security.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
 
       - name: Update Status
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
         run: |
           # Build status lines based on success flags
           if [ "$BRANCH_PROTECTION_SUCCESS" = "true" ]; then
@@ -311,20 +351,20 @@ jobs:
             SECURITY_STATUS="⚠️ **Security Features:** Requires manual setup"
           fi
 
-          # Assemble manual steps if needed
+          # Assemble manual steps if needed (using preserved templates from /tmp)
           MANUAL_STEPS=""
           if [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] || [ "$VARIABLES_SUCCESS" != "true" ] || [ "$SECURITY_SUCCESS" != "true" ]; then
             MANUAL_STEPS="## Manual Configuration Required
 
           Some features require manual setup:
           "
-            [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/branch-protection.md)"$'\n'
-            [ "$VARIABLES_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/repository-variables.md)"$'\n'
-            [ "$SECURITY_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/security-features.md)"$'\n'
+            [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/branch-protection.md)"$'\n'
+            [ "$VARIABLES_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/repository-variables.md)"$'\n'
+            [ "$SECURITY_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/security-features.md)"$'\n'
           fi
 
-          # Read template and substitute placeholders
-          MESSAGE=$(cat .github/local-actions/templates/initialization-complete.md)
+          # Read template and substitute placeholders (using preserved template from /tmp)
+          MESSAGE=$(cat /tmp/templates/initialization-complete.md)
           MESSAGE="${MESSAGE//\{PROTECTION_STATUS\}/$PROTECTION_STATUS}"
           MESSAGE="${MESSAGE//\{VARIABLE_STATUS\}/$VARIABLE_STATUS}"
           MESSAGE="${MESSAGE//\{SECURITY_STATUS\}/$SECURITY_STATUS}"
@@ -336,18 +376,19 @@ jobs:
 
       - name: Create MCP Configuration Issue
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Creating issues
         run: |
+          # Use preserved template from /tmp
           gh issue create \
             --title "Configure MCP Server for GitHub Copilot Agent" \
-            --body-file .github/local-actions/templates/mcp-setup-issue.md \
+            --body-file /tmp/templates/mcp-setup-issue.md \
             --label "human-required"
 
           echo "Created MCP configuration issue"
 
       - name: Complete Initialization
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Closing issues
         run: |
           # Close the initialization issue
           gh issue close "${{ github.event.issue.number }}" --reason completed

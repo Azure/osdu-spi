@@ -20,7 +20,7 @@ jobs:
       initialized: ${{ steps.check.outputs.initialized }}
     steps:
       - name: "Checkout Code"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: "Verify Initialization Status"
         id: check
@@ -62,7 +62,7 @@ jobs:
       
     steps:
       - name: "Checkout Code"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           

@@ -11,7 +11,7 @@ jobs:
     outputs:
       is_template: ${{ steps.check.outputs.is_template }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check repository type
         id: check
         uses: ./.github/local-actions/template-protection-check

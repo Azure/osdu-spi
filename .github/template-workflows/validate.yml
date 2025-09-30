@@ -90,7 +90,7 @@ jobs:
       initialized: ${{ steps.check.outputs.initialized }}
     steps:
       - name: "Checkout Code"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           # For pull_request, this will be the same as the default behavior
@@ -144,7 +144,7 @@ jobs:
       is_initialized: ${{ steps.check_init.outputs.initialized }}
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
@@ -181,7 +181,7 @@ jobs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
       build_result: ${{ steps.build.outputs.build_result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
@@ -226,7 +226,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Code"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
