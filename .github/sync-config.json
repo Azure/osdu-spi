@@ -34,6 +34,10 @@
       {
         "path": ".github/security-patterns.txt",
         "description": "Security scanning patterns"
+      },
+      {
+        "path": "CODEOWNERS",
+        "description": "Code ownership and review assignments"
       }
     ],
     "workflows": {
