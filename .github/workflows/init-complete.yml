@@ -197,6 +197,9 @@ jobs:
           # Create fork_integration from fork_upstream
           git checkout -b fork_integration fork_upstream
 
+          # Restore local actions from main branch for sync-config-applier
+          git checkout main -- .github/local-actions
+
       - name: Apply sync configuration
         if: env.PUSH_EXIT_CODE == '0'
         uses: ./.github/local-actions/sync-config-applier
