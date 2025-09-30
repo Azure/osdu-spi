@@ -31,22 +31,22 @@ jobs:
 
           # Check for Java (Maven or Gradle)
           if [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["java-kotlin"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["java-kotlin"]')
           fi
 
           # Check for Python
           if [ -f "setup.py" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || find . -name "*.py" -not -path "./.*" | grep -q .; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["python"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
           fi
 
           # Check for JavaScript/TypeScript
           if [ -f "package.json" ] || find . -name "*.js" -o -name "*.ts" -not -path "./node_modules/*" -not -path "./.*" | grep -q .; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["javascript-typescript"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["javascript-typescript"]')
           fi
 
           # Check for Go
           if [ -f "go.mod" ] || find . -name "*.go" -not -path "./.*" | grep -q .; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["go"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["go"]')
           fi
 
           # Default to java-kotlin if nothing detected (OSDU is primarily Java)
