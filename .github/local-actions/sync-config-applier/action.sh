@@ -55,8 +55,8 @@ for file in $FILES; do
     fi
 done
 
-echo "Note: Workflow deployment deferred to post-merge step to avoid GitHub App permission issues"
-echo "Note: Template remote configuration will be handled by sync-template workflow"
+echo "::notice::Workflow deployment deferred to post-merge step to avoid GitHub App permission issues"
+echo "::notice::Template remote configuration will be handled by sync-template workflow"
 
 # Initialize tracking files
 echo "Initializing tracking files..."

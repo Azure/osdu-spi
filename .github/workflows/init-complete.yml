@@ -278,8 +278,12 @@ jobs:
           echo "Deploying production workflows from template..."
           if [ -d ".github/template-workflows" ]; then
             mkdir -p .github/workflows
-            cp .github/template-workflows/*.yml .github/workflows/ 2>/dev/null || true
-            echo "✅ Template workflows copied"
+            if ls .github/template-workflows/*.yml 1> /dev/null 2>&1; then
+              cp .github/template-workflows/*.yml .github/workflows/
+              echo "✅ Template workflows copied"
+            else
+              echo "⚠️  No .yml files found in template-workflows"
+            fi
           else
             echo "⚠️  Warning: .github/template-workflows directory not found"
           fi
