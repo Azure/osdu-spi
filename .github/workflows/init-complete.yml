@@ -272,11 +272,14 @@ jobs:
             echo "⚠️  Warning: .github/template-workflows directory not found"
           fi
 
-          # Save setup scripts to temp location before cleanup deletes them
-          echo "Preserving setup scripts for post-push configuration..."
-          mkdir -p /tmp/init-helpers
+          # Save setup scripts and templates to temp location before cleanup deletes them
+          echo "Preserving setup scripts and templates for post-push configuration..."
+          mkdir -p /tmp/init-helpers /tmp/templates/manual-steps
           cp .github/local-actions/init-helpers/setup-branch-protection.sh /tmp/init-helpers/
           cp .github/local-actions/init-helpers/setup-security.sh /tmp/init-helpers/
+          cp .github/local-actions/templates/initialization-complete.md /tmp/templates/
+          cp .github/local-actions/templates/mcp-setup-issue.md /tmp/templates/
+          cp .github/local-actions/templates/manual-steps/*.md /tmp/templates/manual-steps/
           chmod +x /tmp/init-helpers/*.sh
 
           # Deploy fork-specific resources and clean up template files
@@ -348,20 +351,20 @@ jobs:
             SECURITY_STATUS="⚠️ **Security Features:** Requires manual setup"
           fi
 
-          # Assemble manual steps if needed
+          # Assemble manual steps if needed (using preserved templates from /tmp)
           MANUAL_STEPS=""
           if [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] || [ "$VARIABLES_SUCCESS" != "true" ] || [ "$SECURITY_SUCCESS" != "true" ]; then
             MANUAL_STEPS="## Manual Configuration Required
 
           Some features require manual setup:
           "
-            [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/branch-protection.md)"$'\n'
-            [ "$VARIABLES_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/repository-variables.md)"$'\n'
-            [ "$SECURITY_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat .github/local-actions/templates/manual-steps/security-features.md)"$'\n'
+            [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/branch-protection.md)"$'\n'
+            [ "$VARIABLES_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/repository-variables.md)"$'\n'
+            [ "$SECURITY_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/security-features.md)"$'\n'
           fi
 
-          # Read template and substitute placeholders
-          MESSAGE=$(cat .github/local-actions/templates/initialization-complete.md)
+          # Read template and substitute placeholders (using preserved template from /tmp)
+          MESSAGE=$(cat /tmp/templates/initialization-complete.md)
           MESSAGE="${MESSAGE//\{PROTECTION_STATUS\}/$PROTECTION_STATUS}"
           MESSAGE="${MESSAGE//\{VARIABLE_STATUS\}/$VARIABLE_STATUS}"
           MESSAGE="${MESSAGE//\{SECURITY_STATUS\}/$SECURITY_STATUS}"
@@ -375,9 +378,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Creating issues
         run: |
+          # Use preserved template from /tmp
           gh issue create \
             --title "Configure MCP Server for GitHub Copilot Agent" \
-            --body-file .github/local-actions/templates/mcp-setup-issue.md \
+            --body-file /tmp/templates/mcp-setup-issue.md \
             --label "human-required"
 
           echo "Created MCP configuration issue"
