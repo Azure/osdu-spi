@@ -55,8 +55,6 @@ for file in $FILES; do
     fi
 done
 
-# Note: Workflow copying is skipped during initialization to avoid GitHub App permission issues
-# Workflows will be copied directly to main branch after merge completion
 echo "Note: Workflow deployment deferred to post-merge step to avoid GitHub App permission issues"
 echo "Note: Template remote configuration will be handled by sync-template workflow"
 
