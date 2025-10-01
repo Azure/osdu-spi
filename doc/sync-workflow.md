@@ -64,7 +64,7 @@ graph TD
 |---------|---------|-------------|
 | **Schedule** | `0 0 * * *` | Daily at midnight UTC (customizable) |
 | **Diff Size Limit** | `20,000 lines` | Maximum diff size for AI analysis |
-| **AI Provider** | Azure Foundry / OpenAI | AI services for PR descriptions |
+| **AI Provider** | Azure Foundry | AI services for PR descriptions |
 | **Auto-merge** | Disabled | Automatic merging for small changes |
 | **Conflict Timeout** | 6 hours | How long before monitor auto-triggers cascade |
 | **Retry Attempts** | 3 | Network operation retry count |
