@@ -245,9 +245,20 @@ jobs:
           !startsWith(github.event.pull_request.title, '⬆️ Sync with upstream') &&
           !startsWith(github.event.pull_request.title, '🚀 Production Release: Upstream Integration') &&
           !startsWith(github.head_ref, 'release/upstream-')
-        uses: ebiny/action-conventional-commits@v1.3.0
+        uses: amannn/action-semantic-pull-request@v5
         with:
-          config-file-path: '.conventionalcommits.yml'
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
         
       - name: "Check for Merge Conflicts"
         run: |
