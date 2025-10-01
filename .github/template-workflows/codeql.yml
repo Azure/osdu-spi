@@ -99,7 +99,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
-          build-mode: ${{ matrix.language == 'java-kotlin' && 'none' || 'autobuild' }}
+          build-mode: none
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
