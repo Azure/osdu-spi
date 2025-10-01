@@ -276,7 +276,14 @@ jobs:
           else
             echo "No Azure Foundry API keys found. Using fallback PR description."
           fi
-          
+
+          # Map LLM_MODEL to full model identifier for aipr
+          if [[ "$LLM_MODEL" == "azure" ]]; then
+            AIPR_MODEL="azure/gpt-5-chat"
+          else
+            AIPR_MODEL=""
+          fi
+
           # Calculate diff size to avoid generating prompts that exceed model limits
           MAX_DIFF_LINES=20000
           DIFF_LINES=$(git diff fork_upstream | wc -l | tr -d ' ')
@@ -288,15 +295,15 @@ jobs:
           
           # Generate PR description using AI if available with comprehensive error handling
           if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
-            echo "Generating AI-enhanced PR description using $LLM_MODEL..."
+            echo "Generating AI-enhanced PR description using $AIPR_MODEL..."
             
             # Use aipr tool with vulnerability analysis and timeout protection
             PR_DESCRIPTION=""
-            echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
-            
+            echo "   🔍 Attempting AIPR PR generation with model: $AIPR_MODEL"
+
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
+            echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
             
             # Debug what we got back and handle all failure cases
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
@@ -308,7 +315,7 @@ jobs:
             fi
             
             if [[ -n "$PR_DESCRIPTION" ]] && [[ ${#PR_DESCRIPTION} -gt 50 ]]; then
-              echo "✅ Generated enhanced PR description using $LLM_MODEL (${#PR_DESCRIPTION} characters)"
+              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
             else
               if [[ -n "$PR_DESCRIPTION" ]]; then
                 echo "⚠️ AIPR PR description too short (${#PR_DESCRIPTION} chars): $PR_DESCRIPTION"
@@ -380,7 +387,14 @@ jobs:
           else
             echo "No Azure Foundry API keys found. Using fallback PR description."
           fi
-          
+
+          # Map LLM_MODEL to full model identifier for aipr
+          if [[ "$LLM_MODEL" == "azure" ]]; then
+            AIPR_MODEL="azure/gpt-5-chat"
+          else
+            AIPR_MODEL=""
+          fi
+
           # Calculate diff size to avoid generating prompts that exceed model limits
           MAX_DIFF_LINES=20000
           DIFF_LINES=$(git diff fork_upstream | wc -l | tr -d ' ')
@@ -392,15 +406,15 @@ jobs:
           
           # Generate updated PR description using AI if available with comprehensive error handling
           if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
-            echo "Generating AI-enhanced PR description using $LLM_MODEL..."
+            echo "Generating AI-enhanced PR description using $AIPR_MODEL..."
             
             # Use aipr tool with vulnerability analysis and timeout protection
             PR_DESCRIPTION=""
-            echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
-            
+            echo "   🔍 Attempting AIPR PR generation with model: $AIPR_MODEL"
+
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
+            echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
             
             # Debug what we got back and handle all failure cases
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
@@ -412,7 +426,7 @@ jobs:
             fi
             
             if [[ -n "$PR_DESCRIPTION" ]] && [[ ${#PR_DESCRIPTION} -gt 50 ]]; then
-              echo "✅ Generated enhanced PR description using $LLM_MODEL (${#PR_DESCRIPTION} characters)"
+              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
             else
               if [[ -n "$PR_DESCRIPTION" ]]; then
                 echo "⚠️ AIPR PR description too short (${#PR_DESCRIPTION} chars): $PR_DESCRIPTION"
