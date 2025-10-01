@@ -3,8 +3,22 @@ name: CodeQL Analysis
 on:
   push:
     branches: [ main, fork_upstream, fork_integration ]
+    paths-ignore:
+      - '.github/**'
+      - '.mvn/**'
+      - 'devops/**'
+      - 'docs/**'
+      - '.*'
+      - '*.md'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '.github/**'
+      - '.mvn/**'
+      - 'devops/**'
+      - 'docs/**'
+      - '.*'
+      - '*.md'
   schedule:
     - cron: '0 6 * * 1'  # Weekly on Mondays at 6 AM UTC
   workflow_dispatch:
