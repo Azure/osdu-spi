@@ -26,9 +26,6 @@ inputs:
   azure-api-version:
     description: 'Azure Foundry API version (optional)'
     required: false
-  openai-api-key:
-    description: 'OpenAI API key for aipr (optional)'
-    required: false
   max-diff-lines:
     description: 'Maximum diff lines for aipr processing'
     required: false
@@ -67,7 +64,6 @@ runs:
       env:
         AZURE_API_KEY: ${{ inputs.azure-api-key }}
         AZURE_API_BASE: ${{ inputs.azure-api-base }}
-        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
 
     - name: Map LLM model for aipr
       id: map-model
@@ -77,11 +73,8 @@ runs:
 
         # Map model names for aipr compatibility
         if [[ "$LLM_MODEL" == "azure" ]]; then
-          AIPR_MODEL="azure/gpt-4o"
-          echo "Using Azure Foundry GPT-4o for PR description generation"
-        elif [[ "$LLM_MODEL" == "gpt-4" ]]; then
-          AIPR_MODEL="gpt-4.1"
-          echo "Using OpenAI GPT-4 for PR description generation"
+          AIPR_MODEL="azure/gpt-5-chat"
+          echo "Using Azure Foundry for PR description generation"
         else
           AIPR_MODEL=""
           echo "No LLM API keys found. Using fallback PR description."
@@ -96,7 +89,6 @@ runs:
         AZURE_API_KEY: ${{ inputs.azure-api-key }}
         AZURE_API_BASE: ${{ inputs.azure-api-base }}
         AZURE_API_VERSION: ${{ inputs.azure-api-version }}
-        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
       run: |
         # Calculate diff size to avoid generating prompts that exceed model limits
         MAX_DIFF_LINES=${{ inputs.max-diff-lines }}
@@ -117,7 +109,7 @@ runs:
             TARGET_BRANCH="${{ inputs.base-branch }}"
           fi
 
-          AIPR_FLAGS="-t $TARGET_BRANCH -p meta -m ${{ steps.map-model.outputs.aipr-model }} --max-diff-lines $MAX_DIFF_LINES"
+          AIPR_FLAGS="-t $TARGET_BRANCH -m ${{ steps.map-model.outputs.aipr-model }} --max-diff-lines $MAX_DIFF_LINES"
           if [[ "${{ inputs.use-vulns-flag }}" == "true" ]]; then
             AIPR_FLAGS="$AIPR_FLAGS --vulns"
           fi
