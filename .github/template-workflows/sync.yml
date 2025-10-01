@@ -295,8 +295,8 @@ jobs:
             echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
             
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -p meta -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
+            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
             
             # Debug what we got back and handle all failure cases
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
@@ -399,8 +399,8 @@ jobs:
             echo "   🔍 Attempting AIPR PR generation with model: $LLM_MODEL"
             
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -p meta -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -p meta -s 2>&1 || echo "AIPR_FAILED")
+            echo "   📝 Command: aipr pr -m $LLM_MODEL -t fork_upstream -s"
+            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$LLM_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
             
             # Debug what we got back and handle all failure cases
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
