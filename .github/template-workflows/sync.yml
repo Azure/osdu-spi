@@ -138,7 +138,6 @@ jobs:
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           # Generate branch names with timestamp for uniqueness or use existing branch
           DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
@@ -256,30 +255,26 @@ jobs:
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           # Get environment variables from previous step
           SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
           UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
           FALLBACK_DESCRIPTION="${{ env.FALLBACK_DESCRIPTION }}"
-          
+
           # Detect available LLM provider
+          # Note: LLM detection is duplicated inline instead of using .github/actions/llm-provider-detect
+          # Reason: sync.yml runs from fork_upstream branch where actions don't exist (ADR-028 §7.1)
+          # This is an accepted architectural tradeoff for the sync workflow
           USE_LLM=false
           LLM_MODEL=""
-          
-          # Check for Azure OpenAI API key (primary)
+
+          # Check for Azure OpenAI API key
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
             LLM_MODEL="azure"
-            echo "Using Azure OpenAI GPT-5 Nano for PR description generation"
-          # Check for OpenAI API key (secondary)
-          elif [[ -n "$OPENAI_API_KEY" ]]; then
-            USE_LLM=true
-            LLM_MODEL="gpt-5"
-            echo "Using OpenAI GPT-5 for PR description generation"
-          # No AI provider available (final fallback)
+            echo "Using Azure OpenAI for PR description generation"
           else
-            echo "No LLM API keys found. Using fallback PR description."
+            echo "No Azure OpenAI API keys found. Using fallback PR description."
           fi
           
           # Calculate diff size to avoid generating prompts that exceed model limits
@@ -364,30 +359,26 @@ jobs:
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
           UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
           SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
           FALLBACK_DESCRIPTION="${{ env.FALLBACK_DESCRIPTION }}"
-          
+
           # Detect available LLM provider
+          # Note: LLM detection is duplicated inline instead of using .github/actions/llm-provider-detect
+          # Reason: sync.yml runs from fork_upstream branch where actions don't exist (ADR-028 §7.1)
+          # This is an accepted architectural tradeoff for the sync workflow
           USE_LLM=false
           LLM_MODEL=""
-          
-          # Check for Azure OpenAI API key (primary)
+
+          # Check for Azure OpenAI API key
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
             LLM_MODEL="azure"
-            echo "Using Azure OpenAI GPT-5 Nano for PR description regeneration"
-          # Check for OpenAI API key (secondary)
-          elif [[ -n "$OPENAI_API_KEY" ]]; then
-            USE_LLM=true
-            LLM_MODEL="gpt-5"
-            echo "Using OpenAI GPT-5 for PR description regeneration"
-          # No AI provider available (final fallback)
+            echo "Using Azure OpenAI for PR description regeneration"
           else
-            echo "No LLM API keys found. Using fallback PR description."
+            echo "No Azure OpenAI API keys found. Using fallback PR description."
           fi
           
           # Calculate diff size to avoid generating prompts that exceed model limits

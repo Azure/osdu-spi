@@ -1,12 +1,12 @@
 name: 'LLM Provider Detection'
-description: 'Detect available LLM provider (Azure OpenAI → OpenAI → Fallback)'
+description: 'Detect available LLM provider (Azure OpenAI → Fallback)'
 
 outputs:
   use_llm:
     description: 'Whether LLM is available (true/false)'
     value: ${{ steps.detect.outputs.use_llm }}
   llm_model:
-    description: 'LLM model identifier (azure for Azure OpenAI, gpt-4 for OpenAI, empty for fallback)'
+    description: 'LLM model identifier (azure for Azure OpenAI, empty for fallback)'
     value: ${{ steps.detect.outputs.llm_model }}
 
 runs:
@@ -19,4 +19,3 @@ runs:
       env:
         AZURE_API_KEY: ${{ env.AZURE_API_KEY }}
         AZURE_API_BASE: ${{ env.AZURE_API_BASE }}
-        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
