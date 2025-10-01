@@ -47,7 +47,8 @@ The initialization process produces clear outcomes to guide your next steps:
    UPSTREAM_REPO_URL - Repository to sync from (required)
    GITHUB_TOKEN - Provided automatically
    AZURE_API_KEY - AI provider (optional)
-   OPENAI_API_KEY - AI fallback (optional)
+   AZURE_API_BASE - Azure Foundry endpoint (optional)
+   AZURE_API_VERSION - Azure API version (optional)
    ```
 
 3. **Verify branch protection** - Ensure `main` branch is protected
@@ -104,8 +105,8 @@ The initialization process produces clear outcomes to guide your next steps:
 | `UPSTREAM_REPO_URL` | Repository to sync from | ✅ Yes |
 | `GITHUB_TOKEN` | Automatically provided | ✅ Yes |
 | `AZURE_API_KEY` | AI-enhanced PR descriptions | ❌ Optional |
-| `AZURE_API_BASE` | Azure OpenAI endpoint | ❌ Optional |
-| `OPENAI_API_KEY` | AI fallback provider | ❌ Optional |
+| `AZURE_API_BASE` | Azure Foundry endpoint | ❌ Optional |
+| `AZURE_API_VERSION` | Azure API version | ❌ Optional |
 
 ## Troubleshooting
 

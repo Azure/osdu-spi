@@ -4,20 +4,19 @@ Detects available LLM providers for AI-enhanced workflow operations.
 
 ## Purpose
 
-This action checks for available LLM API credentials in priority order and sets outputs that workflows can use to determine whether to use AI-enhanced features or fall back to static descriptions.
+This action checks for available LLM API credentials and sets outputs that workflows can use to determine whether to use AI-enhanced features or fall back to static descriptions.
 
 ## Detection Priority
 
-1. **Azure OpenAI** (if `AZURE_API_KEY` and `AZURE_API_BASE` are set)
-2. **OpenAI** (if `OPENAI_API_KEY` is set)
-3. **Fallback** (no LLM available, use static descriptions)
+1. **Azure Foundry** (if `AZURE_API_KEY` and `AZURE_API_BASE` are set)
+2. **Fallback** (no LLM available, use static descriptions)
 
 ## Outputs
 
 | Output | Description | Values |
 |--------|-------------|--------|
 | `use_llm` | Whether an LLM provider is available | `true` or `false` |
-| `llm_model` | LLM model identifier for aipr tool | `azure`, `gpt-4`, or empty |
+| `llm_model` | LLM model identifier for aipr tool | `azure` or empty |
 
 ## Usage in Workflows
 
@@ -28,7 +27,6 @@ This action checks for available LLM API credentials in priority order and sets 
   env:
     AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
     AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
-    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
 - name: Generate AI-enhanced PR description
   if: steps.llm.outputs.use_llm == 'true'
@@ -47,12 +45,12 @@ This action checks for available LLM API credentials in priority order and sets 
 
 ## Local Testing
 
-### Test with Azure OpenAI
+### Test with Azure Foundry
 
 ```bash
 cd .github/actions/llm-provider-detect
 
-# Set Azure OpenAI credentials
+# Set Azure Foundry credentials
 export AZURE_API_KEY="your_azure_key_here"
 export AZURE_API_BASE="https://your-instance.openai.azure.com"
 
@@ -60,12 +58,12 @@ export AZURE_API_BASE="https://your-instance.openai.azure.com"
 ./detect-provider.sh
 
 # Expected output:
-# ✓ Detected Azure OpenAI provider
+# ✓ Detected Azure Foundry provider
 # use_llm=true
 # llm_model=azure
 ```
 
-### Test with OpenAI
+### Test Fallback Scenario
 
 ```bash
 cd .github/actions/llm-provider-detect
@@ -74,47 +72,22 @@ cd .github/actions/llm-provider-detect
 unset AZURE_API_KEY
 unset AZURE_API_BASE
 
-# Set OpenAI credential
-export OPENAI_API_KEY="sk-your_openai_key_here"
-
 # Run the script
 ./detect-provider.sh
 
 # Expected output:
-# ✓ Detected OpenAI provider
-# use_llm=true
-# llm_model=gpt-4
-```
-
-### Test Fallback Scenario
-
-```bash
-cd .github/actions/llm-provider-detect
-
-# Unset all credentials
-unset AZURE_API_KEY
-unset AZURE_API_BASE
-unset OPENAI_API_KEY
-
-# Run the script
-./detect-provider.sh
-
-# Expected output:
-# ℹ No LLM provider detected (will use fallback descriptions)
+# ℹ No Azure Foundry provider detected (will use fallback descriptions)
 # use_llm=false
 # llm_model=
 ```
 
 ## Integration with aipr Tool
 
-When an LLM provider is detected, the `llm_model` output can be used directly with the `aipr` CLI tool:
+When Azure Foundry is detected, the `llm_model` output can be used directly with the `aipr` CLI tool:
 
 ```bash
-# Azure OpenAI
+# Azure Foundry
 aipr pr -m azure -b main -o feature-branch
-
-# OpenAI
-aipr pr -m gpt-4 -b main -o feature-branch
 ```
 
 ## Implementation Details

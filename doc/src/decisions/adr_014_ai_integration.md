@@ -32,9 +32,9 @@ Modern development workflows can benefit significantly from AI assistance in cod
 - All core operations must work reliably when AI services are unavailable
 - Graceful degradation to standard templates when AI is not accessible
 
-**Multi-Provider Architecture**:
-- Support multiple AI providers to avoid vendor lock-in
-- Intelligent provider selection based on availability and capabilities
+**Azure Foundry Primary**:
+- Standardize on Azure Foundry for enterprise compliance and Microsoft ecosystem integration
+- Graceful degradation to structured templates when Azure is unavailable
 - Cost-conscious usage patterns with configurable limits
 
 **Security and Reliability**:
@@ -44,122 +44,96 @@ Modern development workflows can benefit significantly from AI assistance in cod
 
 ## Decision
 
-Implement **AI-Enhanced Development Workflow Integration** with a sophisticated multi-provider architecture:
+Implement **AI-Enhanced Development Workflow Integration** with Azure Foundry as the primary provider:
 
 ```mermaid
 graph TD
-    A[Workflow Trigger] --> B[AI Provider Selection]
-    B --> C{Primary: Claude}
-    B --> D{Secondary: Azure OpenAI}
-    B --> E{Tertiary: OpenAI}
-    
-    C --> F[Claude Code CLI]
-    C --> G[Direct API Access]
-    D --> H[Azure OpenAI Service]
-    E --> I[OpenAI GPT-4]
-    
-    F --> J[AI Analysis Output]
-    G --> J
-    H --> J
-    I --> J
-    
-    J --> K[Fallback to Standard Template]
-    
+    A[Workflow Trigger] --> B[AI Provider Detection]
+    B --> C{Azure Foundry Available?}
+
+    C -->|Yes| D[Azure Foundry Service]
+    C -->|No| E[Template Fallback]
+
+    D --> F{API Success?}
+    F -->|Yes| G[AI-Enhanced Output]
+    F -->|No| E
+
+    E --> H[Template-Based Output]
+
     style A fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-    style C fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
-    style D fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style C fill:#fff3e0,stroke:#e65100,stroke-width:2px
     style E fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style G fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
 ```
 
-### :material-robot: Primary AI Integration: Claude Code CLI
-
-#### **Advanced Tooling Integration**
-```yaml
-# Automated Claude Code CLI setup
-- name: Install Claude Code CLI
-  run: npm install -g @anthropic-ai/claude-code
-
-# MCP Configuration for specialized tools
-- name: Configure MCP Servers
-  run: |
-    cat > .mcp.json << 'EOF'
-    {
-      "mcpServers": {
-        "mvn-mcp-server": {
-          "type": "stdio",
-          "command": "uvx",
-          "args": ["--from", "git+https://github.com/danielscholl-osdu/mvn-mcp-server@main", "mvn-mcp-server"]
-        }
-      }
-    }
-    EOF
-```
-
-#### **Specialized Capabilities**
-- **Code Analysis**: Deep understanding of code changes and their implications
-- **Dependency Management**: Enhanced Maven/Gradle analysis through MCP servers
-- **Security Assessment**: Intelligent vulnerability triage and prioritization
-- **Documentation Generation**: Context-aware technical documentation
-
-### :material-microsoft-azure: Secondary Provider: Azure OpenAI
+### :material-microsoft-azure: Primary AI Integration: Azure Foundry
 
 #### **Enterprise Integration**
 ```yaml
-# Azure OpenAI configuration for enterprise environments
-- name: Configure Azure OpenAI
-  if: env.AZURE_API_KEY
+# Azure Foundry configuration
+- name: Configure Azure Foundry
+  env:
+    AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+    AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+    AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
   run: |
     # Enterprise-grade AI with compliance features
     # Cost control and data residency support
-    # Managed identity integration
+    # Integration with Microsoft ecosystem
 ```
 
-**Enterprise Benefits**:
-- Integration with Microsoft ecosystem
-- Enhanced compliance and security features
-- Predictable costs and SLA support
-- Data residency and governance controls
+#### **Enterprise Benefits**
+- **Compliance**: Enhanced compliance and security features for enterprise environments
+- **Integration**: Seamless integration with Microsoft ecosystem and Azure services
+- **Cost Control**: Predictable costs with SLA support and usage monitoring
+- **Data Residency**: Data residency and governance controls for sensitive information
+- **Security**: Managed identity integration and enterprise security features
 
-### :material-openai: Tertiary Provider: OpenAI
+#### **AI Capabilities**
+- **Code Analysis**: Deep understanding of code changes and their implications
+- **Security Assessment**: Intelligent vulnerability triage and prioritization
+- **Documentation Generation**: Context-aware PR descriptions and commit messages
+- **Change Summarization**: Intelligent summaries of upstream changes and conflicts
 
-#### **Fallback Capability**
+### :material-file-document: Fallback: Structured Templates
+
+#### **Template-Based Operation**
 ```yaml
-# OpenAI as final fallback option
-- name: Configure OpenAI Fallback
-  if: env.OPENAI_API_KEY && !env.ANTHROPIC_API_KEY && !env.AZURE_API_KEY
+# Fallback when Azure Foundry is unavailable
+- name: Use Template Fallback
+  if: env.AZURE_API_KEY == ''
   run: |
-    # Standard OpenAI API integration
-    # GPT-4 and GPT-4 Turbo models
-    # Broad compatibility and availability
+    # Structured PR description templates
+    # Conventional commit message templates
+    # Consistent output without AI dependency
 ```
 
 **Fallback Benefits**:
-- Wide model availability and proven performance
-- Established API patterns and documentation
-- Comprehensive provider coverage ensuring service availability
+- **Zero Cost**: No API costs when AI is unavailable
+- **Reliability**: Consistent operation regardless of external services
+- **Quality**: Well-structured base templates provide comprehensive information
+- **Predictability**: Known output format for automated processing
 
 ## Implementation Strategy
 
-### :material-brain: Intelligent Provider Selection
+### :material-brain: Provider Detection
 
-#### **Hierarchical Fallback Logic**
+#### **Azure Foundry Detection Logic**
 ```mermaid
 graph TD
-    A[AI Task Request] --> B{Claude API Key?}
-    B -->|Yes| C[Use Claude Code CLI]
-    B -->|No| D{Azure OpenAI Key?}
-    D -->|Yes| E[Use Azure OpenAI]
-    D -->|No| F{OpenAI Key?}
-    F -->|Yes| G[Use OpenAI GPT-4]
-    F -->|No| H[Use Standard Template]
-    
-    C --> I{Success?}
-    E --> I
-    G --> I
-    I -->|No| J[Try Next Provider]
-    I -->|Yes| K[Return AI Result]
-    J --> D
-    H --> L[Return Standard Result]
+    A[AI Task Request] --> B{Azure Foundry Key?}
+    B -->|Yes| C[Use Azure Foundry]
+    B -->|No| D[Use Template Fallback]
+
+    C --> E{API Success?}
+    E -->|Yes| F[Return AI Result]
+    E -->|No| D
+
+    D --> G[Return Template Result]
+
+    style B fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style D fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style F fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
 ```
 
 #### **Graceful Degradation Strategy**
@@ -184,9 +158,9 @@ graph TD
 ```yaml
 # Secure credential handling
 env:
-  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+  AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
 
 # Minimal data exposure
 - name: AI Analysis with Privacy
@@ -277,11 +251,11 @@ This PR integrates 12 commits from upstream with primarily security and dependen
 - No critical dependencies on external AI services
 - Clear communication when AI enhancement is not available
 
-#### **Multi-Provider Resilience**
-- Vendor lock-in prevention through multiple provider support
-- Service availability ensured through intelligent failover
-- Cost optimization through provider selection
-- Feature compatibility across different AI models
+#### **Reliability Through Fallback**
+- No critical dependencies on external AI services through template fallback
+- Service availability maintained when Azure Foundry is unavailable
+- Consistent output quality through well-structured templates
+- Enterprise compliance through standardized Azure Foundry integration
 
 ## Implementation Benefits
 
@@ -341,4 +315,4 @@ This PR integrates 12 commits from upstream with primarily security and dependen
 
 ---
 
-*This AI integration architecture enhances development workflows while maintaining reliability through graceful degradation and multi-provider support, ensuring the system remains functional and valuable regardless of AI service availability.*
+*This AI integration architecture enhances development workflows while maintaining reliability through Azure Foundry standardization and graceful template fallback, ensuring the system remains functional and valuable regardless of AI service availability.*

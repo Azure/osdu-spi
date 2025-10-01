@@ -91,7 +91,7 @@ composite_action:
       - name: Detect available LLM provider
         shell: bash
         run: |
-          # Priority order: Anthropic → Azure OpenAI → OpenAI → Fallback
+          # Priority order: Anthropic → Azure Foundry → OpenAI → Fallback
           if [ -n "${{ inputs.anthropic-api-key }}" ]; then
             echo "provider=anthropic" >> $GITHUB_OUTPUT
             echo "model=claude-4" >> $GITHUB_OUTPUT
@@ -139,9 +139,9 @@ input_interface:
     
   optional_inputs:
     anthropic-api-key: "Anthropic Claude API key for AI enhancement"
-    azure-api-key: "Azure OpenAI API key"
-    azure-api-base: "Azure OpenAI endpoint URL"
-    azure-api-version: "Azure OpenAI API version"
+    azure-api-key: "Azure Foundry API key"
+    azure-api-base: "Azure Foundry endpoint URL"
+    azure-api-version: "Azure Foundry API version"
     openai-api-key: "OpenAI API key"
     max-diff-lines: "Maximum diff size for AI processing (default: 20000)"
     use-vulns-flag: "Enable vulnerability analysis (default: true)"
@@ -168,7 +168,7 @@ output_interface:
 llm_provider_system:
   priority_order:
     1: "Anthropic Claude (if ANTHROPIC_API_KEY provided)"
-    2: "Azure OpenAI (if AZURE_API_KEY and AZURE_API_BASE provided)"
+    2: "Azure Foundry (if AZURE_API_KEY and AZURE_API_BASE provided)"
     3: "OpenAI (if OPENAI_API_KEY provided)"
     4: "Fallback to provided description"
     

@@ -99,7 +99,7 @@ Each extracted script group is wrapped in a composite action for workflow integr
 ```yaml
 # .github/actions/llm-provider-detect/action.yml
 name: 'LLM Provider Detection'
-description: 'Detect available LLM provider (Azure OpenAI → OpenAI → Fallback)'
+description: 'Detect available LLM provider (Azure Foundry → OpenAI → Fallback)'
 
 outputs:
   use_llm:
@@ -459,9 +459,16 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 
 #### 🚫 sync.yml Scripts
 **Status**: EXCEPTION - Cannot extract
-- **Size**: 657 lines total, 12 scripts
+- **Size**: 642 lines total, 12 scripts
 - **Constraint**: Runs from fork_upstream branch where actions don't exist
 - **Decision Matrix**: N/A - Technical constraint overrides
+
+**Attempted Workarounds Evaluated:**
+1. **Checkout actions to separate path** - Rejected: Actions require relative path `uses: ./.github/actions/`, cannot reference custom paths
+2. **Bash functions within workflow** - Rejected: Eliminates duplication but provides no testability improvement; adds complexity without solving core problem
+3. **Docker/JS action from registry** - Rejected: External dependency, adds complexity, would require publishing action to marketplace
+4. **Copy actions during workflow** - Rejected: Race condition (actions needed before they can be copied from main)
+5. **Accept inline duplication** - ACCEPTED: Simplest solution given constraints; duplication is minimal (~24 lines) and localized to two locations with clear ADR reference comments
 
 ### Summary Statistics
 
