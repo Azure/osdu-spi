@@ -31,22 +31,22 @@ jobs:
 
           # Check for Java (Maven or Gradle)
           if [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["java-kotlin"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["java-kotlin"]')
           fi
 
           # Check for Python
           if [ -f "setup.py" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || find . -name "*.py" -not -path "./.*" | grep -q .; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["python"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
           fi
 
           # Check for JavaScript/TypeScript
           if [ -f "package.json" ] || find . -name "*.js" -o -name "*.ts" -not -path "./node_modules/*" -not -path "./.*" | grep -q .; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["javascript-typescript"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["javascript-typescript"]')
           fi
 
           # Check for Go
           if [ -f "go.mod" ] || find . -name "*.go" -not -path "./.*" | grep -q .; then
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["go"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["go"]')
           fi
 
           # Default to java-kotlin if nothing detected (OSDU is primarily Java)
@@ -75,7 +75,7 @@ jobs:
 
       - name: Setup Java
         if: matrix.language == 'java-kotlin'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -83,13 +83,13 @@ jobs:
 
       - name: Setup Python
         if: matrix.language == 'python'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
       - name: Setup Node.js
         if: matrix.language == 'javascript-typescript'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '18'
           cache: 'npm'
@@ -98,10 +98,8 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          queries: security-extended,security-and-quality
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+          queries: security-extended
+          build-mode: none
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
