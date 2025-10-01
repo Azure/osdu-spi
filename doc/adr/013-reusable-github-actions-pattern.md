@@ -8,7 +8,7 @@
 During implementation of template synchronization workflows (ADR-011, ADR-012), we identified significant code duplication in PR creation logic across multiple workflows. Each workflow that created pull requests had to implement:
 
 **Duplicated PR Creation Logic:**
-- **LLM Detection**: Check for available API keys (Azure OpenAI, OpenAI)
+- **LLM Detection**: Check for available Azure OpenAI API keys
 - **aipr Integration**: Generate AI-enhanced PR descriptions when possible
 - **Fallback Handling**: Use provided description when AI generation fails
 - **Diff Size Management**: Skip AI generation for large diffs to avoid token limits
@@ -34,14 +34,13 @@ Implement **Reusable GitHub Actions Pattern** for common PR creation functionali
 - **Centralized Logic**: Single implementation of PR creation with AI enhancement
 - **Configurable Parameters**: Flexible inputs for different use cases
 - **Consistent Interface**: Standardized inputs and outputs across workflows
-- **AI Integration**: Built-in aipr integration with multiple LLM providers
+- **AI Integration**: Built-in aipr integration with Azure OpenAI
 
 ### 2. **Standardized AI Enhancement Pipeline**
 ```yaml
 # Automatic LLM detection and configuration
 - Azure OpenAI (primary)
-- OpenAI (secondary)
-- Fallback to provided description
+- Template fallback when Azure unavailable
 
 # Intelligent diff size management
 - Skip AI generation for diffs >20,000 lines
@@ -84,7 +83,7 @@ outputs:
 ### AI Enhancement Centralization
 
 1. **Consistent AI Integration**: Same aipr configuration across all workflows
-2. **Provider Flexibility**: Support multiple LLM providers with automatic fallback
+2. **Azure OpenAI Primary**: Standardized on Azure OpenAI with template fallback
 3. **Configuration Management**: Centralized handling of API keys and parameters
 4. **Error Handling**: Unified approach to AI generation failures
 5. **Performance Optimization**: Shared diff size management and token limit handling
@@ -116,7 +115,6 @@ inputs:
   azure-api-key:       # Azure OpenAI API key
   azure-api-base:      # Azure OpenAI endpoint
   azure-api-version:   # Azure OpenAI API version
-  openai-api-key:      # OpenAI API key
   max-diff-lines:      # Maximum diff size for AI processing (default: 20000)
   use-vulns-flag:      # Enable vulnerability analysis (default: true)
   target-branch-for-aipr: # Branch for aipr analysis (defaults to base-branch)
@@ -131,21 +129,19 @@ outputs:
   used-aipr:           # Boolean indicating if AI enhancement was used
 ```
 
-### LLM Provider Priority and Detection
+### LLM Provider Detection
 
 #### Provider Detection Logic
 ```bash
-# Priority order for LLM selection
+# Provider detection
 1. Azure OpenAI (if AZURE_API_KEY and AZURE_API_BASE provided)
-2. OpenAI (if OPENAI_API_KEY provided)
-3. Fallback to provided description
+2. Template fallback when Azure unavailable
 ```
 
 #### Model Configuration
 ```yaml
-# Model mappings for each provider
-Azure: "azure/gpt-4o"
-OpenAI: "gpt-4.1"
+# Model configuration
+Azure: "azure"  # aipr model identifier for Azure OpenAI
 ```
 
 ### Action Implementation Pattern

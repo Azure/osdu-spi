@@ -15,7 +15,7 @@ Modern development workflows can benefit significantly from AI assistance, parti
 
 **Requirements for AI Integration:**
 - **Optional Enhancement**: AI should enhance workflows without being required for basic functionality
-- **Multiple Providers**: Support different AI providers to avoid vendor lock-in
+- **Azure OpenAI Primary**: Standardize on Azure OpenAI as the primary AI provider
 - **Graceful Degradation**: Workflows must function normally when AI services are unavailable
 - **Cost Management**: Intelligent usage patterns to control API costs
 - **Security**: Safe handling of API keys and sensitive data
@@ -29,10 +29,10 @@ Modern development workflows can benefit significantly from AI assistance, parti
 
 Implement **AI-Enhanced Development Workflow Integration** with the following architecture:
 
-### 1. **Multi-Provider AI Support**
-- **Supported Providers**: Azure OpenAI, OpenAI, and other compatible services
-- **Provider Detection**: Automatic detection based on available API keys
-- **Fallback Strategy**: Graceful degradation through provider hierarchy
+### 1. **Azure OpenAI Integration**
+- **Primary Provider**: Azure OpenAI for enterprise compliance and Microsoft ecosystem integration
+- **Provider Detection**: Automatic detection based on available Azure API keys
+- **Fallback Strategy**: Graceful degradation to structured templates when Azure is unavailable
 
 ### 2. **AI PR Generator (aipr) Integration**
 ```bash
@@ -54,13 +54,10 @@ aipr generate --from upstream/main \
 ### 4. **Provider Configuration**
 ```yaml
 env:
-  # Azure OpenAI Configuration
+  # Azure OpenAI Configuration (Required for AI features)
   AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
   AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
   AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
-
-  # OpenAI Configuration
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
 ### 5. **Fallback Mechanisms**
@@ -78,15 +75,10 @@ LLM_MODEL=""
 # Check for Azure OpenAI API key
 if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
   USE_LLM=true
-  LLM_MODEL="azure/gpt-4o"
+  LLM_MODEL="azure"
   echo "Using Azure OpenAI for PR description generation"
-# Check for OpenAI API key
-elif [[ -n "$OPENAI_API_KEY" ]]; then
-  USE_LLM=true
-  LLM_MODEL="gpt-4o"
-  echo "Using OpenAI GPT-4o for PR description generation"
 else
-  echo "No AI provider configured - using fallback templates"
+  echo "No Azure OpenAI configured - using fallback templates"
 fi
 ```
 
@@ -127,22 +119,21 @@ fi
 - **Enhanced PR Quality**: AI-generated descriptions provide comprehensive change analysis
 - **Reduced Manual Work**: Automated generation of conventional commits and PR descriptions
 - **Security Insights**: AI-powered vulnerability triage provides actionable recommendations
-- **Provider Flexibility**: Support for multiple AI providers prevents vendor lock-in
+- **Enterprise Integration**: Azure OpenAI provides compliance and Microsoft ecosystem alignment
 - **Cost Control**: Usage limits and fallback mechanisms control API costs
 
 ### Negative
-- **API Dependencies**: Requires external API keys for full functionality
-- **Complexity**: Multiple provider support adds configuration complexity
+- **API Dependencies**: Requires Azure OpenAI API keys for full functionality
+- **Single Provider**: Standardization on Azure means no fallback to other AI providers
 - **Cost Considerations**: AI API usage incurs costs that need monitoring
 - **Maintenance**: AI tools and models require regular updates
 
 ### Mitigations
-- **Graceful Degradation**: All AI features have non-AI fallbacks
-- **Provider Abstraction**: Common interface for different AI providers
+- **Graceful Degradation**: All AI features have structured template fallbacks
+- **Template Quality**: Non-AI fallbacks provide comprehensive base descriptions
 - **Usage Monitoring**: Track API usage to control costs
-- **Documentation**: Clear setup guides for each provider
+- **Documentation**: Clear Azure OpenAI setup guides
 
 ## References
 - [AI PR Generator Documentation](https://github.com/danielscholl-osdu/pr-generator-agent)
 - [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/cognitive-services/openai-service)
-- [OpenAI API](https://platform.openai.com/docs/overview)

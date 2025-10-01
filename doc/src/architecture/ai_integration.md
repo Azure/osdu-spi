@@ -16,11 +16,11 @@ The OSDU SPI Fork Management system incorporates sophisticated AI capabilities t
 
 <div class="grid cards" markdown>
 
--   :material-swap-horizontal:{ .lg .middle } **Multi-Provider Architecture**
+-   :material-microsoft-azure:{ .lg .middle } **Azure OpenAI Primary**
 
     ---
 
-    Support for multiple AI providers prevents vendor lock-in and enables intelligent provider selection based on availability, cost, and capability requirements.
+    Standardized on Azure OpenAI for enterprise compliance, Microsoft ecosystem integration, and consistent AI capabilities with graceful template fallback.
 
 </div>
 
@@ -48,33 +48,31 @@ The OSDU SPI Fork Management system incorporates sophisticated AI capabilities t
 
 ```mermaid
 graph TD
-    A[Workflow Trigger] --> B[AI Provider Selection]
-    B --> C{Primary: Azure OpenAI}
-    B --> D{Secondary: OpenAI}
+    A[Workflow Trigger] --> B[AI Provider Detection]
+    B --> C{Azure OpenAI Available?}
 
-    C --> F[Azure API Access]
-    D --> G[Direct API Access]
+    C -->|Yes| D[Azure API Access]
+    C -->|No| E[Fallback Templates]
 
-    F --> H[PR Description Generation]
-    G --> H
+    D --> F{API Success?}
+    F -->|Yes| G[AI-Enhanced Output]
+    F -->|No| E
 
-    H --> I[Fallback Templates]
-    I --> J[Final Output]
+    E --> H[Template-Based Output]
 
     style C fill:#f9f,stroke:#333,stroke-width:2px
-    style D fill:#bbf,stroke:#333,stroke-width:2px
-    style I fill:#ffd,stroke:#333,stroke-width:2px
+    style E fill:#ffd,stroke:#333,stroke-width:2px
+    style G fill:#dfd,stroke:#333,stroke-width:2px
 ```
 
 ## Supported AI Providers
 
-The system supports multiple AI providers with automatic detection and intelligent fallback:
+The system uses Azure OpenAI as the primary AI provider with graceful fallback to structured templates:
 
 | Provider | Priority | Integration Method | Key Capabilities | Typical Use Cases |
 |----------|----------|-------------|---------------|---------------|
-| :material-microsoft-azure: **Azure OpenAI** | Primary | Azure API + Enterprise features | Enterprise integration, compliance, GPT-4o access | Microsoft-aligned environments |
-| :material-robot: **OpenAI** | Secondary | Direct API Access | Broad model selection, latest capabilities | General purpose AI tasks |
-| :material-file-document: **Template Fallback** | Fallback | Structured templates | Consistent output, zero-cost operation | When AI unavailable or unsuitable |
+| :material-microsoft-azure: **Azure OpenAI** | Primary | Azure API + Enterprise features | Enterprise integration, compliance, GPT-4o access | All AI-enhanced workflows |
+| :material-file-document: **Template Fallback** | Fallback | Structured templates | Consistent output, zero-cost operation | When Azure unavailable |
 
 ## AI Enhancement Points
 
@@ -118,25 +116,17 @@ AI-powered triage of vulnerability scans:
 ### Provider Detection Logic
 
 ```bash
-# Automatic provider selection based on available credentials
+# Automatic provider detection based on available credentials
 USE_LLM=false
 LLM_MODEL=""
 
-# Check for Azure OpenAI (Primary)
+# Check for Azure OpenAI
 if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
   USE_LLM=true
-  LLM_MODEL="azure/gpt-4o"
+  LLM_MODEL="azure"
   echo "Using Azure OpenAI for AI tasks"
-
-# Check for OpenAI (Secondary)
-elif [[ -n "$OPENAI_API_KEY" ]]; then
-  USE_LLM=true
-  LLM_MODEL="gpt-4"
-  echo "Using OpenAI for AI tasks"
-
-# Fallback to templates
 else
-  echo "No AI provider configured - using templates"
+  echo "No Azure OpenAI configured - using templates"
 fi
 ```
 
@@ -149,19 +139,16 @@ Robust fallback ensures workflow continuity:
 graph TD
     A[AI Task Request] --> B{Azure API Key?}
     B -->|Yes| C[Use Azure OpenAI]
-    B -->|No| D{OpenAI Key?}
-    D -->|Yes| E[Use OpenAI]
-    D -->|No| F[Use Template Fallback]
+    B -->|No| D[Use Template Fallback]
 
-    C --> G{API Success?}
-    E --> G
-    G -->|Yes| H[Return AI Result]
-    G -->|No| F
+    C --> E{API Success?}
+    E -->|Yes| F[Return AI Result]
+    E -->|No| D
 
-    F --> I[Return Template Result]
+    D --> G[Return Template Result]
 
-    style F fill:#ffd,stroke:#333,stroke-width:4px
-    style I fill:#dfd,stroke:#333,stroke-width:2px
+    style D fill:#ffd,stroke:#333,stroke-width:4px
+    style G fill:#dfd,stroke:#333,stroke-width:2px
 ```
 
 ## Security Considerations
@@ -171,11 +158,9 @@ graph TD
 ```yaml
 # GitHub Secrets Configuration
 secrets:
-  AZURE_API_KEY:         # Azure OpenAI API key
-  AZURE_API_BASE:        # Azure endpoint URL
-  AZURE_API_VERSION:     # API version
-  OPENAI_API_KEY:        # OpenAI API key
-  ANTHROPIC_API_KEY:     # Anthropic Claude API key
+  AZURE_API_KEY:         # Azure OpenAI API key (required for AI features)
+  AZURE_API_BASE:        # Azure endpoint URL (required for AI features)
+  AZURE_API_VERSION:     # API version (required for AI features)
 
 # Access Control
 - Repository-level secrets
