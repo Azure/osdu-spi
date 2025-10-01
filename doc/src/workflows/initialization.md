@@ -105,7 +105,6 @@ The initialization process produces clear outcomes to guide your next steps:
 | `GITHUB_TOKEN` | Automatically provided | ✅ Yes |
 | `AZURE_API_KEY` | AI-enhanced PR descriptions | ❌ Optional |
 | `AZURE_API_BASE` | Azure Foundry endpoint | ❌ Optional |
-| `OPENAI_API_KEY` | AI fallback provider | ❌ Optional |
 
 ## Troubleshooting
 
