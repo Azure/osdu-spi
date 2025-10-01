@@ -104,7 +104,7 @@ The initialization process produces clear outcomes to guide your next steps:
 | `UPSTREAM_REPO_URL` | Repository to sync from | ✅ Yes |
 | `GITHUB_TOKEN` | Automatically provided | ✅ Yes |
 | `AZURE_API_KEY` | AI-enhanced PR descriptions | ❌ Optional |
-| `AZURE_API_BASE` | Azure OpenAI endpoint | ❌ Optional |
+| `AZURE_API_BASE` | Azure Foundry endpoint | ❌ Optional |
 | `OPENAI_API_KEY` | AI fallback provider | ❌ Optional |
 
 ## Troubleshooting

@@ -18,13 +18,13 @@ inputs:
     description: 'Fallback PR description if aipr is not available'
     required: true
   azure-api-key:
-    description: 'Azure OpenAI API key for aipr (optional)'
+    description: 'Azure Foundry API key for aipr (optional)'
     required: false  
   azure-api-base:
-    description: 'Azure OpenAI API base URL (optional)'
+    description: 'Azure Foundry API base URL (optional)'
     required: false
   azure-api-version:
-    description: 'Azure OpenAI API version (optional)'
+    description: 'Azure Foundry API version (optional)'
     required: false
   openai-api-key:
     description: 'OpenAI API key for aipr (optional)'
@@ -78,7 +78,7 @@ runs:
         # Map model names for aipr compatibility
         if [[ "$LLM_MODEL" == "azure" ]]; then
           AIPR_MODEL="azure/gpt-4o"
-          echo "Using Azure OpenAI GPT-4o for PR description generation"
+          echo "Using Azure Foundry GPT-4o for PR description generation"
         elif [[ "$LLM_MODEL" == "gpt-4" ]]; then
           AIPR_MODEL="gpt-4.1"
           echo "Using OpenAI GPT-4 for PR description generation"

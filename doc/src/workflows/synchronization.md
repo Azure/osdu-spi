@@ -103,7 +103,7 @@ Look for GitHub issues labeled [`human-required` + `upstream-sync`](../../issues
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Schedule** | `0 0 * * *` | Daily at midnight UTC |
-| **AI Provider** | Azure OpenAI | Primary AI for PR descriptions |
+| **AI Provider** | Azure Foundry | Primary AI for PR descriptions |
 | **AI Diff Limit** | 20,000 lines | Uses standard templates above this limit |
 | **Duplicate Prevention** | Enabled | Prevents multiple PRs for same upstream state |
 | **Monitor Trigger** | 6 hours | Auto-cascade if human trigger missed |

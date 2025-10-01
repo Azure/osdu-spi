@@ -112,9 +112,9 @@ inputs:
 #### Optional Inputs
 ```yaml
 inputs:
-  azure-api-key:       # Azure OpenAI API key
-  azure-api-base:      # Azure OpenAI endpoint
-  azure-api-version:   # Azure OpenAI API version
+  azure-api-key:       # Azure Foundry API key
+  azure-api-base:      # Azure Foundry endpoint
+  azure-api-version:   # Azure Foundry API version
   max-diff-lines:      # Maximum diff size for AI processing (default: 20000)
   use-vulns-flag:      # Enable vulnerability analysis (default: true)
   target-branch-for-aipr: # Branch for aipr analysis (defaults to base-branch)

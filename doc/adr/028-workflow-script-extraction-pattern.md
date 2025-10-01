@@ -99,7 +99,7 @@ Each extracted script group is wrapped in a composite action for workflow integr
 ```yaml
 # .github/actions/llm-provider-detect/action.yml
 name: 'LLM Provider Detection'
-description: 'Detect available LLM provider (Azure OpenAI → OpenAI → Fallback)'
+description: 'Detect available LLM provider (Azure Foundry → OpenAI → Fallback)'
 
 outputs:
   use_llm:

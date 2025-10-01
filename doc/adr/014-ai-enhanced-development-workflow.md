@@ -136,4 +136,4 @@ fi
 
 ## References
 - [AI PR Generator Documentation](https://github.com/danielscholl-osdu/pr-generator-agent)
-- [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/cognitive-services/openai-service)
+- [Azure Foundry Service](https://azure.microsoft.com/en-us/products/cognitive-services/openai-service)
