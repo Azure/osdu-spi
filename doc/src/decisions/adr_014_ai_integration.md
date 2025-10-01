@@ -32,8 +32,8 @@ Modern development workflows can benefit significantly from AI assistance in cod
 - All core operations must work reliably when AI services are unavailable
 - Graceful degradation to standard templates when AI is not accessible
 
-**Azure OpenAI Primary**:
-- Standardize on Azure OpenAI for enterprise compliance and Microsoft ecosystem integration
+**Azure Foundry Primary**:
+- Standardize on Azure Foundry for enterprise compliance and Microsoft ecosystem integration
 - Graceful degradation to structured templates when Azure is unavailable
 - Cost-conscious usage patterns with configurable limits
 
@@ -44,14 +44,14 @@ Modern development workflows can benefit significantly from AI assistance in cod
 
 ## Decision
 
-Implement **AI-Enhanced Development Workflow Integration** with Azure OpenAI as the primary provider:
+Implement **AI-Enhanced Development Workflow Integration** with Azure Foundry as the primary provider:
 
 ```mermaid
 graph TD
     A[Workflow Trigger] --> B[AI Provider Detection]
-    B --> C{Azure OpenAI Available?}
+    B --> C{Azure Foundry Available?}
 
-    C -->|Yes| D[Azure OpenAI Service]
+    C -->|Yes| D[Azure Foundry Service]
     C -->|No| E[Template Fallback]
 
     D --> F{API Success?}
@@ -66,12 +66,12 @@ graph TD
     style G fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
 ```
 
-### :material-microsoft-azure: Primary AI Integration: Azure OpenAI
+### :material-microsoft-azure: Primary AI Integration: Azure Foundry
 
 #### **Enterprise Integration**
 ```yaml
-# Azure OpenAI configuration
-- name: Configure Azure OpenAI
+# Azure Foundry configuration
+- name: Configure Azure Foundry
   env:
     AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
     AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
@@ -99,7 +99,7 @@ graph TD
 
 #### **Template-Based Operation**
 ```yaml
-# Fallback when Azure OpenAI is unavailable
+# Fallback when Azure Foundry is unavailable
 - name: Use Template Fallback
   if: env.AZURE_API_KEY == ''
   run: |
@@ -118,11 +118,11 @@ graph TD
 
 ### :material-brain: Provider Detection
 
-#### **Azure OpenAI Detection Logic**
+#### **Azure Foundry Detection Logic**
 ```mermaid
 graph TD
-    A[AI Task Request] --> B{Azure OpenAI Key?}
-    B -->|Yes| C[Use Azure OpenAI]
+    A[AI Task Request] --> B{Azure Foundry Key?}
+    B -->|Yes| C[Use Azure Foundry]
     B -->|No| D[Use Template Fallback]
 
     C --> E{API Success?}
@@ -253,9 +253,9 @@ This PR integrates 12 commits from upstream with primarily security and dependen
 
 #### **Reliability Through Fallback**
 - No critical dependencies on external AI services through template fallback
-- Service availability maintained when Azure OpenAI is unavailable
+- Service availability maintained when Azure Foundry is unavailable
 - Consistent output quality through well-structured templates
-- Enterprise compliance through standardized Azure OpenAI integration
+- Enterprise compliance through standardized Azure Foundry integration
 
 ## Implementation Benefits
 
@@ -315,4 +315,4 @@ This PR integrates 12 commits from upstream with primarily security and dependen
 
 ---
 
-*This AI integration architecture enhances development workflows while maintaining reliability through Azure OpenAI standardization and graceful template fallback, ensuring the system remains functional and valuable regardless of AI service availability.*
+*This AI integration architecture enhances development workflows while maintaining reliability through Azure Foundry standardization and graceful template fallback, ensuring the system remains functional and valuable regardless of AI service availability.*

@@ -1,12 +1,12 @@
 name: 'LLM Provider Detection'
-description: 'Detect available LLM provider (Azure OpenAI → Fallback)'
+description: 'Detect available LLM provider (Azure Foundry → Fallback)'
 
 outputs:
   use_llm:
     description: 'Whether LLM is available (true/false)'
     value: ${{ steps.detect.outputs.use_llm }}
   llm_model:
-    description: 'LLM model identifier (azure for Azure OpenAI, empty for fallback)'
+    description: 'LLM model identifier (azure for Azure Foundry, empty for fallback)'
     value: ${{ steps.detect.outputs.llm_model }}
 
 runs:

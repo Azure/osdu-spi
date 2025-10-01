@@ -8,7 +8,7 @@ This action checks for available LLM API credentials and sets outputs that workf
 
 ## Detection Priority
 
-1. **Azure OpenAI** (if `AZURE_API_KEY` and `AZURE_API_BASE` are set)
+1. **Azure Foundry** (if `AZURE_API_KEY` and `AZURE_API_BASE` are set)
 2. **Fallback** (no LLM available, use static descriptions)
 
 ## Outputs
@@ -45,12 +45,12 @@ This action checks for available LLM API credentials and sets outputs that workf
 
 ## Local Testing
 
-### Test with Azure OpenAI
+### Test with Azure Foundry
 
 ```bash
 cd .github/actions/llm-provider-detect
 
-# Set Azure OpenAI credentials
+# Set Azure Foundry credentials
 export AZURE_API_KEY="your_azure_key_here"
 export AZURE_API_BASE="https://your-instance.openai.azure.com"
 
@@ -58,7 +58,7 @@ export AZURE_API_BASE="https://your-instance.openai.azure.com"
 ./detect-provider.sh
 
 # Expected output:
-# ✓ Detected Azure OpenAI provider
+# ✓ Detected Azure Foundry provider
 # use_llm=true
 # llm_model=azure
 ```
@@ -76,17 +76,17 @@ unset AZURE_API_BASE
 ./detect-provider.sh
 
 # Expected output:
-# ℹ No Azure OpenAI provider detected (will use fallback descriptions)
+# ℹ No Azure Foundry provider detected (will use fallback descriptions)
 # use_llm=false
 # llm_model=
 ```
 
 ## Integration with aipr Tool
 
-When Azure OpenAI is detected, the `llm_model` output can be used directly with the `aipr` CLI tool:
+When Azure Foundry is detected, the `llm_model` output can be used directly with the `aipr` CLI tool:
 
 ```bash
-# Azure OpenAI
+# Azure Foundry
 aipr pr -m azure -b main -o feature-branch
 ```
 

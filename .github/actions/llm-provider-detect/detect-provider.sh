@@ -3,7 +3,7 @@
 # LLM Provider Detection Script
 #
 # Detects available LLM providers in priority order:
-#   1. Azure OpenAI (if AZURE_API_KEY and AZURE_API_BASE are set)
+#   1. Azure Foundry (if AZURE_API_KEY and AZURE_API_BASE are set)
 #   2. Fallback (no LLM available)
 #
 # Outputs (via GITHUB_OUTPUT):
@@ -21,13 +21,13 @@ set -euo pipefail
 USE_LLM=false
 LLM_MODEL=""
 
-# Check Azure OpenAI
+# Check Azure Foundry
 if [[ -n "${AZURE_API_KEY:-}" ]] && [[ -n "${AZURE_API_BASE:-}" ]]; then
-  echo "✓ Detected Azure OpenAI provider"
+  echo "✓ Detected Azure Foundry provider"
   USE_LLM=true
   LLM_MODEL="azure"
 else
-  echo "ℹ No Azure OpenAI provider detected (will use fallback descriptions)"
+  echo "ℹ No Azure Foundry provider detected (will use fallback descriptions)"
   USE_LLM=false
   LLM_MODEL=""
 fi

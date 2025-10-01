@@ -268,13 +268,13 @@ jobs:
           USE_LLM=false
           LLM_MODEL=""
 
-          # Check for Azure OpenAI API key
+          # Check for Azure Foundry API key
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
             LLM_MODEL="azure"
-            echo "Using Azure OpenAI for PR description generation"
+            echo "Using Azure Foundry for PR description generation"
           else
-            echo "No Azure OpenAI API keys found. Using fallback PR description."
+            echo "No Azure Foundry API keys found. Using fallback PR description."
           fi
           
           # Calculate diff size to avoid generating prompts that exceed model limits
@@ -372,13 +372,13 @@ jobs:
           USE_LLM=false
           LLM_MODEL=""
 
-          # Check for Azure OpenAI API key
+          # Check for Azure Foundry API key
           if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
             USE_LLM=true
             LLM_MODEL="azure"
-            echo "Using Azure OpenAI for PR description regeneration"
+            echo "Using Azure Foundry for PR description regeneration"
           else
-            echo "No Azure OpenAI API keys found. Using fallback PR description."
+            echo "No Azure Foundry API keys found. Using fallback PR description."
           fi
           
           # Calculate diff size to avoid generating prompts that exceed model limits

@@ -15,7 +15,7 @@ Modern development workflows can benefit significantly from AI assistance, parti
 
 **Requirements for AI Integration:**
 - **Optional Enhancement**: AI should enhance workflows without being required for basic functionality
-- **Azure OpenAI Primary**: Standardize on Azure OpenAI as the primary AI provider
+- **Azure Foundry Primary**: Standardize on Azure Foundry as the primary AI provider
 - **Graceful Degradation**: Workflows must function normally when AI services are unavailable
 - **Cost Management**: Intelligent usage patterns to control API costs
 - **Security**: Safe handling of API keys and sensitive data
@@ -29,8 +29,8 @@ Modern development workflows can benefit significantly from AI assistance, parti
 
 Implement **AI-Enhanced Development Workflow Integration** with the following architecture:
 
-### 1. **Azure OpenAI Integration**
-- **Primary Provider**: Azure OpenAI for enterprise compliance and Microsoft ecosystem integration
+### 1. **Azure Foundry Integration**
+- **Primary Provider**: Azure Foundry for enterprise compliance and Microsoft ecosystem integration
 - **Provider Detection**: Automatic detection based on available Azure API keys
 - **Fallback Strategy**: Graceful degradation to structured templates when Azure is unavailable
 
@@ -54,7 +54,7 @@ aipr generate --from upstream/main \
 ### 4. **Provider Configuration**
 ```yaml
 env:
-  # Azure OpenAI Configuration (Required for AI features)
+  # Azure Foundry Configuration (Required for AI features)
   AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
   AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
   AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
@@ -72,13 +72,13 @@ env:
 USE_LLM=false
 LLM_MODEL=""
 
-# Check for Azure OpenAI API key
+# Check for Azure Foundry API key
 if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
   USE_LLM=true
   LLM_MODEL="azure"
-  echo "Using Azure OpenAI for PR description generation"
+  echo "Using Azure Foundry for PR description generation"
 else
-  echo "No Azure OpenAI configured - using fallback templates"
+  echo "No Azure Foundry configured - using fallback templates"
 fi
 ```
 
@@ -119,11 +119,11 @@ fi
 - **Enhanced PR Quality**: AI-generated descriptions provide comprehensive change analysis
 - **Reduced Manual Work**: Automated generation of conventional commits and PR descriptions
 - **Security Insights**: AI-powered vulnerability triage provides actionable recommendations
-- **Enterprise Integration**: Azure OpenAI provides compliance and Microsoft ecosystem alignment
+- **Enterprise Integration**: Azure Foundry provides compliance and Microsoft ecosystem alignment
 - **Cost Control**: Usage limits and fallback mechanisms control API costs
 
 ### Negative
-- **API Dependencies**: Requires Azure OpenAI API keys for full functionality
+- **API Dependencies**: Requires Azure Foundry API keys for full functionality
 - **Single Provider**: Standardization on Azure means no fallback to other AI providers
 - **Cost Considerations**: AI API usage incurs costs that need monitoring
 - **Maintenance**: AI tools and models require regular updates
@@ -132,7 +132,7 @@ fi
 - **Graceful Degradation**: All AI features have structured template fallbacks
 - **Template Quality**: Non-AI fallbacks provide comprehensive base descriptions
 - **Usage Monitoring**: Track API usage to control costs
-- **Documentation**: Clear Azure OpenAI setup guides
+- **Documentation**: Clear Azure Foundry setup guides
 
 ## References
 - [AI PR Generator Documentation](https://github.com/danielscholl-osdu/pr-generator-agent)

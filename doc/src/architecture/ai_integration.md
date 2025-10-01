@@ -16,11 +16,11 @@ The OSDU SPI Fork Management system incorporates sophisticated AI capabilities t
 
 <div class="grid cards" markdown>
 
--   :material-microsoft-azure:{ .lg .middle } **Azure OpenAI Primary**
+-   :material-microsoft-azure:{ .lg .middle } **Azure Foundry Primary**
 
     ---
 
-    Standardized on Azure OpenAI for enterprise compliance, Microsoft ecosystem integration, and consistent AI capabilities with graceful template fallback.
+    Standardized on Azure Foundry for enterprise compliance, Microsoft ecosystem integration, and consistent AI capabilities with graceful template fallback.
 
 </div>
 
@@ -49,7 +49,7 @@ The OSDU SPI Fork Management system incorporates sophisticated AI capabilities t
 ```mermaid
 graph TD
     A[Workflow Trigger] --> B[AI Provider Detection]
-    B --> C{Azure OpenAI Available?}
+    B --> C{Azure Foundry Available?}
 
     C -->|Yes| D[Azure API Access]
     C -->|No| E[Fallback Templates]
@@ -67,11 +67,11 @@ graph TD
 
 ## Supported AI Providers
 
-The system uses Azure OpenAI as the primary AI provider with graceful fallback to structured templates:
+The system uses Azure Foundry as the primary AI provider with graceful fallback to structured templates:
 
 | Provider | Priority | Integration Method | Key Capabilities | Typical Use Cases |
 |----------|----------|-------------|---------------|---------------|
-| :material-microsoft-azure: **Azure OpenAI** | Primary | Azure API + Enterprise features | Enterprise integration, compliance, GPT-4o access | All AI-enhanced workflows |
+| :material-microsoft-azure: **Azure Foundry** | Primary | Azure API + Enterprise features | Enterprise integration, compliance, GPT-4o access | All AI-enhanced workflows |
 | :material-file-document: **Template Fallback** | Fallback | Structured templates | Consistent output, zero-cost operation | When Azure unavailable |
 
 ## AI Enhancement Points
@@ -120,13 +120,13 @@ AI-powered triage of vulnerability scans:
 USE_LLM=false
 LLM_MODEL=""
 
-# Check for Azure OpenAI
+# Check for Azure Foundry
 if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
   USE_LLM=true
   LLM_MODEL="azure"
-  echo "Using Azure OpenAI for AI tasks"
+  echo "Using Azure Foundry for AI tasks"
 else
-  echo "No Azure OpenAI configured - using templates"
+  echo "No Azure Foundry configured - using templates"
 fi
 ```
 
@@ -138,7 +138,7 @@ Robust fallback ensures workflow continuity:
 ```mermaid
 graph TD
     A[AI Task Request] --> B{Azure API Key?}
-    B -->|Yes| C[Use Azure OpenAI]
+    B -->|Yes| C[Use Azure Foundry]
     B -->|No| D[Use Template Fallback]
 
     C --> E{API Success?}
@@ -158,7 +158,7 @@ graph TD
 ```yaml
 # GitHub Secrets Configuration
 secrets:
-  AZURE_API_KEY:         # Azure OpenAI API key (required for AI features)
+  AZURE_API_KEY:         # Azure Foundry API key (required for AI features)
   AZURE_API_BASE:        # Azure endpoint URL (required for AI features)
   AZURE_API_VERSION:     # API version (required for AI features)
 

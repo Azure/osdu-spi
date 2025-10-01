@@ -8,7 +8,7 @@
 During implementation of template synchronization workflows (ADR-011, ADR-012), we identified significant code duplication in PR creation logic across multiple workflows. Each workflow that created pull requests had to implement:
 
 **Duplicated PR Creation Logic:**
-- **LLM Detection**: Check for available Azure OpenAI API keys
+- **LLM Detection**: Check for available Azure Foundry API keys
 - **aipr Integration**: Generate AI-enhanced PR descriptions when possible
 - **Fallback Handling**: Use provided description when AI generation fails
 - **Diff Size Management**: Skip AI generation for large diffs to avoid token limits
@@ -34,12 +34,12 @@ Implement **Reusable GitHub Actions Pattern** for common PR creation functionali
 - **Centralized Logic**: Single implementation of PR creation with AI enhancement
 - **Configurable Parameters**: Flexible inputs for different use cases
 - **Consistent Interface**: Standardized inputs and outputs across workflows
-- **AI Integration**: Built-in aipr integration with Azure OpenAI
+- **AI Integration**: Built-in aipr integration with Azure Foundry
 
 ### 2. **Standardized AI Enhancement Pipeline**
 ```yaml
 # Automatic LLM detection and configuration
-- Azure OpenAI (primary)
+- Azure Foundry (primary)
 - Template fallback when Azure unavailable
 
 # Intelligent diff size management
@@ -83,7 +83,7 @@ outputs:
 ### AI Enhancement Centralization
 
 1. **Consistent AI Integration**: Same aipr configuration across all workflows
-2. **Azure OpenAI Primary**: Standardized on Azure OpenAI with template fallback
+2. **Azure Foundry Primary**: Standardized on Azure Foundry with template fallback
 3. **Configuration Management**: Centralized handling of API keys and parameters
 4. **Error Handling**: Unified approach to AI generation failures
 5. **Performance Optimization**: Shared diff size management and token limit handling
@@ -134,14 +134,14 @@ outputs:
 #### Provider Detection Logic
 ```bash
 # Provider detection
-1. Azure OpenAI (if AZURE_API_KEY and AZURE_API_BASE provided)
+1. Azure Foundry (if AZURE_API_KEY and AZURE_API_BASE provided)
 2. Template fallback when Azure unavailable
 ```
 
 #### Model Configuration
 ```yaml
 # Model configuration
-Azure: "azure"  # aipr model identifier for Azure OpenAI
+Azure: "azure"  # aipr model identifier for Azure Foundry
 ```
 
 ### Action Implementation Pattern
