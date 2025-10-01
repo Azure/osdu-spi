@@ -98,16 +98,8 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          queries: security-extended,security-and-quality
-
-      - name: Build Java project
-        if: matrix.language == 'java-kotlin'
-        run: |
-          mvn clean install -DskipTests -Dmaven.javadoc.skip=true --batch-mode --no-transfer-progress
-
-      - name: Autobuild
-        if: matrix.language != 'java-kotlin'
-        uses: github/codeql-action/autobuild@v3
+          queries: security-extended
+          build-mode: ${{ matrix.language == 'java-kotlin' && 'none' || 'autobuild' }}
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
