@@ -78,7 +78,6 @@ create_ruleset() {
       echo "⚠️ Failed to create '$ruleset_name' ruleset"
       echo "Error: $RULESET_RESPONSE"
       RULESET_SUCCESS=false
-      RULESET_FAILED=false
     else
       RULESET_ID=$(echo "$RULESET_RESPONSE" | jq -r '.id // "null"')
       if [[ "$RULESET_ID" != "null" ]] && [[ -n "$RULESET_ID" ]]; then
