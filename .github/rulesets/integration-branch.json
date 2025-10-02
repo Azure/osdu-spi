@@ -1,0 +1,17 @@
+{
+  "name": "Integration Branch Protection",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/fork_upstream", "refs/heads/fork_integration"],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [],
+  "rules": [
+    {
+      "type": "deletion"
+    }
+  ]
+}
