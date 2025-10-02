@@ -66,18 +66,27 @@ create_ruleset() {
 
   echo "Creating '$ruleset_name' ruleset..."
   if [[ -f "$config_file" ]]; then
-    RULESET_JSON=$(gh api --method POST \
+    # Capture both stdout and stderr
+    RULESET_RESPONSE=$(gh api --method POST \
       -H "Accept: application/vnd.github+json" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
       "/repos/$REPO_FULL_NAME/rulesets" \
-      --input "$config_file" 2>/dev/null || echo "")
+      --input "$config_file" 2>&1) || RULESET_FAILED=true
 
-    if [[ -n "$RULESET_JSON" ]] && [[ "$RULESET_JSON" != "null" ]]; then
-      RULESET_ID=$(echo "$RULESET_JSON" | jq -r '.id')
-      echo "✅ Created '$ruleset_name' ruleset (ID: $RULESET_ID)"
-    else
+    if [[ "$RULESET_FAILED" == "true" ]]; then
       echo "⚠️ Failed to create '$ruleset_name' ruleset"
+      echo "Error: $RULESET_RESPONSE"
       RULESET_SUCCESS=false
+      RULESET_FAILED=false
+    else
+      RULESET_ID=$(echo "$RULESET_RESPONSE" | jq -r '.id // "null"')
+      if [[ "$RULESET_ID" != "null" ]] && [[ -n "$RULESET_ID" ]]; then
+        echo "✅ Created '$ruleset_name' ruleset (ID: $RULESET_ID)"
+      else
+        echo "⚠️ Failed to create '$ruleset_name' ruleset - API returned null ID"
+        echo "Response: $RULESET_RESPONSE"
+        RULESET_SUCCESS=false
+      fi
     fi
   else
     echo "⚠️ Configuration file $config_file not found"

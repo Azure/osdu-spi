@@ -37,9 +37,7 @@
         "require_last_push_approval": false,
         "required_approving_review_count": 1,
         "required_review_thread_resolution": true,
-        "automatic_copilot_code_review_enabled": true,
-        "copilot_code_review_new_pushes": true,
-        "copilot_code_review_draft_prs": false
+        "automatic_copilot_code_review_enabled": true
       }
     },
     {
