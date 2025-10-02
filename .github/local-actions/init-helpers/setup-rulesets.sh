@@ -56,45 +56,40 @@ EOF
   exit 0
 fi
 
-# Create Default Branch Protection ruleset
-echo "Creating 'Default Branch Protection' ruleset..."
-if [[ -f ".github/rulesets/default-branch.json" ]]; then
-  RULESET_JSON=$(cat .github/rulesets/default-branch.json | GH_TOKEN=$GH_TOKEN gh api --method POST \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "/repos/$REPO_FULL_NAME/rulesets" --input - 2>/dev/null || echo "")
+# Export GH_TOKEN for gh CLI to avoid token exposure in process listings
+export GH_TOKEN
 
-  if [[ -n "$RULESET_JSON" ]] && [[ "$RULESET_JSON" != "null" ]]; then
-    RULESET_ID=$(echo "$RULESET_JSON" | jq -r '.id')
-    echo "✅ Created 'Default Branch Protection' ruleset (ID: $RULESET_ID)"
+# Function to create a ruleset from a config file
+create_ruleset() {
+  local config_file="$1"
+  local ruleset_name="$2"
+
+  echo "Creating '$ruleset_name' ruleset..."
+  if [[ -f "$config_file" ]]; then
+    RULESET_JSON=$(gh api --method POST \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "/repos/$REPO_FULL_NAME/rulesets" \
+      --input "$config_file" 2>/dev/null || echo "")
+
+    if [[ -n "$RULESET_JSON" ]] && [[ "$RULESET_JSON" != "null" ]]; then
+      RULESET_ID=$(echo "$RULESET_JSON" | jq -r '.id')
+      echo "✅ Created '$ruleset_name' ruleset (ID: $RULESET_ID)"
+    else
+      echo "⚠️ Failed to create '$ruleset_name' ruleset"
+      RULESET_SUCCESS=false
+    fi
   else
-    echo "⚠️ Failed to create 'Default Branch Protection' ruleset"
+    echo "⚠️ Configuration file $config_file not found"
     RULESET_SUCCESS=false
   fi
-else
-  echo "⚠️ Configuration file .github/rulesets/default-branch.json not found"
-  RULESET_SUCCESS=false
-fi
+}
+
+# Create Default Branch Protection ruleset
+create_ruleset ".github/rulesets/default-branch.json" "Default Branch Protection"
 
 # Create Integration Branch Protection ruleset
-echo "Creating 'Integration Branch Protection' ruleset..."
-if [[ -f ".github/rulesets/integration-branch.json" ]]; then
-  RULESET_JSON=$(cat .github/rulesets/integration-branch.json | GH_TOKEN=$GH_TOKEN gh api --method POST \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "/repos/$REPO_FULL_NAME/rulesets" --input - 2>/dev/null || echo "")
-
-  if [[ -n "$RULESET_JSON" ]] && [[ "$RULESET_JSON" != "null" ]]; then
-    RULESET_ID=$(echo "$RULESET_JSON" | jq -r '.id')
-    echo "✅ Created 'Integration Branch Protection' ruleset (ID: $RULESET_ID)"
-  else
-    echo "⚠️ Failed to create 'Integration Branch Protection' ruleset"
-    RULESET_SUCCESS=false
-  fi
-else
-  echo "⚠️ Configuration file .github/rulesets/integration-branch.json not found"
-  RULESET_SUCCESS=false
-fi
+create_ruleset ".github/rulesets/integration-branch.json" "Integration Branch Protection"
 
 # Store result
 if [[ -n "${GITHUB_ENV:-}" ]]; then

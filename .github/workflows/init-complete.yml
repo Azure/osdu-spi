@@ -272,7 +272,11 @@ jobs:
           echo "Preserving setup scripts and templates for post-push configuration..."
           mkdir -p /tmp/init-helpers /tmp/templates/manual-steps
           cp .github/local-actions/init-helpers/setup-security.sh /tmp/init-helpers/
-          cp .github/local-actions/init-helpers/setup-rulesets.sh /tmp/init-helpers/
+          if [ -f ".github/local-actions/init-helpers/setup-rulesets.sh" ]; then
+            cp .github/local-actions/init-helpers/setup-rulesets.sh /tmp/init-helpers/
+          else
+            echo "⚠️  Warning: setup-rulesets.sh not found, skipping preservation"
+          fi
           cp .github/local-actions/templates/initialization-complete.md /tmp/templates/
           cp .github/local-actions/templates/mcp-setup-issue.md /tmp/templates/
           cp .github/local-actions/templates/manual-steps/*.md /tmp/templates/manual-steps/
