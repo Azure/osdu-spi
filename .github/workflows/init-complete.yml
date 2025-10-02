@@ -43,10 +43,6 @@ jobs:
           echo "🛡️ BLOCKED: This workflow is blocked in template development repositories"
           echo "The IS_TEMPLATE variable is set to 'true', which prevents initialization workflows from running."
           echo "This is a safety mechanism to prevent accidental initialization of the template repository itself."
-          echo ""
-          echo "If you're trying to test initialization:"
-          echo "1. Create a test repository from this template"
-          echo "2. Run the initialization workflow in that repository instead"
           exit 1
 
       - name: Re-checkout for validation
@@ -275,8 +271,12 @@ jobs:
           # Save setup scripts and templates to temp location before cleanup deletes them
           echo "Preserving setup scripts and templates for post-push configuration..."
           mkdir -p /tmp/init-helpers /tmp/templates/manual-steps
-          cp .github/local-actions/init-helpers/setup-branch-protection.sh /tmp/init-helpers/
           cp .github/local-actions/init-helpers/setup-security.sh /tmp/init-helpers/
+          if [ -f ".github/local-actions/init-helpers/setup-rulesets.sh" ]; then
+            cp .github/local-actions/init-helpers/setup-rulesets.sh /tmp/init-helpers/
+          else
+            echo "⚠️  Warning: setup-rulesets.sh not found, skipping preservation"
+          fi
           cp .github/local-actions/templates/initialization-complete.md /tmp/templates/
           cp .github/local-actions/templates/mcp-setup-issue.md /tmp/templates/
           cp .github/local-actions/templates/manual-steps/*.md /tmp/templates/manual-steps/
@@ -312,14 +312,6 @@ jobs:
             GH_TOKEN=$GH_TOKEN gh variable set INITIALIZATION_COMPLETE --body "true"
           fi
 
-      - name: Branch Protection
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Branch protection rules need admin permission
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
-        run: |
-          # Use preserved script from temp location
-          /tmp/init-helpers/setup-branch-protection.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
-
       - name: Configure Security
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Security settings need admin permission
@@ -328,17 +320,19 @@ jobs:
           # Use preserved script from temp location
           /tmp/init-helpers/setup-security.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
 
+      - name: Setup Repository Rulesets
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Ruleset creation needs admin permission
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+        run: |
+          # Use preserved script from temp location
+          /tmp/init-helpers/setup-rulesets.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
+
       - name: Update Status
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
         run: |
           # Build status lines based on success flags
-          if [ "$BRANCH_PROTECTION_SUCCESS" = "true" ]; then
-            PROTECTION_STATUS="**Branch Protection:** main and fork_upstream protected, fork_integration allows direct pushes"
-          else
-            PROTECTION_STATUS="⚠️ **Branch Protection:** Requires manual setup"
-          fi
-
           if [ "$VARIABLES_SUCCESS" = "true" ]; then
             VARIABLE_STATUS="**Repository Variables:** UPSTREAM_REPO_URL and GitHub Copilot firewall allowlist configured"
           else
@@ -351,23 +345,29 @@ jobs:
             SECURITY_STATUS="⚠️ **Security Features:** Requires manual setup"
           fi
 
+          if [ "$RULESET_SUCCESS" = "true" ]; then
+            RULESET_STATUS="**Repository Rulesets:** Default Branch Protection (main) and Integration Branch Protection (fork_upstream, fork_integration) rulesets active"
+          else
+            RULESET_STATUS="⚠️ **Repository Rulesets:** Requires manual setup"
+          fi
+
           # Assemble manual steps if needed (using preserved templates from /tmp)
           MANUAL_STEPS=""
-          if [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] || [ "$VARIABLES_SUCCESS" != "true" ] || [ "$SECURITY_SUCCESS" != "true" ]; then
+          if [ "$VARIABLES_SUCCESS" != "true" ] || [ "$SECURITY_SUCCESS" != "true" ] || [ "$RULESET_SUCCESS" != "true" ]; then
             MANUAL_STEPS="## Manual Configuration Required
 
           Some features require manual setup:
           "
-            [ "$BRANCH_PROTECTION_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/branch-protection.md)"$'\n'
             [ "$VARIABLES_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/repository-variables.md)"$'\n'
             [ "$SECURITY_SUCCESS" != "true" ] && MANUAL_STEPS+="$(cat /tmp/templates/manual-steps/security-features.md)"$'\n'
+            [ "$RULESET_SUCCESS" != "true" ] && MANUAL_STEPS+="- **Repository Rulesets:** Go to Settings → Rules → Rulesets and create rulesets based on configurations in \`.github/rulesets/\`"$'\n'
           fi
 
           # Read template and substitute placeholders (using preserved template from /tmp)
           MESSAGE=$(cat /tmp/templates/initialization-complete.md)
-          MESSAGE="${MESSAGE//\{PROTECTION_STATUS\}/$PROTECTION_STATUS}"
           MESSAGE="${MESSAGE//\{VARIABLE_STATUS\}/$VARIABLE_STATUS}"
           MESSAGE="${MESSAGE//\{SECURITY_STATUS\}/$SECURITY_STATUS}"
+          MESSAGE="${MESSAGE//\{RULESET_STATUS\}/$RULESET_STATUS}"
           MESSAGE="${MESSAGE//\{MANUAL_STEPS\}/$MANUAL_STEPS}"
           MESSAGE="${MESSAGE//\{UPSTREAM_REPO\}/${{ needs.validate_and_setup.outputs.upstream_repo }}}"
 
