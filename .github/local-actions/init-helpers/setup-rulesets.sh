@@ -63,6 +63,7 @@ export GH_TOKEN
 create_ruleset() {
   local config_file="$1"
   local ruleset_name="$2"
+  local RULESET_FAILED=false
 
   echo "Creating '$ruleset_name' ruleset..."
   if [[ -f "$config_file" ]]; then
