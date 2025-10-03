@@ -6,9 +6,7 @@ on:
       - main
 
 permissions:
-  contents: write
-  actions: write
-  issues: write
+  contents: read
 
 env:
   TEMPLATE_NAME: "OSDU SPI Management Template"
@@ -18,11 +16,13 @@ jobs:
   check_template:
     name: Check if template repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       is_template: ${{ steps.check.outputs.is_template }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
 
       - name: Check repository type
         id: check
@@ -46,11 +46,14 @@ jobs:
     needs: check_template
     if: needs.check_template.outputs.is_template == 'false'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     outputs:
       already_initialized: ${{ steps.check.outputs.already_initialized }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
         with:
           fetch-depth: 0
 
@@ -89,14 +92,17 @@ jobs:
     name: Create initialization issue
     needs: [check_template, check_initialization]
     if: |
-      needs.check_template.outputs.is_template == 'false' && 
+      needs.check_template.outputs.is_template == 'false' &&
       needs.check_initialization.outputs.already_initialized == 'false'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     outputs:
       issue-url: ${{ steps.create-issue.outputs.ISSUE_URL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
 
       - name: Configure Git
         uses: ./.github/local-actions/configure-git

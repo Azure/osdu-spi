@@ -5,10 +5,7 @@ on:
     types: [created]
 
 permissions:
-  contents: write
-  actions: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.issue.number }}
@@ -23,12 +20,15 @@ jobs:
       github.event.comment.user.login != 'github-actions[bot]' &&
       vars.IS_TEMPLATE != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     outputs:
       upstream_repo: ${{ steps.validate.outputs.upstream_repo }}
       should_proceed: ${{ steps.validate.outputs.should_proceed }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
 
       - name: Template Repository Protection Check
         id: template_check
@@ -46,7 +46,7 @@ jobs:
           exit 1
 
       - name: Re-checkout for validation
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Checkout operations
@@ -84,9 +84,13 @@ jobs:
     needs: validate_and_setup
     if: needs.validate_and_setup.outputs.should_proceed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+      issues: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Checkout operations

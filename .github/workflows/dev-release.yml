@@ -1,184 +1,30 @@
-name: Template Release
+name: Release Management
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g., v1.1.0)'
-        required: true
-        type: string
+    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+
+# Only run in the template repository
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  validate-release:
-    name: Validate Release
-    runs-on: ubuntu-latest
-    if: github.repository == 'azure/osdu-spi'
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          
-      - name: Validate Template State
-        run: |
-          echo "Validating template is ready for release..."
-          
-          # Check that we're on main branch (for manual releases)
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            current_branch=$(git branch --show-current)
-            if [ "$current_branch" != "main" ]; then
-              echo "❌ Manual releases must be from main branch, currently on: $current_branch"
-              exit 1
-            fi
-          fi
-          
-          # Ensure all required workflows are in template-workflows
-          required_workflows=(
-            "sync.yml"
-            "validate.yml" 
-            "build.yml"
-            "release.yml"
-            "sync-template.yml"
-            "dependabot-validation.yml"
-            "cascade.yml"
-            "cascade-monitor.yml"
-          )
-          
-          for workflow in "${required_workflows[@]}"; do
-            if [ ! -f ".github/template-workflows/$workflow" ]; then
-              echo "❌ Missing required template workflow: $workflow"
-              exit 1
-            fi
-          done
-          
-          # Ensure only legitimate template workflows are in active workflows
-          # Allow: dev-*, init*, docs.yml
-          echo "Checking active workflows..."
-          for workflow_file in .github/workflows/*.yml; do
-            workflow=$(basename "$workflow_file")
-            if [[ ! "$workflow" =~ ^dev- ]] && \
-               [[ ! "$workflow" =~ ^init ]] && \
-               [[ "$workflow" != "docs.yml" ]]; then
-              echo "❌ Unexpected workflow found: $workflow"
-              echo "Only dev-*, init*, and docs.yml workflows are allowed in the template"
-              exit 1
-            fi
-          done
-          echo "✅ All active workflows are valid"
-          
-          echo "✅ Template is ready for release"
-          
-      - name: Generate Release Notes
-        id: release-notes
-        run: |
-          # Get the previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-          CURRENT_TAG="${{ github.ref_name }}"
-          
-          if [ -z "$PREV_TAG" ]; then
-            echo "## Initial Release" > release_notes.md
-            echo "" >> release_notes.md
-            echo "This is the initial release of the OSDU Fork Management Template." >> release_notes.md
-          else
-            echo "## Changes since $PREV_TAG" > release_notes.md
-            echo "" >> release_notes.md
-            
-            # Get commits since last tag
-            git log --pretty=format:"- %s" "$PREV_TAG..HEAD" >> release_notes.md
-          fi
-          
-          echo "" >> release_notes.md
-          echo "## Template Features" >> release_notes.md
-          echo "- ✅ Automated fork initialization" >> release_notes.md
-          echo "- ✅ Daily upstream synchronization" >> release_notes.md
-          echo "- ✅ Three-branch management strategy" >> release_notes.md
-          echo "- ✅ AI-enhanced PR descriptions" >> release_notes.md
-          echo "- ✅ Automated conflict detection" >> release_notes.md
-          echo "- ✅ Semantic versioning and releases" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "## Usage" >> release_notes.md
-          echo "1. Click 'Use this template' to create a new repository" >> release_notes.md
-          echo "2. Go to Actions → Run 'Initialize Fork' workflow" >> release_notes.md
-          echo "3. Follow the setup instructions in the created issue" >> release_notes.md
-          
-  create-release:
+  release-please:
     name: Create Release
-    needs: validate-release
     runs-on: ubuntu-latest
     if: github.repository == 'azure/osdu-spi'
-    
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
+
+      - name: Generate Release PR
+        uses: googleapis/release-please-action@c2a5a2bd6a758a0937f1ddb1e8950609867ed15c  # v4
+        id: release
         with:
-          fetch-depth: 0
-          
-      - name: Generate Release Notes
-        id: release-notes
-        run: |
-          # Get the previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-          CURRENT_TAG="${{ github.ref_name }}"
-          
-          if [ -z "$PREV_TAG" ]; then
-            echo "## 🚀 Initial Release" > release_notes.md
-            echo "" >> release_notes.md
-            echo "This is the initial release of the OSDU Fork Management Template." >> release_notes.md
-          else
-            echo "## 📋 Changes since $PREV_TAG" > release_notes.md
-            echo "" >> release_notes.md
-            
-            # Get commits since last tag, categorized
-            echo "### ✨ Features" >> release_notes.md
-            git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep "^- feat" >> release_notes.md || echo "- No new features" >> release_notes.md
-            echo "" >> release_notes.md
-            
-            echo "### 🐛 Bug Fixes" >> release_notes.md  
-            git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep "^- fix" >> release_notes.md || echo "- No bug fixes" >> release_notes.md
-            echo "" >> release_notes.md
-            
-            echo "### 📚 Documentation" >> release_notes.md
-            git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep "^- doc" >> release_notes.md || echo "- No documentation changes" >> release_notes.md
-            echo "" >> release_notes.md
-            
-            echo "### 🔧 Other Changes" >> release_notes.md
-            git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep -v "^- feat\|^- fix\|^- doc" >> release_notes.md || echo "- No other changes" >> release_notes.md
-          fi
-          
-          echo "" >> release_notes.md
-          echo "## 🎯 Template Features" >> release_notes.md
-          echo "- ✅ **Automated Fork Initialization** - One-click repository setup" >> release_notes.md
-          echo "- ✅ **Daily Upstream Sync** - Automatic upstream change integration" >> release_notes.md  
-          echo "- ✅ **Three-Branch Strategy** - Controlled merge and conflict resolution" >> release_notes.md
-          echo "- ✅ **AI-Enhanced PRs** - AI-powered PR descriptions" >> release_notes.md
-          echo "- ✅ **Conflict Detection** - Automated conflict identification and guidance" >> release_notes.md
-          echo "- ✅ **Semantic Versioning** - Automated releases with changelog generation" >> release_notes.md
-          echo "- ✅ **Template Development** - Separated workflows for template vs fork development" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "## 🚀 Quick Start" >> release_notes.md
-          echo "1. Click **'Use this template'** to create a new repository" >> release_notes.md
-          echo "2. Go to **Actions** → Run **'Initialize Fork'** workflow" >> release_notes.md
-          echo "3. Follow the setup instructions in the created issue" >> release_notes.md
-          echo "4. Provide your upstream repository URL when prompted" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "## 📖 Documentation" >> release_notes.md
-          echo "- [Product Overview](https://github.com/azure/osdu-spi/blob/main/doc/overview.md)" >> release_notes.md
-          echo "- [Architecture Decisions](https://github.com/azure/osdu-spi/blob/main/doc/adr/index.md)" >> release_notes.md
-          echo "- [Development Guide](https://github.com/azure/osdu-spi/blob/main/README.md)" >> release_notes.md
-          
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Create the release
-          gh release create "${{ github.ref_name }}" \
-            --title "OSDU Fork Management Template ${{ github.ref_name }}" \
-            --notes-file release_notes.md \
-            --latest
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .release-please-config.json

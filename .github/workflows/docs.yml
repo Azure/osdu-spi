@@ -13,9 +13,7 @@ on:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
@@ -29,15 +27,19 @@ jobs:
     # Simple, efficient condition - only run if template repository
     # This prevents fork instances from running the workflow at all
     if: vars.IS_TEMPLATE == 'true'
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     environment:
       name: github-pages
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c  # v6
         with:
           python-version: 3.x
-      - run: pip install mkdocs mkdocs-material mkdocs-minify-plugin pymdown-extensions
+      - run: pip install mkdocs==1.6.1 mkdocs-material==9.5.47 mkdocs-minify-plugin==0.8.0 pymdown-extensions==10.12
       - run: |
           cd doc
           mkdocs gh-deploy --force --clean --verbose
