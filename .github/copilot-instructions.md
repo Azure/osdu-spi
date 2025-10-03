@@ -128,7 +128,6 @@ jobs:
 - Reference ADRs for architectural decisions
 
 ### Documentation Standards
-- Keep CLAUDE.md updated for Claude Code compatibility
 - Document new features in appropriate `doc/` files
 - Create ADRs for significant architecture changes
 - Use clear, descriptive variable and function names
@@ -136,8 +135,7 @@ jobs:
 ## Quick Reference
 
 ### Key Files
-- `CLAUDE.md` - Claude Code instructions
-- `doc/adr/` - Architecture decisions
+- `doc/src/adr/` - Architecture decisions
 - `.github/workflows/` - All automation workflows
 - `doc/product-prd.md` - Product requirements
 
@@ -162,10 +160,3 @@ gh pr status
 gh issue list --label copilot
 ```
 
-## Support
-
-For questions or issues:
-1. Check existing documentation in `doc/`
-2. Review Architecture Decision Records
-3. Create an issue with appropriate labels
-4. Tag with `copilot` if suitable for AI implementation

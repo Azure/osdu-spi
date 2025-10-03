@@ -88,20 +88,16 @@
         {
           "path": ".github/workflows/init-complete.yml",
           "description": "Repository setup and configuration (template only)"
+        },
+        {
+          "path": ".github/workflows/dev-release.yml",
+          "description": "Template release management with Release Please (template only)"
         }
       ],
       "development_only": [
         {
           "path": ".github/workflows/dev-ci.yml",
           "description": "Template development CI/CD (removed during initialization)"
-        },
-        {
-          "path": ".github/workflows/dev-test.yml",
-          "description": "Template testing workflows (removed during initialization)"
-        },
-        {
-          "path": ".github/workflows/dev-release.yml",
-          "description": "Template release management (removed during initialization)"
         }
       ]
     },
@@ -185,8 +181,16 @@
         "reason": "One-time setup workflow no longer needed"
       },
       {
+        "path": ".github/workflows/dev-release.yml",
+        "reason": "Template release workflow - fork instances use .github/template-workflows/release.yml"
+      },
+      {
         "path": ".github/workflows/docs.yml",
         "reason": "Template documentation deployment workflow - not needed in fork instances"
+      },
+      {
+        "path": ".github/workflows/dev-ci.yml",
+        "reason": "Template development CI/CD - not needed in fork instances"
       }
     ]
   }
