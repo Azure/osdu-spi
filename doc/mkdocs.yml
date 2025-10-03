@@ -126,5 +126,5 @@ nav:
       - Build: workflows/build.md
       - Release: workflows/release.md
   - Decisions:
-      - Index: decisions/index.md
-      - Evolution: decisions/evolution.md
+      - Index: adr/index.md
+      - Learnings: adr/learnings.md
