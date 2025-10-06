@@ -47,18 +47,21 @@ git commit --allow-empty -m "$META_COMMIT_MSG"
 ### Why Meta Commit Strategy is Optimal
 
 **Enterprise Requirements Met:**
+
 - ✅ Complete OSDU commit history preserved for debugging
 - ✅ Full git blame/bisect capability maintained  
 - ✅ Regulatory audit trail compliance
 - ✅ Individual commit attribution intact
 
 **Automation Requirements Met:**
+
 - ✅ Release Please works seamlessly with meta commits
 - ✅ Accurate conventional commit categorization via AI
 - ✅ Automated semantic versioning continues
 - ✅ Changelog generation remains functional
 
 **Technical Advantages:**
+
 - ✅ Simple 4-step implementation
 - ✅ No complex git history rewriting
 - ✅ Robust error handling with fallbacks
@@ -67,16 +70,19 @@ git commit --allow-empty -m "$META_COMMIT_MSG"
 ### Why Not Other Solutions
 
 **Squash Merge Rejected:**
+
 - ❌ Loses granular OSDU history critical for debugging
 - ❌ Makes cherry-picking and selective reverts impossible
 - ❌ Breaks enterprise traceability requirements
 
 **Commit Transformation Rejected:**
+
 - ❌ Complex implementation with high failure risk
 - ❌ May break git signatures and upstream attribution
 - ❌ Difficult to maintain reliability across edge cases
 
 **Manual Release Rejected:**
+
 - ❌ Loses automation benefits
 - ❌ Introduces human error potential
 - ❌ Doesn't scale with frequent upstream syncs
@@ -84,12 +90,14 @@ git commit --allow-empty -m "$META_COMMIT_MSG"
 ## Implementation Details
 
 ### AI Integration
+
 - **Tool**: AIPR 1.4.0+ with `--from <SHA>` capability
 - **Analysis Scope**: Changes between last sync point and current HEAD
 - **Context**: "upstream sync" helps AI categorize appropriately
 - **Timeout**: 60 seconds to prevent workflow hanging
 
 ### Error Handling Strategy
+
 ```yaml
 # Comprehensive fallback chain
 if timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync"; then
@@ -101,6 +109,7 @@ fi
 ```
 
 ### Validation Requirements
+
 - Conventional commit format: `type: description` with non-empty description
 - Supported types: `feat|fix|chore|docs|style|refactor|perf|test|build|ci`
 - Minimum description length validation
@@ -109,6 +118,7 @@ fi
 ## Consequences
 
 ### Positive
+
 - **Reliable Automation**: Release Please integration works consistently
 - **Preserved History**: Complete upstream commit attribution maintained
 - **Enterprise Compliance**: Audit trail requirements satisfied
@@ -116,11 +126,13 @@ fi
 - **Fallback Reliability**: Workflow never fails due to AI issues
 
 ### Negative
+
 - **Mixed Commit History**: Developers see conventional + non-conventional commits
 - **Additional Complexity**: Meta commit logic adds workflow steps
 - **AI Dependency**: Optimal categorization requires external AI services
 
 ### Neutral
+
 - **Release Please Behavior**: Functions exactly as designed for mixed commit repositories
 - **Git History Size**: Minimal increase due to empty meta commits
 - **Performance Impact**: Negligible overhead from additional commit
@@ -128,12 +140,14 @@ fi
 ## Monitoring and Success Criteria
 
 ### Success Metrics
+
 - Release Please correctly versions based on meta commits
 - No workflow failures due to conventional commit validation
 - AI analysis success rate > 80% (with graceful fallback)
 - Complete upstream history preservation verified
 
 ### Monitoring Points
+
 - AIPR success/failure rates in workflow logs
 - Release Please version bumping accuracy
 - Meta commit format compliance
@@ -142,12 +156,14 @@ fi
 ## Future Evolution
 
 ### Potential Enhancements
+
 - Enhanced AI context with upstream repository analysis
 - Custom conventional commit type mappings for specific file patterns
 - Integration with upstream release notes for better categorization
 - Advanced conflict resolution strategies for complex merges
 
 ### Migration Strategy
+
 - Current implementation is additive (no breaking changes)
 - Can be disabled by reverting to simple merge if needed
 - Compatible with existing Release Please configurations
@@ -156,11 +172,13 @@ fi
 ---
 
 ## References
+
 - [AIPR 1.4.0 Documentation](https://pypi.org/project/pr-generator-agent/)
 - [Release Please Documentation](https://github.com/googleapis/release-please)
 - [Conventional Commits Specification](https://www.conventionalcommits.org/)
 - [ADR-001: Three-Branch Strategy](001-three-branch-strategy.md)
 - [ADR-011: Configuration-Driven Template Sync](011-configuration-driven-template-sync.md)
+
 ---
 
 [← ADR-022](022-issue-lifecycle-tracking-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-024 →](024-sync-workflow-duplicate-prevention-architecture.md)

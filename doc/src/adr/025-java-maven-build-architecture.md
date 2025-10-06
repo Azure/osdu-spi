@@ -46,21 +46,25 @@ Implement **Java/Maven as the primary build architecture** with:
 ## Alternatives Considered
 
 ### 1. Multi-Language Support (Java, Python, Node.js)
+
 - **Pros**: Broader applicability, flexibility for different project types
 - **Cons**: Complexity, maintenance overhead, diluted focus
 - **Decision**: Rejected - OSDU is Java-centric, focus provides better experience
 
 ### 2. Gradle Build System
+
 - **Pros**: More flexible, better performance, Kotlin DSL
 - **Cons**: OSDU uses Maven, would require conversion effort
 - **Decision**: Rejected - Incompatible with OSDU ecosystem standards
 
 ### 3. Bazel Build System
+
 - **Pros**: Excellent for monorepos, reproducible builds
 - **Cons**: Steep learning curve, not used in OSDU
 - **Decision**: Rejected - Too different from OSDU practices
 
 ### 4. No Build System Opinion
+
 - **Pros**: Maximum flexibility for teams
 - **Cons**: No automation, inconsistent practices, manual setup
 - **Decision**: Rejected - Defeats purpose of template automation
@@ -111,6 +115,7 @@ settings.xml generated with:
 ## Consequences
 
 ### Positive
+
 - **Zero Configuration**: Java projects work immediately after fork creation
 - **Fast Builds**: Dependency caching reduces build times significantly
 - **OSDU Compatible**: Seamless integration with OSDU ecosystem
@@ -119,12 +124,14 @@ settings.xml generated with:
 - **Consistent Experience**: Same build behavior across all forks
 
 ### Negative
+
 - **Java-Only Focus**: Non-Java projects require custom workflow modifications
 - **Maven Lock-in**: Projects using Gradle need conversion or custom workflows
 - **Version Constraints**: Locked to Java 17 (though configurable)
 - **GitLab Dependency**: Requires GitLab community repository access
 
 ### Neutral
+
 - **Opinionated Defaults**: Prescriptive approach may not suit all teams
 - **OSDU Alignment**: Tightly coupled to OSDU ecosystem practices
 - **Action Maintenance**: Reusable actions require ongoing updates
@@ -151,6 +158,7 @@ For existing repositories adopting this architecture:
 ## Future Evolution
 
 ### Potential Enhancements
+
 1. **Multi-module Support**: Better support for Maven multi-module projects
 2. **Parallel Builds**: Implement parallel test execution for faster builds
 3. **Container Builds**: Add Docker/OCI image building to workflow
@@ -158,6 +166,7 @@ For existing repositories adopting this architecture:
 5. **Performance Profiling**: Build performance metrics and optimization
 
 ### Extensibility Points
+
 - Custom Maven settings via repository variables
 - Override Java version through workflow inputs
 - Additional Maven repositories via configuration
@@ -175,6 +184,7 @@ For existing repositories adopting this architecture:
 - [Maven Documentation](https://maven.apache.org/guides/)
 - [JaCoCo Documentation](https://www.jacoco.org/jacoco/trunk/doc/)
 - [GitHub Actions Java Setup](https://github.com/actions/setup-java)
+
 ---
 
 [← ADR-024](024-sync-workflow-duplicate-prevention-architecture.md) | :material-arrow-up: [Catalog](index.md) | [ADR-026 →](026-dependabot-security-update-strategy.md)

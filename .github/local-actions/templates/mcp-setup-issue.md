@@ -17,17 +17,8 @@ To enable the Maven MCP Server for GitHub Copilot Agent in this repository, you 
 {
   "mcpServers": {
     "mvn-mcp-server": {
-      "type": "local",
       "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/danielscholl-osdu/mvn-mcp-server@main",
-        "mvn-mcp-server"
-      ],
-      "env": {},
-      "tools": [
-        "*"
-      ]
+      "args": ["mvn-mcp-server"]
     }
   }
 }
