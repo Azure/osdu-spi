@@ -1,4 +1,4 @@
-# 🤖 Configure MCP Server for GitHub Copilot Agent
+# Configure MCP Server for GitHub Copilot Agent
 
 To enable the Maven MCP Server for GitHub Copilot Agent in this repository, you need to manually configure it in the repository settings.
 
@@ -19,7 +19,8 @@ To enable the Maven MCP Server for GitHub Copilot Agent in this repository, you 
     "mvn-mcp-server": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["mvn-mcp-server"]
+      "args": ["mvn-mcp-server"],
+      "tools": []
     }
   }
 }
