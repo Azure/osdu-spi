@@ -237,15 +237,7 @@ jobs:
 
 ### Phase 3: Secret Distribution
 
-**Organization-Level Secrets** (Preferred):
-
-```bash
-# Add secrets at organization level for all repositories
-gh secret set RELEASE_APP_ID --org danielscholl-osdu --body "2072585"
-gh secret set RELEASE_APP_PRIVATE_KEY --org danielscholl-osdu --body "@osdu-spi-automation.pem"
-```
-
-**Repository-Level Secrets** (Alternative):
+**Repository-Level Secrets**:
 
 ```bash
 # Add secrets to individual repository
@@ -284,28 +276,6 @@ gh secret set RELEASE_APP_PRIVATE_KEY --repo Azure/osdu-spi --body "@osdu-spi-au
 3. Update organization secrets with new key
 4. Review audit logs for unauthorized operations
 5. Document incident per Microsoft security procedures
-
-## Migration Strategy
-
-### For Existing Fork Repositories
-
-**Step 1: Add Organization Secrets** (One-time)
-```bash
-gh secret set RELEASE_APP_ID --org danielscholl-osdu --body "2072585" --visibility all
-gh secret set RELEASE_APP_PRIVATE_KEY --org danielscholl-osdu --body "@osdu-spi-automation.pem" --visibility all
-```
-
-**Step 2: Install App on Repository**
-
-- Navigate to app installation settings
-- Add repository to installation list
-- No workflow changes needed (template sync distributes updated workflows)
-
-**Step 3: Verify Installation**
-
-- Trigger workflow that uses app authentication
-- Check workflow logs for successful token generation
-- Verify operations complete without permission errors
 
 ### For New Fork Repositories
 
