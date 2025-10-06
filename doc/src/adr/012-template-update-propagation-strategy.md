@@ -8,6 +8,7 @@
 Following the implementation of configuration-driven template synchronization (ADR-011), we needed a strategy for actually propagating template updates to existing forked repositories. The sync configuration defined *what* should be synchronized, but we needed to define *how* and *when* template updates reach forked repositories.
 
 **Requirements for Template Update System:**
+
 - **Automatic Updates**: Template improvements should reach forks without manual intervention
 - **Selective Syncing**: Only template infrastructure should be updated, not project-specific content
 - **Change Visibility**: Teams should see exactly what template changes are being applied
@@ -16,6 +17,7 @@ Following the implementation of configuration-driven template synchronization (A
 - **Version Tracking**: Track which template version each fork is synchronized to
 
 **Challenges to Address:**
+
 - **Bootstrap Problem**: How do forked repositories get the template sync capability initially?
 - **Change Detection**: How to identify which template changes are relevant to forks?
 - **Update Scheduling**: When should template updates be checked and applied?
@@ -26,18 +28,21 @@ Following the implementation of configuration-driven template synchronization (A
 Implement **Template Update Propagation** through a dedicated `template-sync.yml` workflow that:
 
 ### 1. **Template Sync Workflow**: `template-sync.yml`
+
 - **Triggers**: Weekly schedule (Monday 8 AM) + manual dispatch
 - **Function**: Detects template changes and creates update PRs
 - **Scope**: Only files defined in sync configuration (ADR-011)
 - **Output**: Pull requests with AI-enhanced descriptions of changes
 
 ### 2. **Two-Repository Architecture**
+
 - **Template Repository**: Source of truth for infrastructure improvements
 - **Fork Repositories**: Receive template updates via template-sync workflow
 - **Separation**: Template management stays in template, project automation goes to forks
 - **Human-Centric Flow**: Template updates include instructions for manual cascade triggering
 
 ### 3. **Change Detection and Propagation**
+
 ```yaml
 # Track last synced template commit
 .github/.template-sync-commit
@@ -50,6 +55,7 @@ PR: "🔄 Sync template updates YYYY-MM-DD"
 ```
 
 ### 4. **Intelligent Sync Scope**
+
 - **Configuration-Driven**: Uses `.github/sync-config.json` to determine what to sync
 - **Selective Updates**: Only syncs files defined in sync rules
 - **Change-Based**: Only creates PRs when relevant template changes exist
@@ -178,14 +184,17 @@ on:
 ### Bootstrap Strategy
 
 #### Initial Template Sync Capability
+
 - **Template sync workflow included in essential workflows** (ADR-011)
 - **Copied during repository initialization** via `init-complete.yml`
 - **Self-updating capability** - template sync can update itself
 
 #### Auto-Bootstrap for Existing Repositories
+
 **Problem**: Repositories created before template sync implementation lack tracking files.
 
 **Solution**: Auto-bootstrap detection and initialization:
+
 ```bash
 # Detect missing or empty tracking file
 if [ -f "$LAST_SYNC_FILE" ] && [ -s "$LAST_SYNC_FILE" ]; then
@@ -201,6 +210,7 @@ fi
 ```
 
 **Benefits**:
+
 - **Seamless Migration**: Existing repositories can adopt template sync without manual intervention
 - **Smart Baseline**: Uses earliest template infrastructure commit, not arbitrary date
 - **Immediate Tracking**: Creates tracking file during detection to prevent future bootstrap issues
@@ -222,6 +232,7 @@ fi
 ### Version Tracking System
 
 #### Commit Tracking File
+
 ```bash
 # .github/.template-sync-commit contains SHA of last synced template commit
 echo "$TEMPLATE_COMMIT" > .github/.template-sync-commit
@@ -229,6 +240,7 @@ git add .github/.template-sync-commit
 ```
 
 #### Template Version References
+
 - **Each sync PR documents template commit range**
 - **Git history shows template update progression**
 - **Easy to identify which template features are available**
@@ -236,26 +248,31 @@ git add .github/.template-sync-commit
 ## Alternatives Considered
 
 ### 1. **Push-Based Updates from Template**
+
 - **Pros**: Immediate propagation, centralized control
 - **Cons**: Requires write access to all forks, security concerns
 - **Decision**: Rejected due to security and access complexity
 
 ### 2. **Manual Update Process**
+
 - **Pros**: Full control, simple implementation
 - **Cons**: Relies on teams remembering to update, inconsistent adoption
 - **Decision**: Rejected due to poor adoption rates
 
 ### 3. **Webhook-Based Real-Time Updates**
+
 - **Pros**: Immediate updates when template changes
 - **Cons**: Complex setup, potential for update spam
 - **Decision**: Rejected in favor of predictable scheduled updates
 
 ### 4. **Git Submodule for Template Infrastructure**
+
 - **Pros**: Native Git functionality
 - **Cons**: Complex for teams, doesn't handle selective syncing
 - **Decision**: Rejected due to user experience complexity
 
 ### 5. **Daily Template Sync Schedule**
+
 - **Pros**: More frequent updates
 - **Cons**: Potential for too many PRs, disruption to team workflow
 - **Decision**: Rejected in favor of weekly schedule
@@ -263,6 +280,7 @@ git add .github/.template-sync-commit
 ## Consequences
 
 ### Positive
+
 - **Automatic Template Benefits**: Teams automatically get template improvements
 - **Reduced Maintenance**: Minimal manual work required to stay current with template
 - **Consistent Infrastructure**: All repositories maintain current best practices
@@ -273,6 +291,7 @@ git add .github/.template-sync-commit
 - **Human Control**: Explicit guidance on when workflow changes need cascade integration
 
 ### Negative
+
 - **Additional PRs and Issues**: Weekly template update PRs and tracking issues require team attention
 - **Manual Integration Steps**: Workflow changes may require manual cascade triggering
 - **Potential Conflicts**: Template changes might conflict with local modifications
@@ -281,6 +300,7 @@ git add .github/.template-sync-commit
 - **Learning Curve**: Teams need to understand when template changes require cascade integration
 
 ### Mitigation Strategies
+
 - **AI-Enhanced Descriptions**: Clear PR descriptions explain what's changing and why
 - **Explicit Instructions**: Issues provide clear guidance on when cascade integration is needed
 - **Selective Syncing**: Only essential infrastructure updated, not project code
@@ -303,12 +323,14 @@ git add .github/.template-sync-commit
 ## Monitoring and Analytics
 
 ### Template Update Metrics
+
 - **Sync Success Rate**: Percentage of successful template sync PRs
 - **Update Lag Time**: Time from template change to fork merge
 - **Conflict Rate**: Frequency of template update conflicts
 - **Adoption Rate**: Percentage of template update PRs that get merged
 
 ### Health Indicators
+
 - **Template Sync Workflow Failures**: Alert on sync workflow failures
 - **Large Sync Gaps**: Alert when forks fall behind template by significant margin
 - **Conflict Trends**: Monitor increasing conflict rates as indicator of template design issues
@@ -316,6 +338,7 @@ git add .github/.template-sync-commit
 ## Future Evolution
 
 ### Potential Enhancements
+
 1. **Smart Scheduling**: Adjust sync frequency based on template change rate
 2. **Priority Updates**: Immediate sync for security-critical template changes
 3. **Conflict Resolution**: Automated conflict resolution for common scenarios
@@ -323,14 +346,17 @@ git add .github/.template-sync-commit
 5. **Rollback Capability**: Automated rollback of problematic template updates
 
 ### Integration Opportunities
+
 - **Security Scanning**: Integration with security tools to prioritize security-related template updates
 - **Testing Integration**: Automated testing of template updates before creating PRs
 - **Analytics Dashboard**: Visibility into template update health across organization
 
 ## Related ADRs
+
 - **ADR-011**: Configuration-Driven Template Synchronization (provides the foundation for this strategy)
 - **ADR-013**: Reusable GitHub Actions Pattern (enables consistent PR creation)
 - **ADR-003**: Template Repository Pattern (original template architecture, extended by this decision)
+
 ---
 
 [← ADR-011](011-configuration-driven-template-sync.md) | :material-arrow-up: [Catalog](index.md) | [ADR-013 →](013-reusable-github-actions-pattern.md)

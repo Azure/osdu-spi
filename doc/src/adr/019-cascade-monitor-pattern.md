@@ -14,6 +14,7 @@ The cascade workflow needs to be triggered when upstream changes are merged into
 5. **Error Recovery**: Failed or missed triggers need reliable detection and recovery mechanisms
 
 The original approach assumed automatic triggering was preferred, but this created:
+
 - Unreliable triggering due to workflow file availability issues
 - Lack of human control over integration timing
 - Poor visibility into cascade progress and state
@@ -33,18 +34,21 @@ Implement a **Human-Centric Cascade Pattern** with monitor-based safety net:
 ## Rationale
 
 ### Human Control and Visibility
+
 - **Explicit Human Decisions**: Humans control when integration happens after reviewing changes
 - **Clear Instructions**: sync.yml provides explicit steps for manual cascade triggering
 - **Issue Lifecycle Tracking**: Complete audit trail from sync detection to production deployment
 - **Progress Visibility**: Real-time updates on cascade state through issue comments
 
 ### Reliable Safety Net
+
 - **Monitor as Backup**: Detects when humans forget to trigger cascades
 - **Automatic Recovery**: Safety net triggers missed cascades with clear documentation
 - **Git-based Detection**: Uses reliable branch comparison to detect pending changes
 - **No Event Dependencies**: Not dependent on GitHub event triggering limitations
 
 ### Comprehensive State Management
+
 - **Label-based Tracking**: Issue labels track cascade state progression
 - **Comment-based Updates**: Detailed progress updates in tracking issues  
 - **Error State Handling**: Automated failure detection and recovery workflows
@@ -52,6 +56,7 @@ Implement a **Human-Centric Cascade Pattern** with monitor-based safety net:
 - **Self-Healing Recovery**: Automatic retry system based on human intervention signals
 
 ### Improved Team Experience
+
 - **Predictable Process**: Teams know exactly when and how to trigger cascades
 - **Better Timing Control**: Can batch changes or time integrations appropriately
 - **Clear Error Recovery**: Obvious next steps when things go wrong
@@ -60,6 +65,7 @@ Implement a **Human-Centric Cascade Pattern** with monitor-based safety net:
 ## Alternatives Considered
 
 ### 1. Direct Push Triggers
+
 ```yaml
 # In cascade.yml
 on:
@@ -71,6 +77,7 @@ on:
 **Decision**: Rejected due to unwanted triggers
 
 ### 2. Combined PR and Push Triggers
+
 ```yaml
 # In cascade.yml (original approach)
 on:
@@ -80,21 +87,25 @@ on:
     types: [closed]
     branches: [fork_upstream, fork_integration]
 ```
+
 **Pros**: Handles various trigger scenarios
 **Cons**: Complex conditional logic; hard to debug; no error handling
 **Decision**: Rejected due to complexity and reliability issues
 
 ### 3. External Webhook System
+
 **Pros**: Maximum flexibility, external control
 **Cons**: Additional infrastructure; more complex setup; maintenance overhead
 **Decision**: Rejected due to complexity for minimal benefit
 
 ### 4. Scheduled Polling
+
 ```yaml
 on:
   schedule:
     - cron: '*/5 * * * *'  # Every 5 minutes
 ```
+
 **Pros**: Guaranteed to catch changes eventually
 **Cons**: Up to 5-minute delay; inefficient; doesn't scale well
 **Decision**: Rejected as primary approach (kept as backup in monitor)
@@ -102,6 +113,7 @@ on:
 ## Implementation Details
 
 ### Sync Workflow Instructions
+
 ```yaml
 # In sync.yml notification
 **Next Steps:**
@@ -112,6 +124,7 @@ on:
 ```
 
 ### Monitor Safety Net Structure
+
 ```yaml
 name: Cascade Monitor
 
@@ -147,6 +160,7 @@ jobs:
 ```
 
 ### Issue Lifecycle Tracking
+
 ```bash
 # Cascade workflow uses provided issue number for tracking
 
@@ -176,7 +190,9 @@ Integration completed successfully! Production PR has been created and is ready 
 ```
 
 ### Health Monitoring Integration
+
 The monitor also includes periodic health checks:
+
 - **Stale Conflict Detection**: Find conflicts older than 48 hours
 - **Pipeline Health Reports**: Overall cascade pipeline status
 - **Escalation Management**: Automatic escalation of long-running issues
@@ -184,6 +200,7 @@ The monitor also includes periodic health checks:
 ## Consequences
 
 ### Positive
+
 - **Human Control**: Teams have explicit control over integration timing
 - **Reliability**: No dependency on GitHub event triggering edge cases
 - **Visibility**: Complete audit trail through issue lifecycle tracking
@@ -193,6 +210,7 @@ The monitor also includes periodic health checks:
 - **Flexibility**: Can batch changes or time integrations appropriately
 
 ### Negative
+
 - **Manual Step Required**: Humans must remember to trigger cascades
 - **Potential Delays**: Up to 6 hours delay if manual trigger is forgotten
 - **Additional Complexity**: Issue lifecycle tracking adds workflow complexity
@@ -200,6 +218,7 @@ The monitor also includes periodic health checks:
 - **Monitor Dependency**: Safety net relies on monitor workflow functioning
 
 ### Neutral
+
 - **File Count**: Adds one additional workflow file
 - **Maintenance**: Two simpler workflows vs. one complex workflow
 - **Testing**: Need to test both trigger detection and cascade execution
@@ -207,17 +226,20 @@ The monitor also includes periodic health checks:
 ## Integration Points
 
 ### With Sync Workflow
+
 - Sync workflow creates PRs with `upstream-sync` label
 - Sync workflow creates tracking issues with explicit manual trigger instructions
 - Humans review, merge PR, and manually trigger cascade
 
 ### With Cascade Workflow
+
 - Cascade runs on `workflow_dispatch` (manual or monitor-triggered)
 - Cascade updates tracking issue labels and comments throughout process
 - Cascade handles conflicts, integration, and production PR creation
 - Error states tracked through issue labels and comments
 
 ### With Label Management (ADR-008)
+
 - Uses predefined labels: `upstream-sync`, `cascade-trigger-failed`, `human-required`
 - Leverages existing label-based notification system
 - Maintains consistency with other workflow patterns
@@ -225,6 +247,7 @@ The monitor also includes periodic health checks:
 ## Monitoring and Alerting
 
 ### Success Metrics
+
 - **Manual Trigger Adoption**: % of sync merges followed by manual cascade triggers
 - **Safety Net Effectiveness**: % of missed triggers caught by monitor
 - **Issue Lifecycle Completeness**: % of cascades with complete issue tracking
@@ -232,12 +255,14 @@ The monitor also includes periodic health checks:
 - **Error Recovery**: Time to resolve cascade conflicts and issues
 
 ### Failure Modes
+
 1. **Forgotten Manual Trigger**: Monitor safety net detects and auto-triggers
 2. **Monitor Workflow Failure**: Manual cascade trigger still available
 3. **Issue Tracking Failure**: Cascade proceeds but with reduced visibility
 4. **Cascade Integration Conflicts**: Clear conflict resolution workflow with SLA
 
 ### Health Checks
+
 - **Daily Pipeline Status**: Monitor generates health reports
 - **Stale Issue Detection**: Automatically escalates old problems
 - **Cascade Pipeline Monitoring**: Overall system health visibility
@@ -245,12 +270,14 @@ The monitor also includes periodic health checks:
 ## Future Enhancements
 
 ### Planned Improvements
+
 1. **Batch Triggering**: Group multiple rapid changes into single cascade
 2. **Priority Queuing**: Handle urgent vs. routine upstream changes differently
 3. **Smart Scheduling**: Avoid triggers during maintenance windows
 4. **Cross-Repository Coordination**: Coordinate cascades across multiple forks
 
 ### Extensibility Points
+
 - **Custom Trigger Logic**: Easy to add new trigger conditions
 - **External Integrations**: Webhook support for external systems
 - **Advanced Error Handling**: Sophisticated retry and recovery strategies
@@ -297,6 +324,7 @@ detect-recovery-ready:
 ```
 
 #### Human Recovery Workflow
+
 1. **Failure Occurs**: Cascade fails, tracking issue gets `cascade-failed + human-required`
 2. **Failure Issue Created**: Technical details in separate high-priority issue
 3. **Human Investigation**: Developer reviews failure issue and makes fixes
@@ -305,6 +333,7 @@ detect-recovery-ready:
 6. **Success/Failure**: Either completes successfully or creates new failure issue
 
 #### Benefits of Label-Based Recovery
+
 - **Self-Healing**: No manual workflow triggering required
 - **Clear Handoff**: Labels signal automation ↔ human transitions
 - **Audit Trail**: Complete failure/recovery history in tracking issues
@@ -327,6 +356,7 @@ detect-recovery-ready:
 - Zero unexpected cascade triggers (only manual or safety net)
 - Clear audit trail for all cascade decisions through issue tracking
 - Team adoption: 100% of team members comfortable with manual trigger process
+
 ---
 
 [← ADR-018](018-fork-resources-staging-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-020 →](020-human-required-label-strategy.md)

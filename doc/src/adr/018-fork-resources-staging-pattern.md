@@ -14,10 +14,12 @@ As the Fork Management Template evolved, we discovered a need for template resou
 4. **Security Configurations**: Copilot firewall settings that require variable configuration
 
 The existing sync mechanisms (ADR-011, ADR-012) handle two scenarios well:
+
 - **Direct sync**: Files that are copied as-is to the same location
 - **Workflow templates**: Files in `template-workflows/` that are copied to `.github/workflows/`
 
 However, these don't address resources that need:
+
 - **Multi-target deployment**: Single source copied to different final locations
 - **Conditional processing**: Resources deployed only during initialization or sync updates
 - **Cleanup requirements**: Staging directories that shouldn't exist in fork repositories
@@ -76,16 +78,19 @@ Fork Repository (after deployment):
 ### Why Staging Area Pattern?
 
 **Alternative 1: Direct Sync**
+
 - ❌ Issue templates would be overwritten by every sync update
 - ❌ No way to handle multi-target deployment (`.vscode/`, `.github/prompts/`)
 - ❌ Cannot implement conditional or custom deployment logic
 
 **Alternative 2: Hardcoded Deployment**
+
 - ❌ Not extensible for future template resources
 - ❌ Would require workflow changes for each new resource type
 - ❌ Difficult to maintain consistency across different resource types
 
 **Alternative 3: Fork-Resources Staging** ✅
+
 - ✅ Provides flexibility for specialized deployment
 - ✅ Extensible pattern for future template resources
 - ✅ Maintains clean separation between template staging and fork deployment
@@ -153,6 +158,7 @@ rm -rf ".github/fork-resources"
 ## Compliance
 
 This ADR extends:
+
 - **ADR-011**: Adds fork-resources to configuration-driven sync rules
 - **ADR-012**: Incorporates specialized deployment into template update propagation
 - **ADR-017**: Generalizes the MCP integration pattern for all specialized resources
@@ -176,6 +182,7 @@ This ADR extends:
 ---
 
 *This ADR establishes the architectural foundation for specialized template deployment, enabling the Fork Management Template to handle sophisticated resource distribution while maintaining clean separation between template staging and fork deployment.*
+
 ---
 
 [← ADR-017](017-mcp-server-integration-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-019 →](019-cascade-monitor-pattern.md)
