@@ -30,6 +30,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
 
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@5d869da34e18e7f1f3af0f34c83ac5e6a74fd839
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Template Repository Protection Check
         id: template_check
         uses: ./.github/local-actions/template-protection-check
@@ -61,7 +68,7 @@ jobs:
 
       - name: Set UPSTREAM_REPO_URL Variable
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Setting repository variables needs admin permission
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Setting repository variables needs admin permission
         run: |
           REPO="${{ steps.validate.outputs.upstream_repo }}"
           if [[ "$REPO" == http* ]]; then
@@ -89,6 +96,13 @@ jobs:
       actions: write
       issues: write
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@5d869da34e18e7f1f3af0f34c83ac5e6a74fd839
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
         with:
@@ -112,7 +126,7 @@ jobs:
           
       - name: Configure Variables
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Setting repository variables needs admin permission
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Setting repository variables needs admin permission
           REPO_URL: ${{ env.REPO_URL }}
         run: |
           # Set repository variables using GH_TOKEN (required for admin operations)
@@ -255,8 +269,8 @@ jobs:
 
       - name: Finalize Initialization
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GH_TOKEN required for workflows)
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Pushing workflow files needs 'workflows' permission + setting variables needs admin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GitHub App token required for workflows)
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Pushing workflow files needs 'workflows' permission + setting variables needs admin
         run: |
           # Copy workflows from template-workflows before deploy-fork-resources deletes the directory
           echo "Deploying production workflows from template..."
@@ -318,7 +332,7 @@ jobs:
 
       - name: Configure Security
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Security settings need admin permission
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Security settings need admin permission
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
         run: |
           # Use preserved script from temp location
@@ -326,7 +340,7 @@ jobs:
 
       - name: Setup Repository Rulesets
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Required: Ruleset creation needs admin permission
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Ruleset creation needs admin permission
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
         run: |
           # Use preserved script from temp location
