@@ -34,10 +34,10 @@ jobs:
       - name: Add job summary
         run: |
           if [[ "${{ steps.check.outputs.is_template }}" == "true" ]]; then
-            echo "### 🛡️ Template Repository Detected" >> $GITHUB_STEP_SUMMARY
+            echo "### Template Repository Detected" >> $GITHUB_STEP_SUMMARY
             echo "Initialization blocked - this is a template development repository" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ✅ Repository Check Passed" >> $GITHUB_STEP_SUMMARY
+            echo "### Repository Check Passed" >> $GITHUB_STEP_SUMMARY
             echo "This is a fork instance - proceeding with initialization checks" >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -132,7 +132,7 @@ jobs:
               --color "$color" || echo "Label $name already exists"
           done
           
-          echo "✅ All system labels created"
+          echo "All system labels created"
 
       - name: Create initialization issue
         id: create-issue
@@ -146,7 +146,7 @@ jobs:
           echo "ISSUE_URL=$issue_url" >> "$GITHUB_OUTPUT"
           echo "Created initialization issue: $issue_url"
 
-          echo "### 🎯 Initialization Required" >> $GITHUB_STEP_SUMMARY
+          echo "### Initialization Required" >> $GITHUB_STEP_SUMMARY
           echo "Created initialization issue: $issue_url" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Please reply to the issue with your upstream repository URL to begin setup." >> $GITHUB_STEP_SUMMARY

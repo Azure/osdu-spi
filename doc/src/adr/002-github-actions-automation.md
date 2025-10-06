@@ -116,6 +116,11 @@ Extract common patterns into reusable composite actions:
 - Safety net detects 100% of missed cascade triggers within 6 hours
 - Workflows are maintainable by team members without GitHub Actions expertise
 - Security scanning catches vulnerabilities before they reach main branch
+
+## Related Decisions
+
+- [ADR-029: GitHub App Authentication Strategy](029-github-app-authentication-strategy.md) - Authentication mechanism for workflow automation
+
 ---
 
 [← ADR-001](001-three-branch-strategy.md) | :material-arrow-up: [Catalog](index.md) | [ADR-003 →](003-template-repository-pattern.md)

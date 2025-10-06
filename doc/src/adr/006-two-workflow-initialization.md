@@ -161,6 +161,11 @@ concurrency:
 - **Modular Structure**: Additional validation or setup steps can be added easily
 - **Configuration Options**: Environment variables for customizing behavior
 - **Error Handling Framework**: Consistent patterns for handling and reporting errors
+
+## Related Decisions
+
+- [ADR-029: GitHub App Authentication Strategy](029-github-app-authentication-strategy.md) - Authentication mechanism for initialization workflows
+
 ---
 
 [← ADR-005](005-conflict-management.md) | :material-arrow-up: [Catalog](index.md) | [ADR-007 →](007-initialization-workflow-bootstrap.md)
