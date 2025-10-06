@@ -11,14 +11,17 @@
 This engineering system manages the following Azure OSDU service implementations:
 
 ### Core Services
-- [Partition Service](https://github.com/azure/osdu-partition) - Data partition management and isolation
-- [Entitlements Service](https://github.com/azure/osdu-entitlements) - Access control and permissions
-- [Legal Service](https://github.com/azure/osdu-legal) - Legal tag management and compliance
-- [Schema Service](https://github.com/azure/osdu-schema) - Data model and schema management
-- [File Service](https://github.com/azure/osdu-file) - File storage and retrieval
-- [Storage Service](https://github.com/azure/osdu-storage) - Data persistence and management
-- [Indexer Service](https://github.com/azure/osdu-indexer) - Data indexing pipeline
-- [Search Service](https://github.com/azure/osdu-search) - Elasticsearch integration
+
+> Coming soon:
+
+- [Partition Service]() - Data partition management and isolation
+- [Entitlements Service]() - Access control and permissions
+- [Legal Service]() - Legal tag management and compliance
+- [Schema Service]() - Data model and schema management
+- [File Service]() - File storage and retrieval
+- [Storage Service]() - Data persistence and management
+- [Indexer Service]()) - Data indexing pipeline
+- [Search Service]() - Elasticsearch integration
 
 
 ## Contributing

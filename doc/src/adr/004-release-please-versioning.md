@@ -144,6 +144,11 @@ The validate.yml workflow enforces Conventional Commits format:
 - Team can easily identify what changed between releases
 - Breaking changes are clearly identified and documented
 - No manual intervention required for standard release process
+
+## Related Decisions
+
+- [ADR-029: GitHub App Authentication Strategy](029-github-app-authentication-strategy.md) - Authentication mechanism for release automation
+
 ---
 
 [← ADR-003](003-template-repository-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-005 →](005-conflict-management.md)
