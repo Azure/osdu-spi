@@ -19,7 +19,9 @@ jobs:
     name: Validate Template
     runs-on: ubuntu-latest
     if: github.repository == 'azure/osdu-spi'
-    
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
