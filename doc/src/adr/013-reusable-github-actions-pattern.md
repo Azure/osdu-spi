@@ -1,6 +1,7 @@
 # ADR-013: Reusable GitHub Actions Pattern for PR Creation
 
 ## Status
+
 **Accepted** - 2025-10-01
 
 ## Context
@@ -8,6 +9,7 @@
 During implementation of template synchronization workflows (ADR-011, ADR-012), we identified significant code duplication in PR creation logic across multiple workflows. Each workflow that created pull requests had to implement:
 
 **Duplicated PR Creation Logic:**
+
 - **LLM Detection**: Check for available Azure Foundry API keys
 - **aipr Integration**: Generate AI-enhanced PR descriptions when possible
 - **Fallback Handling**: Use provided description when AI generation fails
@@ -16,11 +18,13 @@ During implementation of template synchronization workflows (ADR-011, ADR-012), 
 - **Output Management**: Return PR URL and number for further processing
 
 **Workflows with Similar PR Creation Needs:**
+
 - **`sync.yml`**: Creates upstream synchronization PRs with vulnerability analysis
 - **`template-sync.yml`**: Creates template update PRs with change summaries  
 - **Future workflows**: Additional automation requiring AI-enhanced PR descriptions
 
 **Problems with Code Duplication:**
+
 - **Maintenance Burden**: Changes to PR creation logic required updates in multiple places
 - **Inconsistency Risk**: Implementations could drift apart over time
 - **Testing Complexity**: Each workflow implementation needed separate testing
@@ -31,12 +35,14 @@ During implementation of template synchronization workflows (ADR-011, ADR-012), 
 Implement **Reusable GitHub Actions Pattern** for common PR creation functionality:
 
 ### 1. **Custom Composite Action**: `.github/actions/create-enhanced-pr/action.yml`
+
 - **Centralized Logic**: Single implementation of PR creation with AI enhancement
 - **Configurable Parameters**: Flexible inputs for different use cases
 - **Consistent Interface**: Standardized inputs and outputs across workflows
 - **AI Integration**: Built-in aipr integration with Azure Foundry
 
 ### 2. **Standardized AI Enhancement Pipeline**
+
 ```yaml
 # Automatic LLM detection and configuration
 - Azure Foundry (primary)
@@ -49,6 +55,7 @@ Implement **Reusable GitHub Actions Pattern** for common PR creation functionali
 ```
 
 ### 3. **Flexible Configuration Interface**
+
 ```yaml
 uses: ./.github/actions/create-enhanced-pr
 with:
@@ -62,6 +69,7 @@ with:
 ```
 
 ### 4. **Comprehensive Output Interface**
+
 ```yaml
 outputs:
   pr-url: "https://github.com/owner/repo/pull/123"
@@ -100,6 +108,7 @@ outputs:
 ### Action Interface Design
 
 #### Required Inputs
+
 ```yaml
 inputs:
   github-token:        # GitHub token for API access
@@ -110,6 +119,7 @@ inputs:
 ```
 
 #### Optional Inputs
+
 ```yaml
 inputs:
   azure-api-key:       # Azure Foundry API key
@@ -122,6 +132,7 @@ inputs:
 ```
 
 #### Comprehensive Outputs
+
 ```yaml
 outputs:
   pr-url:              # Complete URL to created PR
@@ -132,6 +143,7 @@ outputs:
 ### LLM Provider Detection
 
 #### Provider Detection Logic
+
 ```bash
 # Provider detection
 1. Azure Foundry (if AZURE_API_KEY and AZURE_API_BASE provided)
@@ -139,6 +151,7 @@ outputs:
 ```
 
 #### Model Configuration
+
 ```yaml
 # Model configuration
 Azure: "azure"  # aipr model identifier for Azure Foundry
@@ -147,6 +160,7 @@ Azure: "azure"  # aipr model identifier for Azure Foundry
 ### Action Implementation Pattern
 
 #### Composite Action Structure
+
 ```yaml
 runs:
   using: 'composite'
@@ -157,6 +171,7 @@ runs:
 ```
 
 #### Error Handling Strategy
+
 ```bash
 # Graceful degradation approach
 1. Try AI generation with detected LLM
@@ -168,6 +183,7 @@ runs:
 ### Usage Patterns in Workflows
 
 #### Sync Workflow Limitation
+
 **Important**: The reusable action pattern **cannot be used in the sync workflow** (`sync.yml`) because:
 - Sync workflow runs from `fork_upstream` branch (contains only upstream code)
 - `create-enhanced-pr` action only exists on `main` branch (template infrastructure)
@@ -190,6 +206,7 @@ runs:
 ```
 
 #### Template Sync Workflow Usage
+
 ```yaml
 - name: Create enhanced template sync PR
   uses: ./.github/actions/create-enhanced-pr
@@ -205,21 +222,25 @@ runs:
 ## Alternatives Considered
 
 ### 1. **Shared Shell Functions**
+
 - **Pros**: Lightweight, easy to understand
 - **Cons**: Limited parameter handling, no type safety, harder to test
 - **Decision**: Rejected due to limited flexibility and maintainability
 
 ### 2. **External Action from Marketplace**
+
 - **Pros**: Maintained by community, potentially more features
 - **Cons**: External dependency, less control, may not fit our specific needs
 - **Decision**: Rejected due to specific requirements for aipr integration
 
 ### 3. **Copy-Paste with Documentation**
+
 - **Pros**: Simple, no abstraction complexity
 - **Cons**: Maintenance burden, inconsistency risk, violates DRY principle
 - **Decision**: Rejected due to long-term maintenance concerns
 
 ### 4. **Workflow Templates**
+
 - **Pros**: GitHub native, reusable across repositories
 - **Cons**: Can't be used within same repository, less flexible
 - **Decision**: Rejected due to within-repository usage requirements
@@ -232,6 +253,7 @@ runs:
 ## Consequences
 
 ### Positive
+
 - **Eliminated Code Duplication**: 80+ lines of PR creation logic now in single action
 - **Consistent AI Enhancement**: All PRs use identical AI generation logic
 - **Easier Maintenance**: Single place to update PR creation behavior
@@ -241,6 +263,7 @@ runs:
 - **Workflow Simplification**: Workflows focus on business logic, not PR creation
 
 ### Negative
+
 - **Additional Abstraction**: Extra layer between workflows and GitHub API
 - **Learning Curve**: Team needs to understand action interface
 - **Local Development**: Harder to test workflows locally
@@ -248,6 +271,7 @@ runs:
 - **Branch Dependency Limitation**: Actions cannot be used by workflows running from different branches
 
 ### Mitigation Strategies
+
 - **Comprehensive Documentation**: Clear examples and parameter documentation
 - **Integration Testing**: Test action behavior in actual workflow contexts
 - **Backward Compatibility**: Maintain stable interface as action evolves
@@ -259,6 +283,7 @@ runs:
 **Key Discovery**: GitHub Actions can only reference actions that exist on the same branch where the workflow is running.
 
 #### When to Use Reusable Action
+
 ✅ **Use action for workflows that run from `main` branch:**
 - `template-sync.yml` - runs from main, action available
 - `build.yml` - runs from main, action available  
@@ -266,12 +291,14 @@ runs:
 - Future workflows on main branch
 
 #### When to Embed Logic Directly
+
 ❌ **Embed logic for workflows that run from other branches:**
 - `sync.yml` - runs from `fork_upstream` branch, action not available
 - Any workflows triggered to run on feature branches
 - Workflows that checkout different branches before running
 
 #### Implementation Strategy
+
 - **Primary Pattern**: Use reusable action where possible (main branch workflows)
 - **Fallback Pattern**: Embed logic directly when branch limitations prevent action usage
 - **Consistency**: Maintain same AI enhancement logic in both patterns
@@ -289,6 +316,7 @@ runs:
 ## Future Evolution
 
 ### Potential Enhancements
+
 1. **Additional LLM Providers**: Support for new AI services as they become available
 2. **Custom Templates**: Support for PR description templates based on workflow type
 3. **Advanced Validation**: Pre-flight checks for PR creation requirements
@@ -296,6 +324,7 @@ runs:
 5. **Caching**: Cache AI-generated descriptions for similar changes
 
 ### Reusability Expansion
+
 - **Cross-Repository Usage**: Package action for use in other template repositories
 - **Marketplace Publication**: Make action available to broader GitHub community
 - **Plugin Architecture**: Support for custom PR enhancement plugins
@@ -304,21 +333,25 @@ runs:
 ## Testing Strategy
 
 ### Unit Testing
+
 - **Mock GitHub API**: Test PR creation logic without actual API calls
 - **LLM Provider Testing**: Test provider detection and fallback logic
 - **Error Handling**: Test graceful degradation scenarios
 
 ### Integration Testing
+
 - **Workflow Testing**: Test action integration in actual workflow contexts
 - **API Key Scenarios**: Test behavior with different combinations of API keys
 - **Large Diff Testing**: Test diff size management and fallback behavior
 
 ### Performance Testing
+
 - **AI Generation Time**: Monitor time for AI-enhanced description generation
 - **Fallback Performance**: Ensure fast fallback when AI generation fails
 - **Resource Usage**: Monitor action resource consumption
 
 ## Related ADRs
+
 - **ADR-011**: Configuration-Driven Template Synchronization (benefits from consistent PR creation)
 - **ADR-012**: Template Update Propagation Strategy (uses this action for template sync PRs)
 - **ADR-014**: AI-Enhanced Development Workflow Integration (implements AI capabilities used by this action)

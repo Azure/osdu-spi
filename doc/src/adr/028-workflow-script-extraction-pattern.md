@@ -8,6 +8,7 @@
 The OSDU SPI Fork Management Template workflows contain approximately 3,500 lines of embedded bash scripts across 9 workflow files. While these scripts implement critical functionality, their embedded nature creates several challenges:
 
 **Problems with Embedded Scripts:**
+
 - **Debugging Difficulty**: Cannot test scripts locally without running entire workflow
 - **Code Duplication**: LLM provider detection duplicated 2x in sync.yml (~130 lines)
 - **Maintenance Burden**: Changes require editing multiple workflows, understanding YAML context
@@ -16,12 +17,14 @@ The OSDU SPI Fork Management Template workflows contain approximately 3,500 line
 - **Version Control**: Changes to scripts mixed with workflow structural changes in git diffs
 
 **Most Complex Workflows:**
+
 - **sync.yml** (658 lines): AI-powered upstream sync with LLM provider detection, PR generation, state management
 - **cascade.yml** (745 lines): Multi-stage integration with validation, conflict resolution, PR creation
 - **init-complete.yml** (878 lines): Repository initialization with branch protection, security config, resource deployment
 - **sync-state-manager/action.yml** (271 lines): Complex state management with decision matrix logic
 
 **Key Challenges:**
+
 1. How to extract scripts while maintaining sync propagation to fork instances?
 2. Where to place scripts so they're automatically synced via template sync (ADR-011, ADR-012)?
 3. How to handle GitHub App workflow permission limitations (ADR-015)?
@@ -73,12 +76,14 @@ Implement a **Workflow Script Extraction Pattern** that extracts embedded bash s
 ### 2. **Script Placement Rationale**
 
 **Fork-Operational Actions (`.github/actions/`):**
+
 - ✅ **Synced to forks**: Defined in sync-config.json lines 7-10 as synced directory
 - ✅ **Used by fork workflows**: Actions needed by sync.yml, cascade.yml, validate.yml, etc.
 - ✅ **Template propagation**: Updates flow to fork instances via template-sync.yml
 - ✅ **Examples**: llm-provider-detect, issue-state-manager, sync-state-manager
 
 **Template-Only Actions (`.github/local-actions/`):**
+
 - ✅ **NOT synced to forks**: Excluded in sync-config.json line 114
 - ✅ **Used by init workflows**: Actions only needed by init.yml and init-complete.yml
 - ✅ **Removed after init**: Cleaned up per sync-config.json cleanup_rules (line 123-126)
@@ -87,6 +92,7 @@ Implement a **Workflow Script Extraction Pattern** that extracts embedded bash s
 - ✅ **Examples**: init-helpers, push-protection-handler, template-protection-check, configure-git
 
 **Why Two Directories:**
+
 - Prevents syncing init-only actions to fork instances
 - Fork instances only receive actions they actually use
 - Follows established ADR-015 pattern for template vs fork separation
@@ -202,6 +208,7 @@ Use these criteria to determine if a script should be extracted:
 | **Duplication** | Duplicated code exists | Unique implementation | Critical |
 
 **Decision Rules:**
+
 - ✅ **Extract if**: 2+ criteria favor extraction AND size >200 lines OR critical complexity
 - ⚠️ **Consider extraction if**: Multiple high-weight criteria favor extraction
 - ❌ **Keep inline if**: Mostly low-weight criteria OR workflow orchestration
@@ -226,6 +233,7 @@ Use these criteria to determine if a script should be extracted:
 **Decision**: Complex workflow orchestration scripts (cascade.yml, validate.yml) generally remain inline.
 
 **Rationale:**
+
 - **End-to-end flows**: Orchestration logic is workflow-specific
 - **Low reuse**: Single-use patterns not shared across workflows
 - **Readable as-is**: Workflow structure provides context
@@ -238,30 +246,35 @@ Use these criteria to determine if a script should be extracted:
 ### Benefits of Script Extraction
 
 **Debuggability:**
+
 - Scripts can be executed locally with `bash script.sh`
 - Test with various inputs without triggering workflows
 - Faster iteration cycle during development
 - Easier to reproduce and debug issues
 
 **Maintainability:**
+
 - Centralized logic in single location
 - Clear ownership and organization
 - Easier to review changes (pure bash vs YAML+bash)
 - Better git diffs (separate script vs workflow changes)
 
 **Reusability:**
+
 - Share logic across multiple workflows
 - Eliminates code duplication (e.g., LLM provider detection)
 - Consistent behavior across workflows
 - DRY principle properly applied
 
 **Testability:**
+
 - Unit test complex bash logic
 - Mock external dependencies (GitHub API)
 - Verify error handling paths
 - Test edge cases systematically
 
 **Readability:**
+
 - Workflows become declarative ("detect LLM" vs 20 lines of bash)
 - Intent clearer (action name vs embedded code)
 - Less cognitive load when reading workflows
@@ -270,12 +283,14 @@ Use these criteria to determine if a script should be extracted:
 ### Sync Propagation Compatibility
 
 **Leverages Existing Infrastructure:**
+
 - `.github/actions/` already defined in sync-config.json
 - Template sync (ADR-012) automatically propagates actions
 - Weekly sync (Monday 8 AM) or manual trigger
 - No new sync patterns required
 
 **Propagation Flow:**
+
 1. Template commits script changes to main branch
 2. Template-sync workflow detects changes in `.github/actions/`
 3. Creates PR in fork instances with updated scripts
@@ -287,6 +302,7 @@ Use these criteria to determine if a script should be extracted:
 Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows permission. This pattern avoids this limitation:
 
 **Why This Works:**
+
 - Actions are NOT workflow files (no permission restriction)
 - Actions can be created/modified by GITHUB_TOKEN
 - Workflows reference actions via `uses:` (no workflow modification)
@@ -294,6 +310,7 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 - Template sync can update actions and workflows together
 
 **Init-Time Consideration:**
+
 - During init, template-workflows copied BEFORE actions are available
 - Solution: Init scripts remain inline (one-time use)
 - Post-init workflows can use extracted actions
@@ -303,11 +320,13 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### 1. **New `.github/scripts/` Directory**
 
 **Pros:**
+
 - Clearer separation between actions and scripts
 - More intuitive location for shell scripts
 - Could use for non-action scripts
 
 **Cons:**
+
 - Requires modifying sync-config.json
 - Triggers template update to all existing fork instances
 - Introduces new pattern when existing solution works
@@ -318,11 +337,13 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### 2. **External Script Repository**
 
 **Pros:**
+
 - Separate versioning for scripts
 - Could be shared across multiple templates
 - Clear dependency management
 
 **Cons:**
+
 - External dependency complicates deployment
 - Version pinning and updates more complex
 - Breaks self-contained template principle
@@ -333,11 +354,13 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### 3. **Keep Scripts Embedded**
 
 **Pros:**
+
 - No structural changes required
 - Scripts stay close to usage
 - No abstraction layer
 
 **Cons:**
+
 - Debugging remains difficult
 - Code duplication continues
 - Maintenance burden grows
@@ -348,10 +371,12 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### 4. **Git Submodules for Scripts**
 
 **Pros:**
+
 - Version pinning capability
 - Could share scripts across repositories
 
 **Cons:**
+
 - Git submodule complexity for users
 - Breaks template simplicity
 - Sync propagation more complex
@@ -364,21 +389,27 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### Completed Extractions
 
 #### ✅ LLM Provider Detection
+
 **Status**: COMPLETED
+
 - **Action**: `.github/actions/llm-provider-detect/`
 - **Scripts**: detect-provider.sh (50 lines)
 - **Impact**: Eliminated duplication, reused by sync.yml and create-enhanced-pr
 - **Decision Matrix**: ✅ Duplication (Critical), ✅ Reusability (High), ✅ Testability (High)
 
 #### ✅ Issue State Manager
+
 **Status**: COMPLETED
+
 - **Action**: `.github/actions/issue-state-manager/`
 - **Scripts**: update-issue-state.sh (100 lines)
 - **Impact**: Complex awk logic now testable locally
 - **Decision Matrix**: ✅ Complexity (Critical), ✅ Testability (High), ✅ Size (Medium)
 
 #### ✅ Init Helpers Suite
+
 **Status**: COMPLETED - Moved to `.github/local-actions/`
+
 - **Action**: `.github/local-actions/init-helpers/`
 - **Scripts**:
   - setup-upstream.sh (120 lines)
@@ -390,7 +421,9 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 - **Note**: Moved to local-actions to prevent syncing init-only logic to fork instances
 
 #### ✅ Push Protection Handler
+
 **Status**: COMPLETED
+
 - **Action**: `.github/local-actions/push-protection-handler/`
 - **Scripts**: detect-and-report.sh (76 lines)
 - **Impact**: Extracted complex push protection error handling from init-complete.yml
@@ -398,20 +431,26 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 - **Key Features**: Regex parsing with ANSI code handling, secret allowlist URL extraction, detailed escalation issues
 
 #### ✅ Template Protection Check
+
 **Status**: COMPLETED
+
 - **Action**: `.github/local-actions/template-protection-check/`
 - **Scripts**: check-template.sh (40 lines)
 - **Impact**: Eliminated duplication across init.yml and init-complete.yml
 - **Decision Matrix**: ✅ Duplication (Critical), ✅ Reusability (High)
 
 #### ✅ Configure Git
+
 **Status**: COMPLETED
+
 - **Action**: `.github/local-actions/configure-git/`
 - **Impact**: Eliminated git config duplication across init workflows
 - **Decision Matrix**: ✅ Duplication (Critical), ✅ Reusability (High)
 
 #### ✅ Sync State Manager
+
 **Status**: COMPLETED
+
 - **Action**: `.github/actions/sync-state-manager/`
 - **Scripts**:
   - get-upstream-sha.sh (35 lines)
@@ -425,7 +464,9 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 - **Key features**: Decision matrix with 4 scenarios, platform-compatible date parsing (GNU/BSD)
 
 #### ✅ Create Enhanced PR Refactor
+
 **Status**: COMPLETED
+
 - **Action**: Refactored to use llm-provider-detect
 - **Impact**: Eliminated LLM detection duplication (23 lines)
 - **Decision Matrix**: ✅ Duplication (Critical), ✅ Reusability (High)
@@ -433,37 +474,48 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### Extraction Decisions - Not Extracted
 
 #### ❌ java-build Action
+
 **Status**: KEPT AS-IS
+
 - **Size**: 93 lines
 - **Rationale**: Simple Maven orchestration, already maintainable
 - **Decision Matrix**: ❌ Complexity (Low), ❌ Size (Low), ❌ Testability value (Low)
 
 #### ❌ cascade.yml Scripts
+
 **Status**: KEPT AS-IS (Future opportunity noted)
+
 - **Size**: 744 lines total, 15 scripts averaging 49 lines each
 - **Rationale**: Workflow orchestration, single-use patterns
 - **Decision Matrix**: ⚠️ Size (High), ❌ Reusability (Low), ❌ Type (Orchestration)
 - **Future**: Could extract "Check Integration State" logic (lines 45-118) if reused
 
 #### ❌ validate.yml Scripts
+
 **Status**: KEPT AS-IS
+
 - **Size**: 325 lines total, 7 scripts averaging 46 lines each
 - **Rationale**: Simple validation logic, already clear
 - **Decision Matrix**: ❌ Complexity (Low), ❌ Reusability (Low)
 
 #### ❌ sync-template.yml Scripts
+
 **Status**: KEPT AS-IS
+
 - **Size**: 430 lines total, 9 scripts averaging 47 lines each
 - **Rationale**: Single-use template sync orchestration
 - **Decision Matrix**: ❌ Reusability (Low), ❌ Type (Orchestration)
 
 #### 🚫 sync.yml Scripts
+
 **Status**: EXCEPTION - Cannot extract
+
 - **Size**: 642 lines total, 12 scripts
 - **Constraint**: Runs from fork_upstream branch where actions don't exist
 - **Decision Matrix**: N/A - Technical constraint overrides
 
 **Attempted Workarounds Evaluated:**
+
 1. **Checkout actions to separate path** - Rejected: Actions require relative path `uses: ./.github/actions/`, cannot reference custom paths
 2. **Bash functions within workflow** - Rejected: Eliminates duplication but provides no testability improvement; adds complexity without solving core problem
 3. **Docker/JS action from registry** - Rejected: External dependency, adds complexity, would require publishing action to marketplace
@@ -473,11 +525,13 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 ### Summary Statistics
 
 **Extractions Completed:**
+
 - 8 composite actions created (4 fork-operational, 4 template-only)
 - 15+ shell scripts extracted (~1,200+ lines total)
 - 3 workflow files refactored (init.yml, init-complete.yml, create-enhanced-pr/action.yml)
 
 **Impact:**
+
 - init.yml: 194 → 195 lines (added job summaries, net neutral after extractions)
 - init-complete.yml: 594 → 561 lines (33 lines reduced, 5.6% reduction)
 - sync-state-manager: 270 → 85 lines (68% reduction)
@@ -487,12 +541,14 @@ Per ADR-015, GitHub Apps cannot create/modify workflow files without workflows p
 - 100% of extracted scripts locally testable
 
 **Directory Organization:**
+
 - `.github/actions/` - 5 fork-operational actions (synced to forks)
 - `.github/local-actions/` - 4 template-only actions (excluded from sync, removed after init)
 
 ### Testing Strategy
 
 **Local Testing:**
+
 ```bash
 # Each action includes local test examples
 cd .github/actions/llm-provider-detect
@@ -502,12 +558,14 @@ export AZURE_API_KEY="test"
 ```
 
 **Integration Testing:**
+
 1. Test in template repository test branch
 2. Verify workflows use actions correctly
 3. Validate outputs match original inline behavior
 4. Test with various input scenarios
 
 **Fork Testing:**
+
 1. Wait for template-sync to create PR
 2. Review changes in fork instance
 3. Merge and test workflows
@@ -539,11 +597,13 @@ export AZURE_API_KEY="test"
 ### Net Assessment
 
 **Positive**: For targeted, complex actions (sync-state-manager, init-helpers), extraction provided significant value:
+
 - 68% reduction in sync-state-manager makes decision matrix logic clearly testable
 - 32.5% reduction in init-complete.yml improves workflow readability
 - Platform compatibility issues (GNU/BSD date) now testable locally
 
 **Trade-offs Accepted**:
+
 - Workflow orchestration scripts (cascade.yml, validate.yml) remain inline - acceptable as single-use flows
 - sync.yml exception due to technical constraint - documented and understood
 - Slightly more files (12 scripts + 4 action.yml + 4 READMs = 20 files) vs inline - worth it for testability
@@ -553,18 +613,21 @@ export AZURE_API_KEY="test"
 ### Mitigation Strategies
 
 **Documentation:**
+
 - Comprehensive README.md in each action directory
 - Local testing examples with expected outputs
 - Usage documentation in workflows
 - This ADR as architectural reference
 
 **Testing:**
+
 - Local test procedures for each script
 - Integration tests in template repository
 - Fork instance validation before rollout
 - Gradual extraction (one script at a time)
 
 **Rollback:**
+
 - Keep original inline scripts until validated
 - Easy to revert extracted scripts
 - Gradual migration reduces risk
@@ -584,6 +647,7 @@ export AZURE_API_KEY="test"
 - ✅ **Consistent Pattern**: All 12 scripts follow identical structure (9.5/10 consistency score)
 
 **Validation Metrics:**
+
 - 4 composite actions created
 - 12 shell scripts extracted
 - 1,043 lines in extracted scripts
@@ -596,16 +660,19 @@ export AZURE_API_KEY="test"
 ### Metrics to Track
 
 **Code Quality Metrics:**
+
 - Lines of code in workflows (should decrease ~40%)
 - Script duplication instances (should be zero)
 - Local test coverage (should be 100% of extracted scripts)
 
 **Operational Metrics:**
+
 - Workflow success rate (should remain stable)
 - Script execution time (should be negligible overhead)
 - Template sync success rate (should remain 100%)
 
 **Developer Experience:**
+
 - Time to debug script issues (should decrease)
 - Time to update script logic (should decrease)
 - New contributor onboarding time (should decrease)
@@ -640,16 +707,19 @@ export AZURE_API_KEY="test"
 ### Realistic Enhancements
 
 **Cascade Integration State Checker** (if needed):
+
 - Extract cascade.yml lines 45-118 if cascade-monitor.yml needs same logic
 - Would follow same pattern as sync-state-manager
 - Only if reuse justifies extraction
 
 **Script Pattern Standardization**:
+
 - Standardize emoji usage (currently mixed: ✓, ⚠️, ℹ)
 - Consider adding common utility functions (error handling, logging)
 - Create script template for new extractions
 
 **Testing Improvements**:
+
 - Add example test cases to READMEs
 - Document common testing scenarios (mocking gh CLI output)
 - Consider bash testing framework if scripts become more complex
@@ -676,15 +746,18 @@ export AZURE_API_KEY="test"
 The `.github/local-actions/` pattern was introduced to solve a lifecycle mismatch problem:
 
 **Problem**: Init-only actions (init-helpers, push-protection-handler, etc.) were placed in `.github/actions/`, causing them to:
+
 - Sync to all fork instances via template-sync.yml
 - Remain in fork repositories despite never being used (init workflows are removed after initialization)
 - Consume sync bandwidth and pollute fork repositories with unused code
 
 **Solution**: Following ADR-015's template/fork separation pattern:
+
 - Template-only actions → `.github/local-actions/` (excluded from sync, removed during init)
 - Fork-operational actions → `.github/actions/` (synced to forks, used by ongoing workflows)
 
 **Configuration**:
+
 - `sync-config.json` line 114: Excludes `.github/local-actions` from template sync
 - `sync-config.json` line 123-126: Removes `.github/local-actions/` during initialization cleanup
 

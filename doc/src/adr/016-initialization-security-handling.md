@@ -88,12 +88,14 @@ When automated approaches fail, users have three options:
 3. **Manual Initialization**: Clone locally and use `git push --no-verify` with appropriate permissions
 
 ## Alternatives Considered
+
 1. **Simple retry logic**: Insufficient for organization-level protection
 2. **History rewriting**: Would break synchronization with upstream
 3. **Forking without history**: Would lose valuable commit history
 4. **Requiring pre-initialization setup**: Would complicate the user experience
 
 The chosen approach balances automation with respect for security policies while providing clear paths for resolution when manual intervention is required.
+
 ---
 
 [← ADR-015](015-template-workflows-separation-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-017 →](017-mcp-server-integration-pattern.md)

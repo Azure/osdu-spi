@@ -8,7 +8,7 @@ Accepted
 
 GitHub Copilot Agent can be extended with Model Context Protocol (MCP) servers to provide specialized tools and capabilities. For OSDU fork repositories managed by this template, there's a specific need for AI-enhanced Maven dependency management, security scanning, and version control.
 
-The [Maven MCP Server](https://github.com/danielscholl-osdu/mvn-mcp-server) provides tools specifically designed for Java/Maven projects, which are common in the OSDU ecosystem. This creates an opportunity to enhance the AI development workflow for fork repositories.
+The [Maven MCP Server](https://pypi.org/project/mvn-mcp-server/) provides tools specifically designed for Java/Maven projects, which are common in the OSDU ecosystem. This creates an opportunity to enhance the AI development workflow for fork repositories.
 
 ### Requirements
 
@@ -41,15 +41,8 @@ We will implement an **MCP Configuration Template Pattern** that:
 {
   "mcpServers": {
     "mvn-mcp-server": {
-      "type": "stdio",
       "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/danielscholl-osdu/mvn-mcp-server@main",
-        "mvn-mcp-server"
-      ],
-      "env": {},
-      "tools": ["*"]
+      "args": ["mvn-mcp-server"]
     }
   }
 }
@@ -119,7 +112,7 @@ We will implement an **MCP Configuration Template Pattern** that:
 ## References
 
 - [GitHub Copilot MCP Documentation](https://docs.github.com/en/enterprise-cloud@latest/copilot/customizing-copilot/extending-copilot-coding-agent-with-mcp)
-- [Maven MCP Server Repository](https://github.com/danielscholl-osdu/mvn-mcp-server)
+- [Maven MCP Server Repository](https://pypi.org/project/mvn-mcp-server/)
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/)
 - [Template MCP Integration Documentation](../mcp-integration.md)
 ---

@@ -8,6 +8,7 @@
 The original template repository pattern (ADR-003) created a bootstrap problem: once repositories were created from the template, there was no systematic way to propagate template improvements (workflow updates, security patches, new features) to existing forked repositories without manual intervention or repository recreation.
 
 **Problems with Static Template Approach:**
+
 - **Template Drift**: Forked repositories became outdated as template improved
 - **Manual Updates**: No automated way to get workflow improvements
 - **Inconsistent Infrastructure**: Repositories diverged from template over time
@@ -15,6 +16,7 @@ The original template repository pattern (ADR-003) created a bootstrap problem: 
 - **Maintenance Burden**: Teams had to manually track and apply template changes
 
 **Need for Systematic Sync Management:**
+
 - Define exactly which files should be synchronized between template and forks
 - Distinguish between template-management files and project-essential files
 - Handle cleanup of template-specific content during initialization
@@ -46,12 +48,14 @@ Implement a **Configuration-Driven Template Synchronization System** using `.git
 ```
 
 ### 2. **Selective File Synchronization**
+
 - **Essential Infrastructure**: Issue templates, PR templates, security configs, labels
 - **Essential Workflows**: Sync, validate, build, release, template-sync, dependabot-validation
 - **Template-Only Content**: Initialization workflows, cascade management, template documentation
 - **Cleanup Content**: Template-specific files removed during repository initialization
 
 ### 3. **Configuration-Aware Workflows**
+
 - **`init-complete.yml`**: Uses sync config to copy only essential files during initialization
 - **`template-sync.yml`**: Uses sync config to determine what files to check for updates
 - **Tracking System**: `.github/.template-sync-commit` tracks last synced template version
@@ -84,21 +88,25 @@ Implement a **Configuration-Driven Template Synchronization System** using `.git
 ## Alternatives Considered
 
 ### 1. **Manual Sync Documentation**
+
 - **Pros**: Simple, no automation complexity
 - **Cons**: Error-prone, time-consuming, rarely followed
 - **Decision**: Rejected due to poor adoption and consistency
 
 ### 2. **Git Subtree/Submodule for Template**
+
 - **Pros**: Native Git functionality
 - **Cons**: Complex for users, doesn't handle selective syncing
 - **Decision**: Rejected due to user experience complexity
 
 ### 3. **Hardcoded Sync Lists in Workflows**
+
 - **Pros**: Direct, no additional configuration
 - **Cons**: Difficult to maintain, no documentation of decisions
 - **Decision**: Rejected due to maintainability concerns
 
 ### 4. **External Sync Service**
+
 - **Pros**: Powerful, could handle complex scenarios
 - **Cons**: External dependency, additional infrastructure
 - **Decision**: Rejected due to complexity and dependencies
@@ -201,6 +209,7 @@ done
 ## Consequences
 
 ### Positive
+
 - **Eliminates Template Drift**: Forked repositories automatically stay current with template
 - **Selective Synchronization**: Only essential infrastructure gets updated
 - **Clean Repository State**: Template artifacts automatically removed during initialization
@@ -210,12 +219,14 @@ done
 - **Conflict Prevention**: Clear boundaries between template and project content
 
 ### Negative
+
 - **Configuration Complexity**: Additional configuration file to maintain
 - **Bootstrap Dependency**: Sync configuration must exist before sync can work
 - **Learning Curve**: Team needs to understand sync configuration structure
 - **JSON Management**: Configuration changes require JSON syntax knowledge
 
 ### Mitigation Strategies
+
 - **Documentation**: Comprehensive documentation with examples (doc/sync-configuration.md)
 - **Validation**: JSON validation during development and in workflows
 - **Self-Updating**: Configuration file itself is synced, ensuring consistency
@@ -234,18 +245,21 @@ done
 ## Future Evolution
 
 ### Potential Enhancements
+
 1. **Conditional Sync Rules**: Sync different files based on project type
 2. **Conflict Resolution**: Automated handling of sync conflicts
 3. **Sync Analytics**: Tracking sync success rates and common issues
 4. **Custom Sync Schedules**: Per-repository sync frequency configuration
 
 ### Extensibility Design
+
 - **Modular Configuration**: Easy to add new sync rule categories
 - **Version Evolution**: Configuration schema can evolve with backward compatibility
 - **Plugin Architecture**: Support for custom sync processors
 - **Integration Points**: Hooks for additional sync validation or processing
 
 ## Related ADRs
+
 - **ADR-003**: Template Repository Pattern for Self-Configuration (updated by this decision)
 - **ADR-006**: Two-Workflow Initialization Pattern (enhanced by sync configuration)
 - **ADR-012**: Template Update Propagation Strategy (depends on this configuration system)

@@ -10,7 +10,7 @@ MCP servers extend GitHub Copilot Agent's capabilities by providing specialized 
 
 ### What is the Maven MCP Server?
 
-The [Maven MCP Server](https://github.com/danielscholl-osdu/mvn-mcp-server) provides GitHub Copilot Agent with tools for:
+The [Maven MCP Server](https://pypi.org/project/mvn-mcp-server/) provides GitHub Copilot Agent with tools for:
 - **Version Management**: Check Maven dependency versions against Maven Central
 - **Security Scanning**: Identify vulnerabilities in project dependencies
 - **Batch Processing**: Analyze multiple dependencies efficiently
@@ -35,15 +35,8 @@ Navigate to your fork repository settings:
 {
   "mcpServers": {
     "mvn-mcp-server": {
-      "type": "local",
       "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/danielscholl-osdu/mvn-mcp-server@main",
-        "mvn-mcp-server"
-      ],
-      "env": {},
-      "tools": ["*"]
+      "args": ["mvn-mcp-server"]
     }
   }
 }
@@ -70,18 +63,8 @@ If your Maven projects require specific environment variables:
 {
   "mcpServers": {
     "mvn-mcp-server": {
-      "type": "local",
       "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/danielscholl-osdu/mvn-mcp-server@main",
-        "mvn-mcp-server"
-      ],
-      "env": {
-        "MAVEN_OPTS": "-Xmx2g",
-        "JAVA_HOME": "/usr/lib/jvm/java-11-openjdk"
-      },
-      "tools": ["*"]
+      "args": ["mvn-mcp-server"]
     }
   }
 }
@@ -181,7 +164,7 @@ The MCP server integrates with existing fork workflows:
 1. **Validate Configuration**:
    ```bash
    # Test MCP server locally (if you have Python 3.12+)
-   uvx --from git+https://github.com/danielscholl-osdu/mvn-mcp-server@main mvn-mcp-server
+   uvx mvn-mcp-server
    ```
 
 2. **Check Logs**:
@@ -213,6 +196,6 @@ Planned improvements for MCP integration:
 ## Support
 
 For MCP-related issues:
-1. Check the [Maven MCP Server repository](https://github.com/danielscholl-osdu/mvn-mcp-server) for updates
+1. Check the [Maven MCP Server repository](https://pypi.org/project/mvn-mcp-server/) for updates
 2. Review GitHub's [MCP documentation](https://docs.github.com/en/enterprise-cloud@latest/copilot/customizing-copilot/extending-copilot-coding-agent-with-mcp)
 3. Create an issue with the `mcp-integration` label
