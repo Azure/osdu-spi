@@ -48,8 +48,9 @@ if [[ -f ".github/fork-resources/dependabot.yml" ]]; then
   SERVICE_NAME=$(basename "$(git rev-parse --show-toplevel)")
   echo "Detected service name: $SERVICE_NAME"
 
-  # Copy and replace <service> placeholders
-  sed "s/<service>/$SERVICE_NAME/g" ".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
+  # Copy and replace <service> placeholders, escaping special characters in service name
+  SERVICE_ESCAPED=${SERVICE_NAME//&/\\&}
+  sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
   git add ".github/dependabot.yml"
 fi
 
