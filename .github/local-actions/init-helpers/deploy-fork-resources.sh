@@ -43,7 +43,14 @@ fi
 # Copy fork-specific Dependabot configuration
 if [[ -f ".github/fork-resources/dependabot.yml" ]]; then
   echo "Installing fork-specific Dependabot configuration..."
-  cp ".github/fork-resources/dependabot.yml" ".github/dependabot.yml"
+
+  # Detect service name from repository name
+  SERVICE_NAME=$(basename "$(git rev-parse --show-toplevel)")
+  echo "Detected service name: $SERVICE_NAME"
+
+  # Copy and replace <service> placeholders, escaping special characters in service name
+  SERVICE_ESCAPED=${SERVICE_NAME//&/\\&}
+  sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
   git add ".github/dependabot.yml"
 fi
 
