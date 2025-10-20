@@ -36,7 +36,34 @@ jobs:
           cache: 'maven'
 
       - name: Install Maven dependencies
-        run: mvn dependency:resolve dependency:resolve-sources -q
+        env:
+          # Fix for Maven 3.9+ network issues with Azure/GitHub Actions
+          # Limits connection lifetime to prevent stale connections from being reused
+          # Maven will retry connections 3 times by default
+          MAVEN_OPTS: "-Daether.connector.http.connectionMaxTtl=25"
+        run: |
+          # Retry Maven dependency resolution to handle intermittent network failures
+          # This is especially important for large dependency trees or slower networks
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "===== Maven Dependency Resolution Attempt: $ATTEMPT/$MAX_ATTEMPTS ====="
+
+            if mvn dependency:resolve dependency:resolve-sources -q; then
+              echo "✅ Maven dependencies resolved successfully"
+              exit 0
+            else
+              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo "⚠️ Attempt $ATTEMPT failed, retrying in 5 seconds..."
+                ATTEMPT=$((ATTEMPT + 1))
+                sleep 5
+              else
+                echo "❌ Maven dependency resolution failed after $MAX_ATTEMPTS attempts"
+                exit 1
+              fi
+            fi
+          done
 
       - name: Install Trivy security scanner
         run: |
