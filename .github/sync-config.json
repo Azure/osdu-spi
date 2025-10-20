@@ -92,6 +92,10 @@
         {
           "path": ".github/workflows/dev-release.yml",
           "description": "Template release management with Release Please (template only)"
+        },
+        {
+          "path": ".github/workflows/scorecard.yml",
+          "description": "OpenSSF Scorecard security analysis (template only)"
         }
       ],
       "development_only": [
