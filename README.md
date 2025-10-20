@@ -1,6 +1,6 @@
 # OSDU Azure Service Provider Interface
 
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/azure/osdu-spi/badge)](https://scorecard.dev/viewer/?uri=github.com/azure/osdu-spi)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/azure/osdu-spi/badge)](https://scorecard.dev/viewer/?uri=github.com/Azure/osdu-spi)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 > [!IMPORTANT]
