@@ -56,14 +56,13 @@ jobs:
             else
               if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
                 echo "⚠️ Attempt $ATTEMPT failed, retrying in 5 seconds..."
+                ATTEMPT=$((ATTEMPT + 1))
                 sleep 5
               else
                 echo "❌ Maven dependency resolution failed after $MAX_ATTEMPTS attempts"
                 exit 1
               fi
             fi
-
-            ATTEMPT=$((ATTEMPT + 1))
           done
 
       - name: Install Trivy security scanner
