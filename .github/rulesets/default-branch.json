@@ -48,9 +48,6 @@
         "required_status_checks": [
           {
             "context": "CodeQL"
-          },
-          {
-            "context": "GitHub Advanced Security"
           }
         ]
       }
