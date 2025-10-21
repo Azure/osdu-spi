@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c  # v6
         with:
           python-version: 3.x
-      - run: pip install mkdocs==1.6.1 mkdocs-material==9.5.47 mkdocs-minify-plugin==0.8.0 pymdown-extensions==10.12
+      - run: pip install --require-hashes -r doc/requirements.txt
       - run: |
           cd doc
           mkdocs gh-deploy --force --clean --verbose
