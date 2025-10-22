@@ -280,6 +280,9 @@ jobs:
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
             AIPR_MODEL="azure/gpt-5-chat"
+            # Map environment variables to what aipr expects
+            export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
+            export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
           else
             AIPR_MODEL=""
           fi
@@ -304,24 +307,24 @@ jobs:
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
             echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
             PR_DESCRIPTION=$(timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
-            
+
             # Debug what we got back and handle all failure cases
+            # Check for errors FIRST before length validation
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
               echo "   ❌ AIPR pr command execution failed or timed out"
               PR_DESCRIPTION=""
-            elif [[ "$PR_DESCRIPTION" =~ ^[Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" ]]; then
-              echo "   ❌ AIPR pr error: $PR_DESCRIPTION"
+            elif [[ "$PR_DESCRIPTION" =~ [Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" || "$PR_DESCRIPTION" =~ "Missing" ]]; then
+              echo "   ❌ AIPR pr error detected: ${PR_DESCRIPTION:0:100}..."
               PR_DESCRIPTION=""
-            fi
-            
-            if [[ -n "$PR_DESCRIPTION" ]] && [[ ${#PR_DESCRIPTION} -gt 50 ]]; then
-              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
+            elif [[ -z "$PR_DESCRIPTION" ]] || [[ ${#PR_DESCRIPTION} -lt 50 ]]; then
+              echo "⚠️ AIPR PR description too short or empty (${#PR_DESCRIPTION} chars)"
+              PR_DESCRIPTION=""
             else
-              if [[ -n "$PR_DESCRIPTION" ]]; then
-                echo "⚠️ AIPR PR description too short (${#PR_DESCRIPTION} chars): $PR_DESCRIPTION"
-              else
-                echo "⚠️ AIPR PR generation failed or timed out"
-              fi
+              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
+            fi
+
+            # Use fallback if AI generation failed
+            if [[ -z "$PR_DESCRIPTION" ]]; then
               echo "   🔄 Using enhanced fallback description"
               PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
             fi
@@ -391,6 +394,9 @@ jobs:
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
             AIPR_MODEL="azure/gpt-5-chat"
+            # Map environment variables to what aipr expects
+            export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
+            export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
           else
             AIPR_MODEL=""
           fi
@@ -415,24 +421,24 @@ jobs:
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
             echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
             PR_DESCRIPTION=$(timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
-            
+
             # Debug what we got back and handle all failure cases
+            # Check for errors FIRST before length validation
             if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
               echo "   ❌ AIPR pr command execution failed or timed out"
               PR_DESCRIPTION=""
-            elif [[ "$PR_DESCRIPTION" =~ ^[Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" ]]; then
-              echo "   ❌ AIPR pr error: $PR_DESCRIPTION"
+            elif [[ "$PR_DESCRIPTION" =~ [Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" || "$PR_DESCRIPTION" =~ "Missing" ]]; then
+              echo "   ❌ AIPR pr error detected: ${PR_DESCRIPTION:0:100}..."
               PR_DESCRIPTION=""
-            fi
-            
-            if [[ -n "$PR_DESCRIPTION" ]] && [[ ${#PR_DESCRIPTION} -gt 50 ]]; then
-              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
+            elif [[ -z "$PR_DESCRIPTION" ]] || [[ ${#PR_DESCRIPTION} -lt 50 ]]; then
+              echo "⚠️ AIPR PR description too short or empty (${#PR_DESCRIPTION} chars)"
+              PR_DESCRIPTION=""
             else
-              if [[ -n "$PR_DESCRIPTION" ]]; then
-                echo "⚠️ AIPR PR description too short (${#PR_DESCRIPTION} chars): $PR_DESCRIPTION"
-              else
-                echo "⚠️ AIPR PR generation failed or timed out"
-              fi
+              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
+            fi
+
+            # Use fallback if AI generation failed
+            if [[ -z "$PR_DESCRIPTION" ]]; then
               echo "   🔄 Using enhanced fallback description"
               PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
             fi

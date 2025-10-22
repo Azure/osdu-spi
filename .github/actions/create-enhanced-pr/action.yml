@@ -86,8 +86,8 @@ runs:
       id: generate-description
       shell: bash
       env:
-        AZURE_API_KEY: ${{ inputs.azure-api-key }}
-        AZURE_API_BASE: ${{ inputs.azure-api-base }}
+        AZURE_OPENAI_ENDPOINT: ${{ inputs.azure-api-base }}
+        AZURE_OPENAI_API_KEY: ${{ inputs.azure-api-key }}
         AZURE_API_VERSION: ${{ inputs.azure-api-version }}
       run: |
         # Calculate diff size to avoid generating prompts that exceed model limits
@@ -109,12 +109,12 @@ runs:
             TARGET_BRANCH="${{ inputs.base-branch }}"
           fi
 
-          AIPR_FLAGS="-t $TARGET_BRANCH -m ${{ steps.map-model.outputs.aipr-model }} --max-diff-lines $MAX_DIFF_LINES"
+          AIPR_FLAGS="-t $TARGET_BRANCH -m ${{ steps.map-model.outputs.aipr-model }} -s"
           if [[ "${{ inputs.use-vulns-flag }}" == "true" ]]; then
             AIPR_FLAGS="$AIPR_FLAGS --vulns"
           fi
-          
-          PR_DESCRIPTION=$(aipr $AIPR_FLAGS 2>/dev/null || echo "")
+
+          PR_DESCRIPTION=$(aipr pr $AIPR_FLAGS 2>/dev/null || echo "")
           
           if [[ -n "$PR_DESCRIPTION" ]]; then
             echo "Generated enhanced PR description using ${{ steps.map-model.outputs.aipr-model }}"
