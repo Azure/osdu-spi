@@ -73,7 +73,7 @@ runs:
 
         # Map model names for aipr compatibility
         if [[ "$LLM_MODEL" == "azure" ]]; then
-          AIPR_MODEL="azure"
+          AIPR_MODEL="azure/gpt-5-chat"
           echo "Using Azure Foundry for PR description generation"
         else
           AIPR_MODEL=""

@@ -279,7 +279,7 @@ jobs:
 
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
-            AIPR_MODEL="azure"
+            AIPR_MODEL="azure/gpt-5-chat"
             # Map environment variables to what aipr expects
             export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
             export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
@@ -393,7 +393,7 @@ jobs:
 
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
-            AIPR_MODEL="azure"
+            AIPR_MODEL="azure/gpt-5-chat"
             # Map environment variables to what aipr expects
             export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
             export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
