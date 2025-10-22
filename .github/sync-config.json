@@ -34,10 +34,6 @@
       {
         "path": ".github/security-patterns.txt",
         "description": "Security scanning patterns"
-      },
-      {
-        "path": "CODEOWNERS",
-        "description": "Code ownership and review assignments"
       }
     ],
     "workflows": {
@@ -115,7 +111,8 @@
   },
   "exclusions": [
     ".github/copilot-instructions.md",
-    ".github/local-actions"
+    ".github/local-actions",
+    "CODEOWNERS"
   ],
   "cleanup_rules": {
     "description": "Files and directories to remove during repository initialization",
