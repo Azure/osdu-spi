@@ -193,10 +193,14 @@ jobs:
             echo "Azure OpenAI credentials configured for aipr commit generation"
           fi
 
+          # Set Azure model (use repository variable or default to gpt-5-chat)
+          AZURE_MODEL="${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}"
+          echo "Using Azure model: azure/$AZURE_MODEL"
+
           echo "Attempting to generate AI-powered conventional commit message..."
 
           # Try AIPR with timeout and validation (single call for efficiency)
-          META_COMMIT_MSG=$(timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync" -m azure/gpt-5-chat 2>/dev/null || echo "")
+          META_COMMIT_MSG=$(timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync" -m "azure/$AZURE_MODEL" 2>/dev/null || echo "")
           
           if [[ -n "$META_COMMIT_MSG" ]]; then
             # Extract first line for validation, but use full message for commit
@@ -286,10 +290,13 @@ jobs:
 
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
-            AIPR_MODEL="azure/gpt-5-chat"
+            # Use repository variable or default to gpt-5-chat
+            AZURE_MODEL="${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}"
+            AIPR_MODEL="azure/$AZURE_MODEL"
             # Map environment variables to what aipr expects
             export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
             export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
+            echo "Using Azure model: $AIPR_MODEL"
           else
             AIPR_MODEL=""
           fi
@@ -400,10 +407,13 @@ jobs:
 
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
-            AIPR_MODEL="azure/gpt-5-chat"
+            # Use repository variable or default to gpt-5-chat
+            AZURE_MODEL="${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}"
+            AIPR_MODEL="azure/$AZURE_MODEL"
             # Map environment variables to what aipr expects
             export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
             export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
+            echo "Using Azure model: $AIPR_MODEL"
           else
             AIPR_MODEL=""
           fi
