@@ -185,11 +185,18 @@ jobs:
           # Generate conventional commit message using AIPR 1.4.0 with comprehensive error handling
           META_COMMIT_MSG=""
           AIPR_SUCCESS=false
-          
+
+          # Map environment variables for aipr
+          if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
+            export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
+            export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
+            echo "Azure OpenAI credentials configured for aipr commit generation"
+          fi
+
           echo "Attempting to generate AI-powered conventional commit message..."
-          
+
           # Try AIPR with timeout and validation (single call for efficiency)
-          META_COMMIT_MSG=$(timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync" 2>/dev/null || echo "")
+          META_COMMIT_MSG=$(timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync" -m azure/gpt-5-chat 2>/dev/null || echo "")
           
           if [[ -n "$META_COMMIT_MSG" ]]; then
             # Extract first line for validation, but use full message for commit
