@@ -416,6 +416,7 @@ jobs:
           azure-api-key: ${{ secrets.AZURE_API_KEY }}
           azure-api-base: ${{ secrets.AZURE_API_BASE }}
           azure-api-version: ${{ secrets.AZURE_API_VERSION }}
+          aipr-model: ${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           target-branch-for-aipr: main
           use-vulns-flag: 'false'

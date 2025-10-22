@@ -26,6 +26,10 @@ inputs:
   azure-api-version:
     description: 'Azure Foundry API version (optional)'
     required: false
+  aipr-model:
+    description: 'Azure OpenAI model variant (gpt-5-chat, gpt-5-mini, gpt-5-nano)'
+    required: false
+    default: 'gpt-5-chat'
   max-diff-lines:
     description: 'Maximum diff lines for aipr processing'
     required: false
@@ -73,8 +77,8 @@ runs:
 
         # Map model names for aipr compatibility
         if [[ "$LLM_MODEL" == "azure" ]]; then
-          AIPR_MODEL="azure/gpt-5-chat"
-          echo "Using Azure Foundry for PR description generation"
+          AIPR_MODEL="azure/${{ inputs.aipr-model }}"
+          echo "Using Azure Foundry for PR description generation with model: $AIPR_MODEL"
         else
           AIPR_MODEL=""
           echo "No LLM API keys found. Using fallback PR description."
