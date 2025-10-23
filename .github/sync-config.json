@@ -148,6 +148,10 @@
         "reason": "Template development changelog - fork instances use upstream changelog"
       },
       {
+        "path": "CODEOWNERS",
+        "reason": "Template-specific code owners - fork instances define their own ownership"
+      },
+      {
         "path": ".github/ISSUE_TEMPLATE/branch-protection-reminder.md",
         "reason": "Template initialization issue template"
       },
