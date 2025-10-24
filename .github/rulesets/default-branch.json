@@ -14,12 +14,6 @@
       "type": "creation"
     },
     {
-      "type": "update",
-      "parameters": {
-        "update_allows_fetch_and_merge": false
-      }
-    },
-    {
       "type": "deletion"
     },
     {
