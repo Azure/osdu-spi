@@ -3,6 +3,13 @@ updates:
   # GitHub Actions - Fork Workflows
   # Monitor all GitHub Actions for security updates
   # Aligns with ADR-026: Dependabot Security Update Strategy
+  #
+  # Schedule Strategy:
+  # - Fork repos: Weekly (Monday 08:00 UTC)
+  # - Template repo: Daily (08:00 UTC)
+  # - Template sync: Daily propagation
+  # This design ensures forks receive updates via template sync before
+  # their own dependabot finds them, reducing duplicate PRs
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -23,6 +30,11 @@ updates:
 
   # GitHub Actions - Composite Actions
   # Monitor composite actions synced from template repository
+  #
+  # Note: These actions are synced from the template, but fork monitoring
+  # provides a backup check and independent validation. This redundancy
+  # ensures critical security patches are caught even if sync-template
+  # has delays or issues.
   - package-ecosystem: "github-actions"
     directory: "/.github/actions"
     schedule:
