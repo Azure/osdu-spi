@@ -2,6 +2,7 @@
 
 ## Status
 **Accepted** - 2025-10-01
+**Updated** - 2025-10-24 (Separation of Concerns Architecture)
 
 ## Context
 
@@ -12,22 +13,26 @@ Fork repositories managing OSDU services face unique challenges with dependency 
 3. **Validation Requirements**: All dependency updates need thorough testing before merge
 4. **Update Frequency**: Balance between security responsiveness and stability
 5. **Fork-Specific Dependencies**: Local enhancements may have additional dependencies
+6. **Engineering System Updates**: Workflows and actions maintained separately from application code
 
 GitHub's Dependabot provides automated dependency updates, but the fork management template needed a strategy that:
 - Ensures security updates are applied promptly
 - Maintains compatibility with the three-branch strategy
 - Provides appropriate validation for different update types
 - Handles both upstream and fork-specific dependencies
+- **Separates platform concerns (workflows) from application concerns (code dependencies)**
+- **Eliminates race conditions during fork initialization**
 
 ## Decision
 
-Implement a **Controlled Dependabot Strategy** with:
+Implement a **Separation of Concerns Dependabot Strategy** with:
 
-1. **Security-First Configuration**: Priority on security updates over version updates
-2. **Dedicated Validation Workflow**: `dependabot-validation.yml` for automated PR validation
-3. **Grouped Updates**: Related dependencies updated together to reduce PR noise
-4. **Conservative Update Policy**: Patch and minor updates only, major versions require manual review
-5. **Fork-Specific Monitoring**: Track both upstream OSDU and fork-specific dependencies
+1. **Template Owns Engineering System**: Template repository monitors `.github` (workflows, actions) and `doc` (documentation)
+2. **Forks Own Application Code**: Fork repositories monitor Maven dependencies ONLY
+3. **Template Sync Propagates Platform Updates**: Engineering system updates flow via `sync-template` workflow
+4. **Grouped Updates**: Related dependencies updated together to reduce PR noise
+5. **Conservative Update Policy**: Patch and minor updates only, major versions require manual review
+6. **No Duplicate PRs**: Forks never scan `.github`, eliminating race conditions and duplicate updates
 
 ## Rationale
 
@@ -71,42 +76,52 @@ Implement a **Controlled Dependabot Strategy** with:
 
 ### Dependabot Configuration
 
+**Template Repository** (`.github/dependabot.yml`):
 ```yaml
-# .github/dependabot.yml
 version: 2
 updates:
-  # GitHub Actions
+  # Engineering System - Template Responsibility
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directory: "/.github"  # Monitors ALL .github subdirectories recursively
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "08:00"
-    labels:
-      - "dependencies"
-      - "github-actions"
     groups:
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
-  # Maven Dependencies (when pom.xml exists)
-  - package-ecosystem: "maven"
-    directory: "/"
+  # Documentation - Template Responsibility
+  - package-ecosystem: "pip"
+    directory: "/doc"
     schedule:
       interval: "daily"
       time: "08:00"
-    labels:
-      - "dependencies"
-      - "maven"
+```
+
+**Fork Repositories** (`.github/fork-resources/dependabot.yml` → `.github/dependabot.yml`):
+```yaml
+version: 2
+updates:
+  # NO GitHub Actions monitoring - Receives via sync-template!
+
+  # Maven Dependencies - Application Code Only
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "09:00"
     groups:
-      maven-test:
+      spring:
         patterns:
-          - "junit*"
-          - "mockito*"
-          - "testng*"
-    open-pull-requests-limit: 10
-    versioning-strategy: "increase-if-necessary"
+          - "org.springframework*"
+        update-types:
+          - "patch"
+    # Additional Maven configs for /<service>-core and /provider/<service>-azure
 ```
 
 ### Validation Workflow
@@ -128,15 +143,35 @@ jobs:
       - Validate against upstream OSDU
 ```
 
+### Update Flow Architecture
+
+```
+Template Repository (azure/osdu-spi):
+  Day 1 08:00 → Dependabot scans /.github
+             → Finds actions/checkout@v4 → v5
+             → Creates PR in template
+  Day 1 10:00 → Platform team merges PR
+  Day 2 08:00 → sync-template workflow runs
+             → Creates PRs in all forks with updated workflows
+
+Fork Repositories (danielscholl-osdu/*):
+  Day 2 08:00 → Receive sync-template PR with workflow updates
+             → Review and merge (engineering system updates)
+  Sunday 09:00 → Dependabot scans Maven dependencies
+              → Creates PRs for Spring Boot, Jackson, etc.
+              → NO GitHub Actions scanning (eliminates duplicates)
+```
+
 ### Update Groups
 
-| Group | Dependencies | Update Frequency | Auto-merge |
-|-------|-------------|------------------|------------|
-| **Security** | All with CVEs | Immediate | Yes (patch) |
-| **GitHub Actions** | Workflow actions | Weekly | Yes |
-| **Maven Test** | Test frameworks | Weekly | Yes |
-| **Maven Core** | Core dependencies | Daily | No |
-| **Major Updates** | Major versions | Manual | No |
+| Repository | Ecosystem | Update Frequency | Managed By |
+|------------|-----------|------------------|------------|
+| **Template** | GitHub Actions | Daily | Template Dependabot |
+| **Template** | Python/pip | Daily | Template Dependabot |
+| **Forks** | Maven (root) | Weekly | Fork Dependabot |
+| **Forks** | Maven (core) | Weekly | Fork Dependabot |
+| **Forks** | Maven (provider) | Weekly | Fork Dependabot |
+| **Forks** | GitHub Actions | N/A | Template sync-template |
 
 ### Label Strategy
 
@@ -149,10 +184,13 @@ jobs:
 ## Consequences
 
 ### Positive
-- **Improved Security Posture**: Vulnerabilities patched within 48 hours
+- **Improved Security Posture**: Vulnerabilities patched within 48 hours via template
+- **Eliminated Race Conditions**: Forks don't scan `.github`, no timing issues during init
+- **No Duplicate PRs**: Single source of truth for engineering system updates
+- **Clear Separation of Concerns**: Template owns platform, forks own application code
 - **Reduced Manual Work**: Automated dependency updates save developer time
+- **Scalable Architecture**: 1 template update → N fork updates automatically
 - **Consistent Validation**: All updates go through same validation process
-- **Clear Prioritization**: Security updates clearly identified and prioritized
 - **Audit Trail**: Complete history of dependency updates in GitHub
 - **OSDU Compatibility**: Conservative approach maintains upstream compatibility
 
@@ -160,12 +198,12 @@ jobs:
 - **PR Noise**: Regular automated PRs require attention
 - **Validation Overhead**: All updates require CI/CD resources
 - **Potential Conflicts**: Updates may conflict with local modifications
-- **Review Burden**: Team must review and merge Dependabot PRs
+- **Template Dependency**: Forks rely on template for workflow/action updates
 
 ### Neutral
 - **GitHub Dependency**: Relies on GitHub's Dependabot service
 - **Update Lag**: Conservative strategy means not always latest versions
-- **Group Complexity**: Grouped updates can be harder to troubleshoot
+- **Two-Track Updates**: Engineering system (daily) vs application code (weekly)
 
 ## Success Criteria
 
