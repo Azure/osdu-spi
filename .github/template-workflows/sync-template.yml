@@ -2,7 +2,7 @@ name: Sync Template
 
 on:
   schedule:
-    - cron: '0 8 * * 1'  # Run weekly on Monday at 8 AM
+    - cron: '0 8 * * *'  # Run daily at 8 AM UTC
   workflow_dispatch:      # Allow manual trigger
 
 jobs:
