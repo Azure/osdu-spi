@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # GitHub Actions - Fork Instance
+  # GitHub Actions - Fork Workflows
   # Monitor all GitHub Actions for security updates
   # Aligns with ADR-026: Dependabot Security Update Strategy
   - package-ecosystem: "github-actions"
@@ -12,7 +12,26 @@ updates:
     target-branch: "main"
     labels:
       - "dependencies"
-      - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions - Composite Actions
+  # Monitor composite actions synced from template repository
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+    target-branch: "main"
+    labels:
+      - "dependencies"
     groups:
       github-actions:
         patterns:

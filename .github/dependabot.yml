@@ -1,22 +1,97 @@
 version: 2
 updates:
-  # GitHub Actions - Template Repository
-  # This template repository uses GitHub Actions for CI/CD automation
-  # Monitor all actions for security updates and version improvements
+  # GitHub Actions - Template Development Workflows
+  # Monitor workflows in .github/workflows/ (template repository workflows)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "08:00"
     target-branch: "main"
     labels:
       - "dependencies"
-      - "github-actions"
     groups:
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions - Fork Production Workflows
+  # Monitor workflows in .github/template-workflows/ (copied to forks during init)
+  - package-ecosystem: "github-actions"
+    directory: "/.github/template-workflows"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+    target-branch: "main"
+    labels:
+      - "dependencies"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions - Composite Actions
+  # Monitor composite actions in .github/actions/ (used by workflows)
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+    target-branch: "main"
+    labels:
+      - "dependencies"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions - Local Initialization Actions
+  # Monitor template-only actions used during fork initialization
+  - package-ecosystem: "github-actions"
+    directory: "/.github/local-actions"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+    target-branch: "main"
+    labels:
+      - "dependencies"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # Python - Documentation Dependencies
+  # Monitor MkDocs and related documentation tooling
+  - package-ecosystem: "pip"
+    directory: "/doc"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+    target-branch: "main"
+    labels:
+      - "dependencies"
+      - "documentation"
+    groups:
+      mkdocs:
+        patterns:
+          - "mkdocs*"
+          - "pymdown-extensions"
         update-types:
           - "minor"
           - "patch"
