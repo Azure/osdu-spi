@@ -16,11 +16,7 @@
     ],
     "files": [
       {
-        "path": ".github/dependabot.yml",
-        "description": "Dependency update configuration"
-      },
-      {
-        "path": ".github/labels.json", 
+        "path": ".github/labels.json",
         "description": "Repository label definitions"
       },
       {
