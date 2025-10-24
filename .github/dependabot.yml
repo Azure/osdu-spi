@@ -1,9 +1,26 @@
 version: 2
 updates:
-  # GitHub Actions - Template Development Workflows
-  # Monitor workflows in .github/workflows/ (template repository workflows)
+  # ========================================================================
+  # TEMPLATE REPOSITORY CONFIGURATION
+  # ========================================================================
+  # This configuration is for the TEMPLATE repository (azure/osdu-spi)
+  # which serves as the engineering system/platform.
+  #
+  # ARCHITECTURE DECISION:
+  # - Template owns: Engineering system (.github workflows and actions)
+  # - Forks own: Application code (Maven dependencies)
+  # - Updates flow: Template → sync-template → Forks
+  #
+  # Fork repositories receive .github updates via sync-template workflow,
+  # NOT via their own dependabot. This eliminates race conditions and
+  # duplicate PRs while maintaining clear separation of concerns.
+  # ========================================================================
+
+  # GitHub Actions - Engineering System (Template Responsibility)
+  # Monitors ALL .github subdirectories recursively for workflow/action updates
+  # Includes: workflows/, template-workflows/, actions/, local-actions/
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directory: "/.github"
     schedule:
       interval: "daily"
       time: "08:00"
@@ -19,65 +36,8 @@ updates:
           - "patch"
     open-pull-requests-limit: 5
 
-  # GitHub Actions - Fork Production Workflows
-  # Monitor workflows in .github/template-workflows/ (copied to forks during init)
-  - package-ecosystem: "github-actions"
-    directory: "/.github/template-workflows"
-    schedule:
-      interval: "daily"
-      time: "08:00"
-    target-branch: "main"
-    labels:
-      - "dependencies"
-    groups:
-      github-actions:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-    open-pull-requests-limit: 5
-
-  # GitHub Actions - Composite Actions
-  # Monitor composite actions in .github/actions/ (used by workflows)
-  - package-ecosystem: "github-actions"
-    directory: "/.github/actions"
-    schedule:
-      interval: "daily"
-      time: "08:00"
-    target-branch: "main"
-    labels:
-      - "dependencies"
-    groups:
-      github-actions:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-    open-pull-requests-limit: 5
-
-  # GitHub Actions - Local Initialization Actions
-  # Monitor template-only actions used during fork initialization
-  - package-ecosystem: "github-actions"
-    directory: "/.github/local-actions"
-    schedule:
-      interval: "daily"
-      time: "08:00"
-    target-branch: "main"
-    labels:
-      - "dependencies"
-    groups:
-      github-actions:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-    open-pull-requests-limit: 5
-
-  # Python - Documentation Dependencies
-  # Monitor MkDocs and related documentation tooling
+  # Python - Documentation Dependencies (Template Responsibility)
+  # Monitor MkDocs and related documentation tooling for the template
   - package-ecosystem: "pip"
     directory: "/doc"
     schedule:
