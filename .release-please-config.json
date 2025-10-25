@@ -2,18 +2,14 @@
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md",
-      "release-type": "simple",
+      "release-type": "maven",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "draft": false,
       "prerelease": false,
       "include-component-in-tag": false,
       "include-v-in-tag": true,
-      "versioning": "default",
-      "extra-files": [
-        "package.json",
-        "packages/*/package.json"
-      ]
+      "versioning": "default"
     }
   },
   "plugins": ["sentence-case"],
