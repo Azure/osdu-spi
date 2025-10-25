@@ -50,7 +50,7 @@ jobs:
           fi
 
           # Get list of changed files
-          CHANGED_FILES=$(git diff --name-only $BASE_SHA $HEAD_SHA || echo "")
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || echo "")
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "should-run=true" >> $GITHUB_OUTPUT
@@ -62,7 +62,7 @@ jobs:
           SHOULD_RUN=false
           while IFS= read -r file; do
             # Skip if file matches ignore patterns
-            if echo "$file" | grep -qE '^\.github/|^\.mvn/|^devops/|^docs/|^\.|\.md$'; then
+            if echo "$file" | grep -qE '^(\.github/|\.mvn/|devops/|docs/|\..*|.*\.md)$'; then
               continue
             fi
             # Found a file that should trigger CodeQL
