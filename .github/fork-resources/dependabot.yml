@@ -16,13 +16,6 @@ updates:
     labels:
       - "dependencies"
       - "common"
-    # ***IMPORTANT***
-    ignore:
-      - dependency-name: "*"
-        paths:
-          - "testing/**"
-          - "<service>-acceptance-test/**"
-          - "<service>-core-plus/**"
     groups:
       spring:
         patterns:
