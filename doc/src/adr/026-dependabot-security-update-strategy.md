@@ -3,6 +3,7 @@
 ## Status
 **Accepted** - 2025-10-01
 **Updated** - 2025-10-24 (Separation of Concerns Architecture)
+**Updated** - 2025-10-28 (Removed pip/doc from template to prevent fork caching issues)
 
 ## Context
 
@@ -94,12 +95,11 @@ updates:
           - "minor"
           - "patch"
 
-  # Documentation - Template Responsibility
-  - package-ecosystem: "pip"
-    directory: "/doc"
-    schedule:
-      interval: "daily"
-      time: "08:00"
+  # Note: pip/doc ecosystem REMOVED as of 2025-10-28
+  # Reason: Forks inherit this config momentarily before deploy-fork-resources.sh runs,
+  # causing Dependabot to cache the pip/doc ecosystem even after it's replaced with
+  # Maven-only config. Since /doc is removed during fork initialization, Dependabot
+  # fails trying to scan a non-existent directory.
 ```
 
 **Fork Repositories** (`.github/fork-resources/dependabot.yml` → `.github/dependabot.yml`):
