@@ -36,23 +36,7 @@ updates:
           - "patch"
     open-pull-requests-limit: 5
 
-  # Python - Documentation Dependencies (Template Responsibility)
-  # Monitor MkDocs and related documentation tooling for the template
-  - package-ecosystem: "pip"
-    directory: "/doc"
-    schedule:
-      interval: "daily"
-      time: "08:00"
-    target-branch: "main"
-    labels:
-      - "dependencies"
-      - "documentation"
-    groups:
-      mkdocs:
-        patterns:
-          - "mkdocs*"
-          - "pymdown-extensions"
-        update-types:
-          - "minor"
-          - "patch"
-    open-pull-requests-limit: 5
+  # Python/doc dependencies removed to prevent fork initialization issues
+  # Issue: Forks inherit this config momentarily before deploy-fork-resources.sh runs,
+  # causing Dependabot to cache the pip/doc ecosystem even after replacement
+  # Template documentation updates can be monitored separately if needed
