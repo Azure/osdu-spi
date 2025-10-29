@@ -199,7 +199,19 @@ jobs:
             exit 1
           fi
 
-          # Check analyze job result (can be success or skipped)
+          # Check analyze job result:
+          # - "success": analysis completed for at least one detected language
+          # - "skipped": can occur if (a) should-run is false (handled above), or (b) no languages were detected
+          # - "failure"/"cancelled": actual analysis errors
+
+          # If analyze is skipped when should-run is true, no languages were detected - this should fail
+          if [ "${{ needs.analyze.result }}" = "skipped" ]; then
+            echo "❌ CodeQL analysis skipped - no languages detected in repository"
+            echo "This indicates a configuration issue or repository with no analyzable code"
+            exit 1
+          fi
+
+          # Check for actual failures
           if [ "${{ needs.analyze.result }}" = "failure" ] || [ "${{ needs.analyze.result }}" = "cancelled" ]; then
             echo "❌ CodeQL analysis failed or was cancelled"
             exit 1
