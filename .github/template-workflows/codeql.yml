@@ -170,3 +170,51 @@ jobs:
         uses: github/codeql-action/analyze@caa5102941e77fe39b460490c70318beb68c5c25  # v4
         with:
           category: "/language:${{matrix.language}}"
+
+  # Summary job that always reports as "CodeQL" to satisfy required status checks
+  # This job name matches the required check context in repository rulesets
+  CodeQL:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    needs: [check-paths, detect-languages, analyze]
+    if: always()
+    steps:
+      - name: Report CodeQL Status
+        run: |
+          # Check if check-paths succeeded
+          if [ "${{ needs.check-paths.result }}" != "success" ]; then
+            echo "❌ Code path check failed"
+            exit 1
+          fi
+
+          # If should-run is false, all checks passed (config-only changes)
+          if [ "${{ needs.check-paths.outputs.should-run }}" = "false" ]; then
+            echo "✅ CodeQL skipped - only configuration files changed"
+            exit 0
+          fi
+
+          # If should-run is true, check that analysis completed successfully
+          if [ "${{ needs.detect-languages.result }}" != "success" ]; then
+            echo "❌ Language detection failed"
+            exit 1
+          fi
+
+          # Check analyze job result:
+          # - "success": analysis completed for at least one detected language
+          # - "skipped": can occur if (a) should-run is false (handled above), or (b) no languages were detected
+          # - "failure"/"cancelled": actual analysis errors
+
+          # If analyze is skipped when should-run is true, no languages were detected - this should fail
+          if [ "${{ needs.analyze.result }}" = "skipped" ]; then
+            echo "❌ CodeQL analysis skipped - no languages detected in repository"
+            echo "This indicates a configuration issue or repository with no analyzable code"
+            exit 1
+          fi
+
+          # Check for actual failures
+          if [ "${{ needs.analyze.result }}" = "failure" ] || [ "${{ needs.analyze.result }}" = "cancelled" ]; then
+            echo "❌ CodeQL analysis failed or was cancelled"
+            exit 1
+          fi
+
+          echo "✅ CodeQL checks completed successfully"
