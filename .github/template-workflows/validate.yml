@@ -234,7 +234,7 @@ jobs:
 
       - name: "Validate Commit Messages"
         if: |
-          needs.check-repo-state.outputs.is_initialized == 'true' && 
+          needs.check-repo-state.outputs.is_initialized == 'true' &&
           github.actor != 'dependabot[bot]' &&
           github.actor != 'copilot' &&
           !contains(github.actor, 'copilot') &&
@@ -244,8 +244,11 @@ jobs:
           !startsWith(github.event.pull_request.title, 'chore(sync)') &&
           !startsWith(github.event.pull_request.title, '⬆️ Sync with upstream') &&
           !startsWith(github.event.pull_request.title, '🚀 Production Release: Upstream Integration') &&
-          !startsWith(github.head_ref, 'release/upstream-')
+          !startsWith(github.head_ref, 'release/upstream-') &&
+          !startsWith(github.head_ref, 'release-please--branches--')
         uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           types: |
             feat
