@@ -158,16 +158,61 @@ jobs:
             echo "last_sync_commit=$LAST_SYNC_COMMIT" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create template sync branch
+      - name: Detect existing template sync PRs
+        id: detect-existing
+        if: steps.check-updates.outputs.has_updates == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          echo "Detecting existing template sync PRs..."
+
+          # Query for open PRs with template-sync label targeting main branch
+          EXISTING_PR=$(gh pr list \
+            --state open \
+            --label "template-sync" \
+            --base main \
+            --json number,headRefName \
+            --jq '.[0]')
+
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            PR_NUMBER=$(echo "$EXISTING_PR" | jq -r '.number')
+            PR_BRANCH=$(echo "$EXISTING_PR" | jq -r '.headRefName')
+            echo "has_existing_pr=true" >> $GITHUB_OUTPUT
+            echo "existing_pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "existing_pr_branch=$PR_BRANCH" >> $GITHUB_OUTPUT
+            echo "✅ Found existing template sync PR #$PR_NUMBER on branch $PR_BRANCH"
+          else
+            echo "has_existing_pr=false" >> $GITHUB_OUTPUT
+            echo "existing_pr_number=" >> $GITHUB_OUTPUT
+            echo "existing_pr_branch=" >> $GITHUB_OUTPUT
+            echo "ℹ️ No existing template sync PR found"
+          fi
+
+      - name: Create or update template sync branch
         if: steps.check-updates.outputs.has_updates == 'true'
         run: |
-          # Create sync branch with timestamp
-          DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
-          SYNC_BRANCH="template-sync/${DATE_SUFFIX}"
+          if [ "${{ steps.detect-existing.outputs.has_existing_pr }}" = "true" ]; then
+            # Reuse existing branch
+            SYNC_BRANCH="${{ steps.detect-existing.outputs.existing_pr_branch }}"
+            echo "🔄 Reusing existing branch: $SYNC_BRANCH"
+
+            # Fetch and checkout existing branch
+            git fetch origin $SYNC_BRANCH
+            git checkout -b $SYNC_BRANCH origin/$SYNC_BRANCH
+
+            # Reset to main to get clean state
+            git reset --hard refs/heads/main
+          else
+            # Create new sync branch with timestamp
+            DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
+            SYNC_BRANCH="template-sync/${DATE_SUFFIX}"
+            echo "🆕 Creating new branch: $SYNC_BRANCH"
+
+            # Create and checkout sync branch from main
+            git checkout -b $SYNC_BRANCH refs/heads/main
+          fi
+
           echo "SYNC_BRANCH=$SYNC_BRANCH" >> $GITHUB_ENV
-          
-          # Create and checkout sync branch from main
-          git checkout -b $SYNC_BRANCH refs/heads/main
 
       - name: Sync template files
         if: steps.check-updates.outputs.has_updates == 'true'
@@ -363,8 +408,15 @@ jobs:
       - name: Push sync branch
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
         run: |
-          # Push the sync branch
-          git push origin $SYNC_BRANCH
+          if [ "${{ steps.detect-existing.outputs.has_existing_pr }}" = "true" ]; then
+            # Force push to update existing branch
+            git push -f origin $SYNC_BRANCH
+            echo "🔄 Force-pushed updates to existing branch"
+          else
+            # Normal push for new branch
+            git push origin $SYNC_BRANCH
+            echo "🆕 Pushed new sync branch"
+          fi
 
       - name: Prepare template sync PR description
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
@@ -402,8 +454,8 @@ jobs:
           # Also create a simple version for backwards compatibility
           echo "FALLBACK_DESCRIPTION=Template sync PR - see commit details for changes" >> $GITHUB_ENV
 
-      - name: Create enhanced template sync PR
-        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
+      - name: Create new template sync PR
+        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'false'
         id: create-pr
         uses: ./.github/actions/create-enhanced-pr
         with:
@@ -421,10 +473,65 @@ jobs:
           target-branch-for-aipr: main
           use-vulns-flag: 'false'
 
+      - name: Add template-sync label to new PR
+        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'false'
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_URL="${{ steps.create-pr.outputs.pr-url }}"
+          PR_NUMBER=$(basename "$PR_URL")
+          gh pr edit "$PR_NUMBER" --add-label "template-sync"
+          echo "✅ Added template-sync label to PR #$PR_NUMBER"
+
+      - name: Update existing template sync PR
+        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'true'
+        id: update-pr
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_NUMBER="${{ steps.detect-existing.outputs.existing_pr_number }}"
+          TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
+
+          # Decode the base64 PR description
+          FALLBACK_DESCRIPTION_DECODED=$(echo "${{ env.FALLBACK_DESCRIPTION_B64 }}" | base64 -d)
+
+          # Update PR title and description
+          gh pr edit "$PR_NUMBER" \
+            --title "🔄 Sync template updates (Updated $(date +%Y-%m-%d))" \
+            --body "$FALLBACK_DESCRIPTION_DECODED"
+
+          # Check for existing "Template Sync Updated" comments to prevent duplicates
+          EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.body | contains("🔄 **Template Sync Updated**")) | .body' | grep -c "New template commit.*$TEMPLATE_COMMIT" || echo "0")
+
+          if [ "$EXISTING_COMMENT" = "0" ]; then
+            # Add comment to the PR about the update
+            gh pr comment "$PR_NUMBER" --body "🔄 **Template Sync Updated**
+
+            The template repository has new changes since this PR was created. This branch has been updated with the latest template changes.
+
+            **New template commit**: \`$TEMPLATE_COMMIT\`
+            **Updated at**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`
+            **PR description**: Regenerated to include all changes
+
+            Please review the updated changes and merge when ready."
+            echo "✅ Added sync update comment for template commit $TEMPLATE_COMMIT"
+          else
+            echo "ℹ️ Skipping duplicate comment - sync update for $TEMPLATE_COMMIT already exists"
+          fi
+
+          # Set outputs for consistency
+          echo "pr-url=${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
+
+          echo "✅ Updated existing PR #$PR_NUMBER with new template changes"
+
       - name: Log template sync completion
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
         run: |
-          echo "Template sync PR created: ${{ steps.create-pr.outputs.pr-url }}"
+          if [ "${{ steps.detect-existing.outputs.has_existing_pr }}" = "true" ]; then
+            echo "✅ Updated existing template sync PR: ${{ steps.update-pr.outputs.pr-url }}"
+          else
+            echo "✅ Created new template sync PR: ${{ steps.create-pr.outputs.pr-url }}"
+          fi
 
       - name: Create issue on failure
         if: failure()

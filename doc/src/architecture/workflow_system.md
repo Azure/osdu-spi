@@ -238,7 +238,7 @@ graph LR
 | Trigger Type | Workflow | Schedule/Event | Description |
 |-------------|----------|----------------|-------------|
 | **Scheduled** | Daily Sync | `0 0 * * *` | Midnight UTC upstream synchronization with duplicate prevention |
-| **Scheduled** | Template Sync | `0 8 * * 1` | Monday 8 AM UTC template updates |
+| **Scheduled** | Template Sync | `0 8 * * 1` | Monday 8 AM UTC template updates with duplicate prevention |
 | **Scheduled** | Monitoring | `0 */6 * * *` | 6-hour cascade monitoring |
 | **Event-Based** | PR Validation | PR creation/updates | Validation workflows on pull requests |
 | **Event-Based** | Cascade Trigger | Issue creation | Cascade triggering on sync completion |

@@ -83,6 +83,17 @@ Implement a three-branch strategy for fork management:
 
 **Implementation**: When creating production PRs, use temporary release branches (e.g., `release/upstream-YYYYMMDD-HHMMSS`) from `fork_integration` to `main`. This allows safe deletion of release branches while preserving the core three-branch structure.
 
+### Integration Branch Synchronization
+**Problem**: After a production PR merges to `main`, `fork_integration` contains the old commit history that was integrated via the release branch. This causes the cascade workflow to incorrectly detect an "integration in progress" because `fork_integration` appears to be ahead of `main`.
+
+**Solution**: The `integration-cleanup.yml` workflow automatically synchronizes `fork_integration` with `main` after any upstream-sync PR is merged to `main`. This:
+- Prevents false "integration in progress" detections
+- Clears the pipeline for processing new upstream changes
+- Automatically closes any "upstream-held" issues
+- Maintains the three-branch strategy integrity
+
+**Trigger**: Runs automatically on PR merge to `main` when PR has `upstream-sync` label
+
 ### Workflow Integration
 1. **Upstream Sync**: `fork_upstream` tracks upstream automatically
 2. **Change Detection**: Compare `fork_upstream` with `main` to identify new upstream changes
@@ -91,6 +102,7 @@ Implement a three-branch strategy for fork management:
 5. **Quality Assurance**: Block progression if validation fails, create detailed failure issues
 6. **Production Release**: Create PR from validated `fork_integration` to `main` only after successful validation
 7. **Manual Review**: All production PRs require human approval before final merge
+8. **Integration Sync**: After PR merge to `main`, automatically synchronize `fork_integration` with `main` to clear pipeline state
 
 ### Automation Requirements
 - Scheduled upstream synchronization to `fork_upstream`
@@ -100,6 +112,7 @@ Implement a three-branch strategy for fork management:
 - Branch protection enforcement
 - Status checks and validation workflows
 - Issue lifecycle tracking and status reporting
+- Automatic `fork_integration` synchronization after main merges (integration-cleanup workflow)
 
 ## Success Criteria
 - Teams can safely integrate upstream changes without breaking main branch

@@ -245,6 +245,42 @@ git add .github/.template-sync-commit
 - **Git history shows template update progression**
 - **Easy to identify which template features are available**
 
+### Duplicate Prevention Pattern
+
+Following the same architectural pattern as upstream sync (ADR-024), template-sync implements duplicate prevention to avoid creating multiple open PRs for template updates (detailed in ADR-031):
+
+#### Problem Addressed
+Without duplicate prevention, the daily template-sync schedule creates a new PR every day when changes exist, even if a previous PR is still open. This results in:
+- Multiple open template-sync PRs simultaneously (6+ PRs in production)
+- Repository clutter and notification fatigue
+- Confusion about which PR contains the latest changes
+
+#### Solution Implementation
+- **PR Detection**: Checks for existing open PRs with `template-sync` label targeting `main` branch
+- **Branch Reuse**: Updates existing sync branches instead of creating new ones
+- **Force Push Strategy**: Force-pushes updates to existing branches when template advances
+- **PR Updates**: Updates PR title to show "(Updated YYYY-MM-DD)", regenerates description, adds update comments
+- **Single Active PR**: Only one template-sync PR open at any time
+
+#### Decision Matrix
+```
+| Existing PR | Template Changed | Action                    |
+|-------------|------------------|---------------------------|
+| No          | Yes              | Create new PR             |
+| Yes         | No               | No action needed          |
+| Yes         | Yes              | Update existing branch/PR |
+| No          | No               | No action needed          |
+```
+
+#### Benefits
+- **Eliminates duplicate PRs** - Core problem solved
+- **Consistent pattern** - Same approach as upstream sync
+- **Clean repository** - No accumulation of stale PRs
+- **Reduced noise** - Single PR per template update cycle
+- **Clear progression** - Updated PRs show complete history
+
+See [ADR-031: Template Sync Duplicate Prevention Pattern](031-template-sync-duplicate-prevention.md) for complete implementation details.
+
 ## Alternatives Considered
 
 ### 1. **Push-Based Updates from Template**
@@ -355,6 +391,8 @@ git add .github/.template-sync-commit
 
 - **ADR-011**: Configuration-Driven Template Synchronization (provides the foundation for this strategy)
 - **ADR-013**: Reusable GitHub Actions Pattern (enables consistent PR creation)
+- **ADR-031**: Template Sync Duplicate Prevention Pattern (prevents duplicate template-sync PRs)
+- **ADR-024**: Sync Workflow Duplicate Prevention Architecture (upstream sync pattern that inspired ADR-031)
 - **ADR-003**: Template Repository Pattern (original template architecture, extended by this decision)
 
 ---

@@ -17,8 +17,16 @@ upstream-sync → cascade-active → validated
 ### Production PR Labels
 Production PRs use these labels:
 ```
-upstream-sync + human-required
+upstream-sync + human-required (for upstream changes)
+template-sync (for template updates)
 ```
+
+### Duplicate Prevention
+Both upstream sync and template sync workflows use labels to prevent duplicate PRs:
+- `upstream-sync` - Identifies upstream synchronization PRs
+- `template-sync` - Identifies template update PRs
+
+Only one PR with each label can be open at a time. When changes are detected, the workflow updates the existing PR instead of creating a new one.
 
 ## Label Categories
 
@@ -44,6 +52,7 @@ upstream-sync + human-required
 
 ### Process Labels
 - `upstream-sync` - Related to upstream synchronization
+- `template-sync` - Related to template repository synchronization
 - `human-required` - Requires human review/action
 - `release-tracking` - Tracks release activities
 - `rollback` - Related to rollback operations

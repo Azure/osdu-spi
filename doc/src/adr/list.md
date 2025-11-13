@@ -37,6 +37,8 @@ Architecture Decision Records for Fork Management Template
 | 027 | Documentation Generation Strategy with MkDocs | [ADR-027](027-documentation-generation-strategy.md) |
 | 028 | Workflow Script Extraction Pattern         | [ADR-028](028-workflow-script-extraction-pattern.md) |
 | 029 | GitHub App Authentication Strategy         | [ADR-029](029-github-app-authentication-strategy.md) |
+| 030 | CodeQL Summary Job Pattern                 | [ADR-030](030-codeql-summary-job-pattern.md) |
+| 031 | Template Sync Duplicate Prevention Pattern | [ADR-031](031-template-sync-duplicate-prevention.md) |
 
 ## Overview
 
@@ -185,4 +187,17 @@ These Architecture Decision Records document the key design choices made in the 
 - Microsoft-compliant authentication eliminating PAT dependency
 - Centralized management not tied to individual employees
 - Required for release automation and repository initialization under org security policies
+
+**CodeQL Summary Job Pattern (ADR-030)**
+- Summary job aggregates analysis results for required status checks
+- Enables branch protection rules with CodeQL regardless of language detection
+- Fails when zero analyzable languages detected for real repository issues
+- Consolidates multiple language analysis jobs into single mergeable status check
+
+**Template Sync Duplicate Prevention Pattern (ADR-031)**
+- Inline PR detection prevents duplicate template-sync PRs
+- Same architectural pattern as upstream sync (ADR-024) with simpler implementation
+- Label-based tracking with `template-sync` label for PR identification
+- Branch reuse with force-push when template advances
+- Eliminates daily accumulation of open template-sync PRs
 

@@ -70,6 +70,10 @@
         {
           "path": ".github/template-workflows/codeql.yml",
           "description": "CodeQL security scanning with language detection"
+        },
+        {
+          "path": ".github/template-workflows/integration-cleanup.yml",
+          "description": "Fork integration branch synchronization after main merges"
         }
       ],
       "template_only": [
