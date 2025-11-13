@@ -471,22 +471,37 @@ jobs:
           target-branch-for-aipr: main
           use-vulns-flag: 'false'
 
-      - name: Add template-sync label to new PR
-        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'false'
+      - name: Check for label configuration changes
+        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          PR_URL="${{ steps.create-pr.outputs.pr-url }}"
-          PR_NUMBER=$(basename "$PR_URL")
-          gh pr edit "$PR_NUMBER" --add-label "template-sync"
-          echo "✅ Added template-sync label to PR #$PR_NUMBER"
+          TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
+          LAST_SYNC_COMMIT="${{ steps.check-updates.outputs.last_sync_commit }}"
 
-      - name: Update existing template sync PR
-        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'true'
-        id: update-pr
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
+          # Check if labels.json changed in this template update
+          if git diff $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT refs/remotes/template/main -- .github/labels.json | grep -q "^[+-]"; then
+            echo "📋 Label configuration changes detected"
+
+            # Get the diff for the issue body
+            LABEL_DIFF=$(git diff $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT refs/remotes/template/main -- .github/labels.json)
+
+            # Write issue to file
+            printf "## Label Configuration Changes Detected\n\n" > /tmp/issue.md
+            printf "The template has updated labels.json. Manual review required.\n\n" >> /tmp/issue.md
+            printf "### Label Diff\n\n\`\`\`diff\n" >> /tmp/issue.md
+            echo "$LABEL_DIFF" >> /tmp/issue.md
+            printf "\`\`\`\n\n" >> /tmp/issue.md
+            printf "### How to Apply\n\n" >> /tmp/issue.md
+            printf "1. Review .github/labels.json\n" >> /tmp/issue.md
+            printf "2. Go to: https://github.com/${{ github.repository }}/labels\n" >> /tmp/issue.md
+            printf "3. Manually apply changes\n\n" >> /tmp/issue.md
+            printf "Details: %s to %s\n" "$LAST_SYNC_COMMIT" "$TEMPLATE_COMMIT" >> /tmp/issue.md
+
+            gh issue create \
+              --title "Label Configuration Update Required" \
+              --label "human-required,template-sync" \
+              --body-file /tmp/issue.md
           PR_NUMBER="${{ steps.detect-existing.outputs.existing_pr_number }}"
           TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
 
