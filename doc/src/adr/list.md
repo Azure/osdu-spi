@@ -84,7 +84,7 @@ These Architecture Decision Records document the key design choices made in the 
 - Automated cleanup of template-specific content
 
 **Template Update Propagation (ADR-012)**
-- Weekly automated template updates via `template-sync.yml`
+- Daily automated template updates via `template-sync.yml`
 - AI-enhanced PR descriptions and human-centric manual cascade instructions
 - Solves template drift problem for forked repositories
 

@@ -29,7 +29,7 @@ Implement **Template Update Propagation** through a dedicated `template-sync.yml
 
 ### 1. **Template Sync Workflow**: `template-sync.yml`
 
-- **Triggers**: Weekly schedule (Monday 8 AM) + manual dispatch
+- **Triggers**: Daily schedule (8 AM UTC) + manual dispatch
 - **Function**: Detects template changes and creates update PRs
 - **Scope**: Only files defined in sync configuration (ADR-011)
 - **Output**: Pull requests with AI-enhanced descriptions of changes
@@ -93,7 +93,7 @@ PR: "🔄 Sync template updates YYYY-MM-DD"
 ```yaml
 on:
   schedule:
-    - cron: '0 8 * * 1'  # Weekly on Monday at 8 AM
+    - cron: '0 8 * * *'  # Daily at 8 AM UTC
   workflow_dispatch:      # Manual trigger available
 ```
 
@@ -328,10 +328,10 @@ See [ADR-031: Template Sync Duplicate Prevention Pattern](031-template-sync-dupl
 
 ### Negative
 
-- **Additional PRs and Issues**: Weekly template update PRs and tracking issues require team attention
+- **Additional PRs and Issues**: Daily template update PRs and tracking issues require team attention
 - **Manual Integration Steps**: Workflow changes may require manual cascade triggering
 - **Potential Conflicts**: Template changes might conflict with local modifications
-- **Update Lag**: Template improvements take up to a week to reach all forks
+- **Update Lag**: Template improvements take up to a day to reach all forks
 - **Dependency on Template**: Forks depend on template repository being available
 - **Learning Curve**: Teams need to understand when template changes require cascade integration
 

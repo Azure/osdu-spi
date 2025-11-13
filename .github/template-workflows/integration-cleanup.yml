@@ -38,9 +38,19 @@ jobs:
           echo "Checking out fork_integration branch..."
           git checkout fork_integration
 
+          # Check that required branches exist
+          if ! git show-ref --verify --quiet refs/remotes/origin/main; then
+            echo "❌ Error: origin/main branch not found"
+            exit 1
+          fi
+          if ! git show-ref --verify --quiet refs/heads/fork_integration; then
+            echo "❌ Error: fork_integration branch not found"
+            exit 1
+          fi
+
           # Check current state
-          COMMITS_BEHIND=$(git rev-list --count fork_integration..origin/main 2>/dev/null || echo "0")
-          COMMITS_AHEAD=$(git rev-list --count origin/main..fork_integration 2>/dev/null || echo "0")
+          COMMITS_BEHIND=$(git rev-list --count fork_integration..origin/main)
+          COMMITS_AHEAD=$(git rev-list --count origin/main..fork_integration)
 
           echo "Current state:"
           echo "  fork_integration is $COMMITS_AHEAD commits ahead of main"
@@ -76,7 +86,13 @@ jobs:
           if [ "$HELD_COUNT" -gt 0 ]; then
             echo "Found $HELD_COUNT upstream-held issue(s) to process"
 
-            echo "$HELD_ISSUES" | jq -r '.[].number' | while read ISSUE_NUMBER; do
+            ISSUE_NUMBERS=$(echo "$HELD_ISSUES" | jq -r '.[].number')
+            if [ -z "$ISSUE_NUMBERS" ]; then
+              echo "Warning: Found issues but could not extract issue numbers"
+              exit 1
+            fi
+
+            echo "$ISSUE_NUMBERS" | while read ISSUE_NUMBER; do
               echo "Closing upstream-held issue #$ISSUE_NUMBER..."
 
               gh issue comment "$ISSUE_NUMBER" --body "✅ **Integration Complete - Processing Held Changes** - $(date '+%Y-%m-%d %H:%M:%S UTC')

@@ -110,6 +110,8 @@ jobs:
                -not -path "*/__pycache__/*" \
                -not -path "*/.venv/*" \
                -not -path "*/venv/*" \
+               -not -path "*/.pytest_cache/*" \
+               -not -path "*/.mypy_cache/*" \
                -not -path "*/node_modules/*" | grep -q .; then
             LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
           fi

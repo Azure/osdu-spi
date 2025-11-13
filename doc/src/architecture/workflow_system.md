@@ -86,7 +86,7 @@ graph TD
 
     Distributes template improvements across multiple fork instances with selective synchronization and automated validation
 
-    - **Trigger**: Weekly scheduled execution on Mondays at 8 AM UTC
+    - **Trigger**: Daily scheduled execution at 8 AM UTC
     - **Scope**: Selective file synchronization based on configuration rules
     - **Safety**: Automated testing and validation before deployment
     - **Scalability**: Supports unlimited fork instances with consistent patterns
@@ -238,7 +238,7 @@ graph LR
 | Trigger Type | Workflow | Schedule/Event | Description |
 |-------------|----------|----------------|-------------|
 | **Scheduled** | Daily Sync | `0 0 * * *` | Midnight UTC upstream synchronization with duplicate prevention |
-| **Scheduled** | Template Sync | `0 8 * * 1` | Monday 8 AM UTC template updates with duplicate prevention |
+| **Scheduled** | Template Sync | `0 8 * * *` | Daily 8 AM UTC template updates with duplicate prevention |
 | **Scheduled** | Monitoring | `0 */6 * * *` | 6-hour cascade monitoring |
 | **Event-Based** | PR Validation | PR creation/updates | Validation workflows on pull requests |
 | **Event-Based** | Cascade Trigger | Issue creation | Cascade triggering on sync completion |

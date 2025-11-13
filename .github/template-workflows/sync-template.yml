@@ -183,8 +183,6 @@ jobs:
             echo "✅ Found existing template sync PR #$PR_NUMBER on branch $PR_BRANCH"
           else
             echo "has_existing_pr=false" >> $GITHUB_OUTPUT
-            echo "existing_pr_number=" >> $GITHUB_OUTPUT
-            echo "existing_pr_branch=" >> $GITHUB_OUTPUT
             echo "ℹ️ No existing template sync PR found"
           fi
 
@@ -501,7 +499,7 @@ jobs:
             --body "$FALLBACK_DESCRIPTION_DECODED"
 
           # Check for existing "Template Sync Updated" comments to prevent duplicates
-          EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.body | contains("🔄 **Template Sync Updated**")) | .body' | grep -c "New template commit.*$TEMPLATE_COMMIT" || echo "0")
+          EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq --arg commit "$TEMPLATE_COMMIT" '[.comments[] | select(.body | contains("🔄 **Template Sync Updated**") and contains($commit))] | length')
 
           if [ "$EXISTING_COMMENT" = "0" ]; then
             # Add comment to the PR about the update

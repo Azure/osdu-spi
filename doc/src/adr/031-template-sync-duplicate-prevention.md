@@ -145,14 +145,14 @@ Despite the implementation difference, the pattern remains consistent:
       steps.detect-existing.outputs.has_existing_pr == 'false'
   id: create-pr
   uses: ./.github/actions/create-enhanced-pr
-  # ... (creates PR and adds template-sync label)
+  # See .github/template-workflows/sync-template.yml for implementation details (PR creation and labeling)
 
 - name: Update existing template sync PR
   if: steps.check-updates.outputs.has_updates == 'true' &&
       env.has_changes == 'true' &&
       steps.detect-existing.outputs.has_existing_pr == 'true'
   id: update-pr
-  # ... (updates PR title, description, and adds comment)
+  # See .github/template-workflows/sync-template.yml for implementation details (PR update logic)
 ```
 
 ### Label Definition
@@ -194,7 +194,7 @@ Despite the implementation difference, the pattern remains consistent:
 | Aspect | Upstream Sync (ADR-024) | Template Sync (ADR-031) |
 |--------|-------------------------|-------------------------|
 | **Pattern** | Duplicate prevention via state management | Same pattern |
-| **Implementation** | Dedicated action (sync-state-manager) | Inline detection logic |
+| **Implementation** | Dedicated action (`sync-state-manager`) | Inline detection logic |
 | **Label** | `upstream-sync` | `template-sync` |
 | **Base Branch** | `fork_upstream` | `main` |
 | **State Tracking** | Git config + issue lifecycle | PR detection only |
@@ -224,7 +224,7 @@ Real-world validation through production fork repositories:
 - [ADR-024: Sync Workflow Duplicate Prevention Architecture](024-sync-workflow-duplicate-prevention-architecture.md) - Original pattern
 - [ADR-012: Template Update Propagation Strategy](012-template-update-propagation-strategy.md) - Template sync workflow
 - [ADR-011: Configuration-Driven Template Synchronization](011-configuration-driven-template-sync.md) - Template sync foundation
-- [Issue: Template Sync Creating Duplicate PRs](https://github.com/danielscholl-osdu/workflow/pulls) - Production evidence
+- [Evidence: Multiple Template Sync PRs](https://github.com/danielscholl-osdu/workflow/pulls) - Production repository showing duplicate PR problem
 
 ---
 
