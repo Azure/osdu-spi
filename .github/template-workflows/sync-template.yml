@@ -471,6 +471,64 @@ jobs:
           target-branch-for-aipr: main
           use-vulns-flag: 'false'
 
+      - name: Check for label configuration changes
+        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
+          LAST_SYNC_COMMIT="${{ steps.check-updates.outputs.last_sync_commit }}"
+
+          # Check if labels.json changed in this template update
+          if git diff $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT refs/remotes/template/main -- .github/labels.json | grep -q "^[+-]"; then
+            echo "📋 Label configuration changes detected"
+
+            # Get the diff for the issue body
+            LABEL_DIFF=$(git diff $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT refs/remotes/template/main -- .github/labels.json)
+
+            # Create issue for human review
+            gh issue create \
+              --title "🏷️ Label Configuration Update Required" \
+              --label "human-required,template-sync" \
+              --body "## Label Configuration Changes Detected
+
+The template repository has updated \`.github/labels.json\`. Manual review and application is required.
+
+### Changed Labels
+
+\`\`\`diff
+$LABEL_DIFF
+\`\`\`
+
+### How to Apply Changes
+
+1. Review the changes shown above in \`.github/labels.json\`
+2. Go to: https://github.com/${{ github.repository }}/labels
+3. Manually create/update/delete labels to match the template configuration
+4. Consider the impact on existing issues and PRs before removing labels
+
+### Verification Checklist
+
+- [ ] Reviewed label changes
+- [ ] Applied changes to repository labels
+- [ ] Verified labels match template configuration
+- [ ] Closed this issue
+
+### Details
+
+- **Template Commit**: \`$TEMPLATE_COMMIT\`
+- **Previous Sync**: \`$LAST_SYNC_COMMIT\`
+- **Synced At**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`
+
+---
+
+**Note**: This is a manual process to ensure label changes are reviewed before application. Labels may affect workflows, automation, and existing issues/PRs."
+
+            echo "✅ Created issue for label configuration review"
+          else
+            echo "ℹ️ No label configuration changes detected"
+          fi
+
       - name: Add template-sync label to new PR
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'false'
         env:
@@ -478,7 +536,7 @@ jobs:
         run: |
           PR_URL="${{ steps.create-pr.outputs.pr-url }}"
           PR_NUMBER=$(basename "$PR_URL")
-          gh pr edit "$PR_NUMBER" --add-label "template-sync"
+          gh pr edit "$PR_NUMBER" --add-label "template-sync" || echo "⚠️ Could not add template-sync label - may need to be created manually"
           echo "✅ Added template-sync label to PR #$PR_NUMBER"
 
       - name: Update existing template sync PR
