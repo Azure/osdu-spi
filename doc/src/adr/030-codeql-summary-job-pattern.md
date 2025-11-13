@@ -227,10 +227,69 @@ Remove the `code_scanning` rule from `.github/rulesets/default-branch.json`:
 1. **`.github/template-workflows/codeql.yml`**
    - Added `CodeQL` summary job
    - Validates previous jobs and reports consolidated status
+   - Added build artifact exclusion patterns
 
 2. **`.github/rulesets/default-branch.json`**
    - Removed `code_scanning` rule
    - Kept `required_status_checks` with "CodeQL" context
+
+### Build Artifact Exclusion Pattern
+
+**Problem**: CodeQL language detection was finding generated Python files in build directories (e.g., `build-aws/build-info.py`), attempting to analyze them, and failing because they're malformed or auto-generated code.
+
+**Error Example**:
+```
+[ERROR] Failed to extract file /home/runner/work/partition/partition/provider/partition-aws/build-aws/build-info.py: 'name'
+CodeQL detected code written in Python but could not process any of it.
+```
+
+**Solution**: Exclude build and generated code directories from both language detection and CodeQL analysis:
+
+**Language Detection** (lines 102-115):
+```yaml
+# Check for Python (exclude build directories and common generated code paths)
+if [ -f "setup.py" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || \
+   find . -name "*.py" \
+     -not -path "./.*" \
+     -not -path "*/build/*" \
+     -not -path "*/build-*/*" \
+     -not -path "*/target/*" \
+     -not -path "*/dist/*" \
+     -not -path "*/__pycache__/*" \
+     -not -path "*/.venv/*" \
+     -not -path "*/venv/*" \
+     -not -path "*/node_modules/*" | grep -q .; then
+  LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
+fi
+```
+
+**CodeQL Configuration** (lines 172-189):
+```yaml
+- name: Initialize CodeQL
+  uses: github/codeql-action/init@v4
+  with:
+    languages: ${{ matrix.language }}
+    queries: security-extended
+    build-mode: none
+    config: |
+      paths-ignore:
+        - '**/build/**'
+        - '**/build-*/**'
+        - '**/target/**'
+        - '**/dist/**'
+        - '**/__pycache__/**'
+        - '**/.venv/**'
+        - '**/venv/**'
+        - '**/node_modules/**'
+        - '**/.pytest_cache/**'
+        - '**/.mypy_cache/**'
+```
+
+**Benefits**:
+- Prevents false language detection from build artifacts
+- Avoids CodeQL analysis failures on generated code
+- Focuses security analysis on actual source code
+- Reduces analysis time by skipping irrelevant paths
 
 ### Migration Path for Existing Forks
 

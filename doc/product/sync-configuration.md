@@ -35,7 +35,7 @@ The sync configuration system uses `.github/sync-config.json` to define exactly 
 
 #### Directories
 Directories that are synced entirely from template to fork:
-- `actions/` - Custom GitHub Actions (including sync-state-manager for duplicate prevention)
+- `actions/` - Custom GitHub Actions (including sync-state-manager for upstream sync duplicate prevention)
 - `fork-resources/` - Fork-specific templates and configuration files
 
 #### Files
@@ -106,10 +106,19 @@ The `init-complete.yml` workflow:
 ### During Template Sync
 
 The `template-sync.yml` workflow:
-1. Checks for changes only in configured sync paths
-2. Syncs directories, files, and workflows that have changed
-3. Updates the sync configuration file itself
-4. Creates PR with detailed change information
+1. Detects existing template-sync PRs to prevent duplicates
+2. Checks for changes only in configured sync paths
+3. Syncs directories, files, and workflows that have changed
+4. Updates existing PR if one is open, or creates new PR
+5. Updates the sync configuration file itself
+6. Creates or updates PR with detailed change information
+
+#### Duplicate Prevention
+Template sync implements duplicate prevention (ADR-031) to avoid creating multiple open PRs:
+- Only one template-sync PR can be open at a time
+- When template changes are detected, existing PRs are updated instead of creating new ones
+- Force-pushes updates to existing branches when template advances
+- Updates PR title and description to reflect current state
 
 ## Benefits
 

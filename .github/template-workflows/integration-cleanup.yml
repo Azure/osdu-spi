@@ -1,0 +1,130 @@
+name: Integration Branch Cleanup
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+  issues: write
+
+jobs:
+  update-integration-branch:
+    name: "🔄 Update Fork Integration"
+    # Only run if PR was merged (not just closed) and has upstream-sync label
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'upstream-sync')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fast-forward fork_integration to main
+        id: update_integration
+        run: |
+          echo "Fetching latest branch states..."
+          git fetch origin --prune
+
+          echo "Checking out fork_integration branch..."
+          git checkout fork_integration
+
+          # Check that required branches exist
+          if ! git show-ref --verify --quiet refs/remotes/origin/main; then
+            echo "❌ Error: origin/main branch not found"
+            exit 1
+          fi
+          if ! git show-ref --verify --quiet refs/heads/fork_integration; then
+            echo "❌ Error: fork_integration branch not found"
+            exit 1
+          fi
+
+          # Check current state
+          COMMITS_BEHIND=$(git rev-list --count fork_integration..origin/main)
+          COMMITS_AHEAD=$(git rev-list --count origin/main..fork_integration)
+
+          echo "Current state:"
+          echo "  fork_integration is $COMMITS_AHEAD commits ahead of main"
+          echo "  fork_integration is $COMMITS_BEHIND commits behind main"
+
+          if [ "$COMMITS_AHEAD" = "0" ] && [ "$COMMITS_BEHIND" = "0" ]; then
+            echo "✅ fork_integration is already in sync with main - no update needed"
+            echo "updated=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Resetting fork_integration to match main..."
+          # Fast-forward fork_integration to main (or reset if diverged)
+          git reset --hard origin/main
+
+          echo "Pushing updated fork_integration..."
+          git push -f origin fork_integration
+
+          echo "✅ Successfully synchronized fork_integration with main"
+          echo "  Previous state: $COMMITS_AHEAD ahead, $COMMITS_BEHIND behind"
+          echo "  New state: In sync with main"
+          echo "updated=true" >> $GITHUB_OUTPUT
+
+      - name: Close upstream-held issues
+        if: steps.update_integration.outputs.updated == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find any upstream-held issues
+          HELD_ISSUES=$(gh issue list --label "upstream-held" --json number,title --state open)
+          HELD_COUNT=$(echo "$HELD_ISSUES" | jq 'length')
+
+          if [ "$HELD_COUNT" -gt 0 ]; then
+            echo "Found $HELD_COUNT upstream-held issue(s) to process"
+
+            ISSUE_NUMBERS=$(echo "$HELD_ISSUES" | jq -r '.[].number')
+            if [ -z "$ISSUE_NUMBERS" ]; then
+              echo "Warning: Found issues but could not extract issue numbers"
+              exit 1
+            fi
+
+            echo "$ISSUE_NUMBERS" | while read ISSUE_NUMBER; do
+              echo "Closing upstream-held issue #$ISSUE_NUMBER..."
+
+              gh issue comment "$ISSUE_NUMBER" --body "✅ **Integration Complete - Processing Held Changes** - $(date '+%Y-%m-%d %H:%M:%S UTC')
+
+              The integration pipeline has completed successfully:
+              - Production PR #${{ github.event.pull_request.number }} merged to main
+              - \`fork_integration\` branch synchronized with \`main\`
+              - Pipeline cleared for processing held upstream changes
+
+              **Next Steps:**
+              - Held upstream changes will be processed in the next cascade run
+              - Monitor for new upstream sync issues
+              - No manual action required
+
+              Closing this tracking issue as integration is complete."
+
+              gh issue close "$ISSUE_NUMBER"
+              echo "✅ Closed issue #$ISSUE_NUMBER"
+            done
+          else
+            echo "No upstream-held issues found - nothing to close"
+          fi
+
+      - name: Log completion
+        if: steps.update_integration.outputs.updated == 'true'
+        run: |
+          echo "✅ Integration cleanup completed successfully"
+          echo ""
+          echo "Summary:"
+          echo "  - Production PR #${{ github.event.pull_request.number }} merged to main"
+          echo "  - fork_integration branch synchronized with main"
+          echo "  - Integration pipeline cleared for new cascades"
+          echo "  - Upstream-held issues processed"
+          echo ""
+          echo "The cascade pipeline is now ready to process new upstream changes."

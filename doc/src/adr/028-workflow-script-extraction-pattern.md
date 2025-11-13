@@ -286,7 +286,7 @@ Use these criteria to determine if a script should be extracted:
 
 - `.github/actions/` already defined in sync-config.json
 - Template sync (ADR-012) automatically propagates actions
-- Weekly sync (Monday 8 AM) or manual trigger
+- Daily sync (8 AM UTC) or manual trigger
 - No new sync patterns required
 
 **Propagation Flow:**
