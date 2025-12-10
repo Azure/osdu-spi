@@ -67,11 +67,33 @@ for tracking_file in $TRACKING_FILES; do
 
     # Special handling for template sync commit file
     if [[ "$tracking_file" == ".github/.template-sync-commit" ]]; then
-        # Initialize empty - will be populated by first template sync
-        # We can't determine the exact template commit during initialization
-        # without fetching from the template repository
-        echo "" > "$tracking_file"
-        echo "  ✓ Initialized empty (will be set by first template sync)"
+        # Try to get the current template commit if template repo URL is provided
+        if [[ -n "$TEMPLATE_REPO_URL" ]]; then
+            echo "  Fetching current template commit from $TEMPLATE_REPO_URL..."
+            # Add or update template remote
+            if git remote get-url template >/dev/null 2>&1; then
+                git remote set-url template "$TEMPLATE_REPO_URL"
+            else
+                git remote add template "$TEMPLATE_REPO_URL"
+            fi
+            # Fetch template main branch
+            if git fetch template main --depth=1 2>/dev/null; then
+                TEMPLATE_SHA=$(git rev-parse template/main 2>/dev/null || echo "")
+                if [[ -n "$TEMPLATE_SHA" ]]; then
+                    echo "$TEMPLATE_SHA" > "$tracking_file"
+                    echo "  ✓ Initialized with current template commit: $TEMPLATE_SHA"
+                else
+                    echo "" > "$tracking_file"
+                    echo "  ⚠️ Could not get template commit, initialized empty"
+                fi
+            else
+                echo "" > "$tracking_file"
+                echo "  ⚠️ Could not fetch template, initialized empty (will bootstrap on first sync)"
+            fi
+        else
+            echo "" > "$tracking_file"
+            echo "  ⚠️ No template URL provided, initialized empty (will bootstrap on first sync)"
+        fi
     else
         # For other tracking files, create empty
         echo "" > "$tracking_file"

@@ -47,6 +47,10 @@ inputs:
   fallback-description-b64:
     description: 'Base64 encoded fallback PR description (safer for complex content)'
     required: false
+  labels:
+    description: 'Comma-separated list of labels to apply to the PR'
+    required: false
+    default: ''
 
 outputs:
   pr-url:
@@ -164,20 +168,27 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_LABELS: ${{ inputs.labels }}
       run: |
         echo "Creating PR from branch ${{ inputs.head-branch }} to ${{ inputs.base-branch }}"
-        
+
+        LABEL_ARG=""
+        if [[ -n "$PR_LABELS" ]]; then
+          LABEL_ARG="--label $PR_LABELS"
+        fi
+
         PR_URL=$(gh pr create \
           --base "${{ inputs.base-branch }}" \
           --head "${{ inputs.head-branch }}" \
           --title "${{ inputs.pr-title }}" \
-          --body "$PR_DESCRIPTION")
-        
+          --body "$PR_DESCRIPTION" \
+          $LABEL_ARG)
+
         echo "PR created: $PR_URL"
-        
+
         # Extract PR number
         PR_NUMBER=$(basename "$PR_URL")
         echo "PR number: $PR_NUMBER"
-        
+
         echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
         echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT

@@ -21,6 +21,7 @@ Applies sync configuration rules to copy files, workflows, and tracking files fr
 - Sets up template remote for tracking updates
 - Copies workflows from `.github/template-workflows/` → `.github/workflows/`
 - Initializes tracking files (e.g., `.github/.template-sync-commit`)
+  - For `.template-sync-commit`: If `template_repo_url` is provided, fetches the current template commit SHA to initialize the file. This prevents spurious "sync needed" detections on first run.
 - Creates commit with all copied content
 - Outputs: `files_copied`, `directories_copied`, `workflows_copied`, `tracking_files_created`
 

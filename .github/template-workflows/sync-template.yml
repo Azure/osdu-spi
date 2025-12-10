@@ -158,6 +158,21 @@ jobs:
             echo "last_sync_commit=$LAST_SYNC_COMMIT" >> $GITHUB_OUTPUT
           fi
 
+      - name: Ensure template-sync label exists
+        if: steps.check-updates.outputs.has_updates == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Ensure the template-sync label exists (required for PR detection and creation)
+          if ! gh label list --json name --jq '.[].name' | grep -q "^template-sync$"; then
+            echo "Creating template-sync label..."
+            gh label create "template-sync" \
+              --description "Related to template repository synchronization" \
+              --color "0e8a16" || echo "Label may already exist"
+          else
+            echo "✅ template-sync label already exists"
+          fi
+
       - name: Detect existing template sync PRs
         id: detect-existing
         if: steps.check-updates.outputs.has_updates == 'true'
@@ -470,6 +485,7 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           target-branch-for-aipr: main
           use-vulns-flag: 'false'
+          labels: 'template-sync'
 
       - name: Check for label configuration changes
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
@@ -509,6 +525,36 @@ jobs:
           else
             echo "ℹ️ No label configuration changes detected"
           fi
+
+      - name: Update existing template sync PR
+        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'true'
+        id: update-pr
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_NUMBER="${{ steps.detect-existing.outputs.existing_pr_number }}"
+          TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
+
+          # Decode the base64 PR description
+          FALLBACK_DESCRIPTION_DECODED=$(echo "${{ env.FALLBACK_DESCRIPTION_B64 }}" | base64 -d)
+
+          # Update PR title and description
+          gh pr edit "$PR_NUMBER" \
+            --title "🔄 Sync template updates (Updated $(date +%Y-%m-%d))" \
+            --body "$FALLBACK_DESCRIPTION_DECODED"
+
+          # Add comment to the PR about the update
+          gh pr comment "$PR_NUMBER" --body "🔄 **Template Sync Updated**
+
+          The template repository has new changes since this PR was created. This branch has been updated with the latest template changes.
+
+          **New template commit**: \`$TEMPLATE_COMMIT\`
+          **Updated at**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          Please review the updated changes and merge when ready."
+
+          # Set outputs for consistency
+          echo "pr-url=${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
 
           echo "✅ Updated existing PR #$PR_NUMBER with new template changes"
 
