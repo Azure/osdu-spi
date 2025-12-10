@@ -70,8 +70,10 @@ for tracking_file in $TRACKING_FILES; do
         # Try to get the current template commit if template repo URL is provided
         if [[ -n "$TEMPLATE_REPO_URL" ]]; then
             echo "  Fetching current template commit from $TEMPLATE_REPO_URL..."
-            # Add template remote if not exists
-            if ! git remote get-url template >/dev/null 2>&1; then
+            # Add or update template remote
+            if git remote get-url template >/dev/null 2>&1; then
+                git remote set-url template "$TEMPLATE_REPO_URL"
+            else
                 git remote add template "$TEMPLATE_REPO_URL"
             fi
             # Fetch template main branch
