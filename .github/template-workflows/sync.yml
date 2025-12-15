@@ -14,12 +14,19 @@ jobs:
       issues: write
 
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@67018539274d69449ef7c02e8e71183d1719ab42  # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout main (contains workflows and actions)
         uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -98,7 +105,7 @@ jobs:
 
       - name: Check for active cascades
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Checking for active cascade integrations..."
           
@@ -125,7 +132,7 @@ jobs:
         id: sync-state
         uses: ./.github/actions/sync-state-manager
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           upstream_repo_url: ${{ vars.UPSTREAM_REPO_URL }}
           default_branch: ${{ env.DEFAULT_BRANCH }}
 
@@ -134,7 +141,7 @@ jobs:
         # Only run if we should create a PR or update an existing branch
         if: steps.sync-state.outputs.should_create_pr == 'true' || steps.sync-state.outputs.should_update_branch == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
@@ -262,7 +269,7 @@ jobs:
         if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_create_pr == 'true'
         id: create-pr
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
@@ -379,7 +386,7 @@ jobs:
         if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_update_branch == 'true'
         id: update-pr
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
@@ -501,7 +508,7 @@ jobs:
       - name: Create human notification issue
         if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_create_issue == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           PR_URL="${{ steps.create-pr.outputs.pr-url }}"
           PR_NUMBER="${{ steps.create-pr.outputs.pr-number }}"
@@ -570,7 +577,7 @@ jobs:
       - name: Update issue description with current sync status
         if: steps.sync-state.outputs.sync_decision == 'add_reminder' || steps.sync-state.outputs.sync_decision == 'update_existing'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
@@ -667,7 +674,7 @@ jobs:
       - name: Handle Failure
         if: failure()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           ISSUE_BODY="The automated upstream sync workflow failed.
 
