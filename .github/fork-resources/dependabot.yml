@@ -2,12 +2,18 @@ version: 2
 updates:
   # Maven Dependencies - Application Code
   # Workflow and GitHub Actions updates are managed via template synchronization
+  #
+  # IMPORTANT: This config explicitly lists directories to scan using globs.
+  # Non-Azure providers (AWS, GCP, IBM, JDBC) are intentionally excluded by
+  # NOT including their paths. Only Azure-related modules are monitored.
 
-  # 1) TOP-LEVEL AGGREGATOR
-  #    Scans the root POM, but ignores any dependencies physically declared in
-  #    testing/**, <service>-acceptance-test/**, etc.
+  # 1) COMMON MODULES
+  #    Root pom.xml and service core modules (excludes all provider directories)
   - package-ecosystem: "maven"
-    directory: "/"
+    directories:
+      - "/"              # Root pom.xml only
+      - "/*-core"        # Service core modules (e.g., <service>-core)
+      - "/*-core-plus"   # Service core-plus modules
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -16,6 +22,9 @@ updates:
     labels:
       - "dependencies"
       - "common"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       spring:
         patterns:
@@ -67,34 +76,16 @@ updates:
           - "minor"
           - "patch"
 
-  # 2) <service> CORE
+  # 2) AZURE PROVIDER
+  #    Only Azure provider modules - explicitly excludes AWS, GCP, IBM, JDBC
   - package-ecosystem: "maven"
-    directory: "/<service>-core"
+    directories:
+      - "/provider/*-azure"    # Only Azure providers (e.g., provider/<service>-azure)
     schedule:
       interval: "weekly"
       day: "sunday"
       time: "09:00"
-    labels:
-      - "dependencies"
-      - "common"
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      core-dependencies:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # 3) SPI AZURE
-  - package-ecosystem: "maven"
-    directory: "/provider/<service>-azure"
-    schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "09:00"
+    target-branch: "main"
     labels:
       - "dependencies"
       - "azure"
@@ -107,6 +98,6 @@ updates:
           - "minor"
           - "patch"
 
-  # Note: Disabled providers/modules omitted to avoid validation errors
-  # Dependabot does not support 'interval: never'
-  # If you need to disable updates for specific modules, simply remove them from this file
+  # Note: Non-Azure providers (AWS, GCP, IBM, JDBC) are intentionally NOT listed.
+  # By using explicit 'directories' with globs, only the specified paths are scanned.
+  # This prevents Dependabot from creating PRs for cloud providers we don't maintain.
