@@ -171,11 +171,16 @@ jobs:
   java-build:
     name: "🔨 Java Build"
     needs: [check-initialization, check-repo-state]
-    # Modified condition to exclude Dependabot PRs
+    # Skip java-build for:
+    # - Dependabot PRs (handled by dependabot-validation.yml)
+    # - Sync PRs targeting fork_upstream (per ADR-028: local actions don't exist on sync branches
+    #   because they contain only upstream content; build validation occurs during cascade to
+    #   fork_integration where .github/actions/ exists)
     if: |
-      needs.check-repo-state.outputs.is_initialized == 'true' && 
+      needs.check-repo-state.outputs.is_initialized == 'true' &&
       needs.check-repo-state.outputs.is_java_repo == 'true' &&
-      github.actor != 'dependabot[bot]'
+      github.actor != 'dependabot[bot]' &&
+      !(github.event.pull_request.base.ref == 'fork_upstream' && startsWith(github.event.pull_request.head.ref, 'sync/'))
     runs-on: ubuntu-latest
     outputs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
@@ -313,6 +318,9 @@ jobs:
           # Handle Dependabot PRs differently
           if [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
             ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Dependabot Build Handled by dependabot-validation.yml"]')
+          # Handle sync PRs targeting fork_upstream (build deferred to cascade)
+          elif [[ "${{ github.event.pull_request.base.ref }}" == "fork_upstream" ]] && [[ "${{ github.event.pull_request.head.ref }}" == sync/* ]]; then
+            ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Sync PR: Build validation deferred to cascade integration"]')
           # For non-Dependabot PRs, report build status
           elif [[ "${{ needs.check-repo-state.outputs.is_initialized }}" == "true" ]]; then
             if [[ "${{ needs.check-repo-state.outputs.is_java_repo }}" == "true" ]]; then
