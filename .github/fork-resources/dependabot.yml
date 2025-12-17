@@ -4,8 +4,7 @@ updates:
   # Workflow and GitHub Actions updates are managed via template synchronization
 
   # 1) TOP-LEVEL AGGREGATOR
-  #    Scans the root POM, but ignores any dependencies physically declared in
-  #    testing/**, <service>-acceptance-test/**, etc.
+  #    Scans the root POM and common modules, excluding non-Azure providers
   - package-ecosystem: "maven"
     directory: "/"
     schedule:
@@ -16,6 +15,14 @@ updates:
     labels:
       - "dependencies"
       - "common"
+    exclude-paths:
+      - "provider/*-aws/**"
+      - "provider/*-gcp/**"
+      - "provider/*-gc/**"
+      - "provider/*-ibm/**"
+      - "provider/*-jdbc/**"
+      - "testing/**"
+      - "*-acceptance-test/**"
     groups:
       spring:
         patterns:
