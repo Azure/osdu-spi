@@ -16,6 +16,16 @@ updates:
     labels:
       - "dependencies"
       - "common"
+    exclude-paths:
+      # Exclude non-Azure cloud providers
+      - "provider/*-aws/**"
+      - "provider/*-gcp/**"
+      - "provider/*-gc/**"
+      - "provider/*-ibm/**"
+      - "provider/*-jdbc/**"
+      # Exclude test directories
+      - "testing/**"
+      - "*-acceptance-test/**"
     groups:
       spring:
         patterns:
