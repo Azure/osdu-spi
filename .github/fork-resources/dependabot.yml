@@ -2,11 +2,19 @@ version: 2
 updates:
   # Maven Dependencies - Application Code
   # Workflow and GitHub Actions updates are managed via template synchronization
+  #
+  # Strategy:
+  # - PATCHES ONLY: Major and minor updates are ignored for stability
+  # - GROUPED: Spring, logging, jackson, and Azure SDK patches are grouped
+  # - INDIVIDUAL: All other patches get individual PRs
+  # - EXCLUDED: Non-Azure providers and build tools are ignored entirely
 
-  # 1) TOP-LEVEL AGGREGATOR
-  #    Scans the root POM and common modules, excluding non-Azure providers
   - package-ecosystem: "maven"
-    directory: "/"
+    directories:
+      - "/"
+      - "/*-core"
+      - "/*-core-plus"
+      - "/provider/*-azure"
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -14,7 +22,6 @@ updates:
     target-branch: "main"
     labels:
       - "dependencies"
-      - "common"
     exclude-paths:
       - "provider/*-aws/**"
       - "provider/*-gcp/**"
@@ -23,97 +30,36 @@ updates:
       - "provider/*-jdbc/**"
       - "testing/**"
       - "*-acceptance-test/**"
+    ignore:
+      # Only allow patch updates for stability
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      # Ignore build tools entirely
+      - dependency-name: "org.jacoco:*"
+      - dependency-name: "io.github.git-commit-id:*"
+      - dependency-name: "org.projectlombok:lombok"
+      - dependency-name: "org.apache.maven.plugins:*"
+      - dependency-name: "org.springframework.boot:spring-boot-maven-plugin"
     groups:
       spring:
         patterns:
           - "org.springframework*"
-          - "org.springframework.boot:spring-boot*"
-          - "org.springframework.security:spring-security*"
-          - "org.springdoc:springdoc-openapi*"
-        update-types:
-          - "patch"
-      osdu-core:
-        patterns:
-          - "org.opengroup.osdu:os-core-common"
-        update-types:
-          - "patch"
-          - "minor"
-          - "major"
-      build-tools:
-        patterns:
-          - "org.projectlombok:lombok"
-          - "com.google.guava:guava"
-          - "io.github.git-commit-id:*"
-          - "org.springframework.boot:spring-boot-maven-plugin"
-        update-types:
-          - "minor"
-          - "patch"
+          - "org.springframework.boot:*"
+          - "org.springframework.security:*"
+          - "org.springdoc:*"
       logging:
         patterns:
-          - "org.apache.logging.log4j:*"
-          - "ch.qos.logback:*"
           - "org.slf4j:*"
-        update-types:
-          - "minor"
-          - "patch"
-      data-format:
+          - "ch.qos.logback:*"
+          - "org.apache.logging.log4j:*"
+      jackson:
         patterns:
           - "com.fasterxml.jackson*"
           - "net.minidev:json-smart"
-          - "com.google.code.gson:gson"
-          - "org.yaml:snakeyaml"
-        update-types:
-          - "minor"
-          - "patch"
-      common-utils:
+      azure:
         patterns:
-          - "commons-beanutils:commons-beanutils"
-          - "io.github.resilience4j:*"
-          - "org.apache.commons:*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # 2) <service> CORE
-  - package-ecosystem: "maven"
-    directory: "/<service>-core"
-    schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "09:00"
-    labels:
-      - "dependencies"
-      - "common"
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      core-dependencies:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # 3) SPI AZURE
-  - package-ecosystem: "maven"
-    directory: "/provider/<service>-azure"
-    schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "09:00"
-    labels:
-      - "dependencies"
-      - "azure"
-    groups:
-      azure-dependencies:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-          - "minor"
-          - "patch"
-
-  # Note: Disabled providers/modules omitted to avoid validation errors
-  # Dependabot does not support 'interval: never'
-  # If you need to disable updates for specific modules, simply remove them from this file
+          - "com.azure:*"
+          - "com.azure.spring:*"
+          - "com.microsoft.azure:*"
