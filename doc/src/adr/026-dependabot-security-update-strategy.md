@@ -4,6 +4,7 @@
 **Accepted** - 2025-10-01
 **Updated** - 2025-10-24 (Separation of Concerns Architecture)
 **Updated** - 2025-10-28 (Removed pip/doc from template to prevent fork caching issues)
+**Updated** - 2025-12-19 (Changed Maven schedule from weekly to daily for faster rebasing)
 
 ## Context
 
@@ -50,6 +51,17 @@ Implement a **Separation of Concerns Dependabot Strategy** with:
 2. **Validation Gates**: All updates must pass build, test, and integration checks
 3. **Grouped Updates**: Reduces PR proliferation and review overhead
 4. **Manual Major Versions**: Breaking changes require human review and testing
+
+### Auto-Rebase Strategy
+
+Dependabot automatically rebases open PRs when:
+1. The scheduled daily check runs at 09:00 UTC
+2. Conflicts are detected with the target branch
+3. A closed PR is reopened
+
+**Why Daily Schedule**: A weekly schedule meant PRs could become stale for up to 7 days before rebasing. With multiple developers merging changes to `pom.xml`, Dependabot PRs often had outdated dependency versions. The daily schedule ensures PRs are rebased within 24 hours of any conflicting merge to main.
+
+**Manual Rebase**: Use `@dependabot rebase` comment on any PR to trigger immediate rebase.
 
 ## Alternatives Considered
 
@@ -112,8 +124,7 @@ updates:
   - package-ecosystem: "maven"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "sunday"
+      interval: "daily"
       time: "09:00"
     groups:
       spring:
@@ -157,9 +168,10 @@ Template Repository (azure/osdu-spi):
 Fork Repositories (danielscholl-osdu/*):
   Day 2 08:00 → Receive sync-template PR with workflow updates
              → Review and merge (engineering system updates)
-  Sunday 09:00 → Dependabot scans Maven dependencies
-              → Creates PRs for Spring Boot, Jackson, etc.
-              → NO GitHub Actions scanning (eliminates duplicates)
+  Daily 09:00 → Dependabot scans Maven dependencies
+             → Creates PRs for Spring Boot, Jackson, etc.
+             → Rebases open PRs when conflicts detected
+             → NO GitHub Actions scanning (eliminates duplicates)
 ```
 
 ### Update Groups
@@ -168,9 +180,9 @@ Fork Repositories (danielscholl-osdu/*):
 |------------|-----------|------------------|------------|
 | **Template** | GitHub Actions | Daily | Template Dependabot |
 | **Template** | Python/pip | Daily | Template Dependabot |
-| **Forks** | Maven (root) | Weekly | Fork Dependabot |
-| **Forks** | Maven (core) | Weekly | Fork Dependabot |
-| **Forks** | Maven (provider) | Weekly | Fork Dependabot |
+| **Forks** | Maven (root) | Daily | Fork Dependabot |
+| **Forks** | Maven (core) | Daily | Fork Dependabot |
+| **Forks** | Maven (provider) | Daily | Fork Dependabot |
 | **Forks** | GitHub Actions | N/A | Template sync-template |
 
 ### Label Strategy
@@ -203,7 +215,7 @@ Fork Repositories (danielscholl-osdu/*):
 ### Neutral
 - **GitHub Dependency**: Relies on GitHub's Dependabot service
 - **Update Lag**: Conservative strategy means not always latest versions
-- **Two-Track Updates**: Engineering system (daily) vs application code (weekly)
+- **Unified Daily Schedule**: Both engineering system and application code update daily
 
 ## Success Criteria
 
