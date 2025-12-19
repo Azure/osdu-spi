@@ -193,14 +193,21 @@ jobs:
           github.event.pull_request.base.ref == 'fork_upstream' &&
           startsWith(github.event.pull_request.head.ref, 'sync/')
         run: |
+          set -euo pipefail
           # Sync branches contain only upstream content and don't have local actions.
           # Restore .github/actions/ from main branch to enable validation.
           # This also provides security hardening - we always use trusted actions for validation.
           echo "🔧 Restoring local actions from main branch for sync PR validation..."
-          git fetch origin main --depth=1
-          git checkout origin/main -- .github/actions/
+          if ! git fetch origin main --depth=1; then
+            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
+            exit 1
+          fi
+          if ! git checkout origin/main -- .github/actions/; then
+            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
+            exit 1
+          fi
           echo "✅ Local actions restored - validation can proceed"
-      
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
@@ -253,11 +260,19 @@ jobs:
           github.event.pull_request.base.ref == 'fork_upstream' &&
           startsWith(github.event.pull_request.head.ref, 'sync/')
         run: |
+          set -euo pipefail
           # Sync branches contain only upstream content and don't have local actions.
           # Restore .github/actions/ from main branch to enable validation.
+          # This also provides security hardening - we always use trusted actions for validation.
           echo "🔧 Restoring local actions from main branch for sync PR validation..."
-          git fetch origin main --depth=1
-          git checkout origin/main -- .github/actions/
+          if ! git fetch origin main --depth=1; then
+            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
+            exit 1
+          fi
+          if ! git checkout origin/main -- .github/actions/; then
+            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
+            exit 1
+          fi
           echo "✅ Local actions restored - validation can proceed"
 
       - name: "Validate Commit Messages"
