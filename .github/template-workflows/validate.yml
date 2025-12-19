@@ -171,16 +171,11 @@ jobs:
   java-build:
     name: "🔨 Java Build"
     needs: [check-initialization, check-repo-state]
-    # Skip java-build for:
-    # - Dependabot PRs (handled by dependabot-validation.yml)
-    # - Sync PRs targeting fork_upstream (per ADR-028: local actions don't exist on sync branches
-    #   because they contain only upstream content; build validation occurs during cascade to
-    #   fork_integration where .github/actions/ exists)
+    # Skip java-build for Dependabot PRs (handled by dependabot-validation.yml)
     if: |
       needs.check-repo-state.outputs.is_initialized == 'true' &&
       needs.check-repo-state.outputs.is_java_repo == 'true' &&
-      github.actor != 'dependabot[bot]' &&
-      !(github.event.pull_request.base.ref == 'fork_upstream' && startsWith(github.event.pull_request.head.ref, 'sync/'))
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
@@ -190,7 +185,29 @@ jobs:
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-      
+          fetch-depth: 0
+
+      - name: "Restore local actions for sync PRs"
+        if: |
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.base.ref == 'fork_upstream' &&
+          startsWith(github.event.pull_request.head.ref, 'sync/')
+        run: |
+          set -euo pipefail
+          # Sync branches contain only upstream content and don't have local actions.
+          # Restore .github/actions/ from main branch to enable validation.
+          # This also provides security hardening - we always use trusted actions for validation.
+          echo "🔧 Restoring local actions from main branch for sync PR validation..."
+          if ! git fetch origin main --depth=1; then
+            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
+            exit 1
+          fi
+          if ! git checkout origin/main -- .github/actions/; then
+            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
+            exit 1
+          fi
+          echo "✅ Local actions restored - validation can proceed"
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
@@ -236,6 +253,27 @@ jobs:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: "Restore local actions for sync PRs"
+        if: |
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.base.ref == 'fork_upstream' &&
+          startsWith(github.event.pull_request.head.ref, 'sync/')
+        run: |
+          set -euo pipefail
+          # Sync branches contain only upstream content and don't have local actions.
+          # Restore .github/actions/ from main branch to enable validation.
+          # This also provides security hardening - we always use trusted actions for validation.
+          echo "🔧 Restoring local actions from main branch for sync PR validation..."
+          if ! git fetch origin main --depth=1; then
+            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
+            exit 1
+          fi
+          if ! git checkout origin/main -- .github/actions/; then
+            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
+            exit 1
+          fi
+          echo "✅ Local actions restored - validation can proceed"
 
       - name: "Validate Commit Messages"
         if: |
@@ -318,10 +356,7 @@ jobs:
           # Handle Dependabot PRs differently
           if [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
             ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Dependabot Build Handled by dependabot-validation.yml"]')
-          # Handle sync PRs targeting fork_upstream (build deferred to cascade)
-          elif [[ "${{ github.event.pull_request.base.ref }}" == "fork_upstream" ]] && [[ "${{ github.event.pull_request.head.ref }}" == sync/* ]]; then
-            ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Sync PR: Build validation deferred to cascade integration"]')
-          # For non-Dependabot PRs, report build status
+          # For all other PRs (including sync PRs), report build status
           elif [[ "${{ needs.check-repo-state.outputs.is_initialized }}" == "true" ]]; then
             if [[ "${{ needs.check-repo-state.outputs.is_java_repo }}" == "true" ]]; then
               if [[ "${{ needs.java-build.result }}" == "success" ]]; then
