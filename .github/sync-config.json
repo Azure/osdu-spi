@@ -16,6 +16,10 @@
     ],
     "files": [
       {
+        "path": ".release-please-config.json",
+        "description": "Release Please configuration for automated versioning"
+      },
+      {
         "path": ".github/labels.json",
         "description": "Repository label definitions"
       },
