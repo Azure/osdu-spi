@@ -16,8 +16,7 @@ updates:
       - "/*-core-plus"
       - "/provider/*-azure"
     schedule:
-      interval: "weekly"
-      day: "sunday"
+      interval: "daily"
       time: "09:00"
     target-branch: "main"
     labels:
