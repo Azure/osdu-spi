@@ -376,7 +376,14 @@ jobs:
               git show refs/remotes/template/main:".github/fork-resources/copilot-firewall-config.json" > ".github/copilot-firewall-config.json"
               git add ".github/copilot-firewall-config.json"
             fi
-            
+
+            # Process dependabot configuration
+            if git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" >/dev/null 2>&1; then
+              echo "Updating dependabot configuration from fork-resources..."
+              git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
+              git add ".github/dependabot.yml"
+            fi
+
             # Process triage prompt
             if git show refs/remotes/template/main:".github/fork-resources/triage.prompt.md" >/dev/null 2>&1; then
               echo "Updating triage prompt from fork-resources..."
