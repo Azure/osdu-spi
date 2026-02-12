@@ -114,31 +114,32 @@ jobs:
       - name: "Create Issue for Failed Build"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass PR metadata as environment variables to avoid ${{ }} literal
+          # substitution in shell, which breaks when values contain special characters.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          # Extract dependency information from PR title
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PR_URL="${{ github.event.pull_request.html_url }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          
           # Extract dependency details from PR title
           DEPENDENCY=$(echo "$PR_TITLE" | grep -oP 'bump \K[^ ]+ from [^ ]+ to [^ ]+' || echo "dependency")
-          
-          # Create informative issue body
-          ISSUE_BODY="## Dependabot PR Build Failure
-          
+
+          # Write issue body to file to safely handle special characters
+          cat > /tmp/issue_body.md << ISSUE_EOF
+          ## Dependabot PR Build Failure
+
           A Dependabot PR has failed to build successfully.
-          
+
           ### Dependency Update
           \`$DEPENDENCY\`
-          
+
           ### PR Details
           - **PR Title**: $PR_TITLE
           - **PR Number**: $PR_NUMBER
           - **PR URL**: $PR_URL
-          
+
           ### Build Information
           - **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          
+
           ### Next Steps
           1. Review the build logs to identify the failure cause
           2. Either:
@@ -146,12 +147,14 @@ jobs:
              - Close the PR if the dependency update is problematic
              - Pin the dependency to a compatible version
              - Add compatibility patches
-          
-          @${{ github.repository_owner }}"
-          
-          # Create the issue
+
+          @${{ github.repository_owner }}
+          ISSUE_EOF
+
+          # Create the issue using --body-file to safely handle special characters
           gh issue create \
             --title "🔴 Dependabot Build Failure: $DEPENDENCY" \
-            --body "$ISSUE_BODY" \
+            --body-file /tmp/issue_body.md \
             --label "build-failed" \
             --label "dependencies"
+          rm -f /tmp/issue_body.md
