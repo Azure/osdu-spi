@@ -35,19 +35,49 @@ GITHUB_SECRET="RELEASE_APP_PRIVATE_KEY"
 DRY_RUN=false
 
 usage() {
+  local exit_code="${1:-1}"
   echo "Usage: $0 --vault-name <vault> --secret-name <secret> --repo <owner/repo> --org <org> [--github-secret <name>] [--dry-run]"
-  exit 1
+  exit "$exit_code"
+}
+
+require_arg() {
+  local opt="$1"
+  local val="${2-}"
+  if [[ -z "$val" || "$val" == -* ]]; then
+    echo "ERROR: Option '$opt' requires a non-empty value."
+    usage
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --vault-name)   VAULT_NAME="$2"; shift 2 ;;
-    --secret-name)  SECRET_NAME="$2"; shift 2 ;;
-    --repo)         REPO="$2"; shift 2 ;;
-    --org)          ORG="$2"; shift 2 ;;
-    --github-secret) GITHUB_SECRET="$2"; shift 2 ;;
+    --vault-name)
+      require_arg "$1" "$2"
+      VAULT_NAME="$2"
+      shift 2
+      ;;
+    --secret-name)
+      require_arg "$1" "$2"
+      SECRET_NAME="$2"
+      shift 2
+      ;;
+    --repo)
+      require_arg "$1" "$2"
+      REPO="$2"
+      shift 2
+      ;;
+    --org)
+      require_arg "$1" "$2"
+      ORG="$2"
+      shift 2
+      ;;
+    --github-secret)
+      require_arg "$1" "$2"
+      GITHUB_SECRET="$2"
+      shift 2
+      ;;
     --dry-run)      DRY_RUN=true; shift ;;
-    -h|--help)      usage ;;
+    -h|--help)      usage 0 ;;
     *)              echo "Unknown option: $1"; usage ;;
   esac
 done
@@ -88,7 +118,7 @@ if [[ -z "$KEY_VALUE" ]]; then
   exit 1
 fi
 
-echo "    Key retrieved (${#KEY_VALUE} bytes)."
+echo "    Key retrieved from Key Vault."
 
 if $DRY_RUN; then
   echo "[DRY RUN] Would update $GITHUB_SECRET on repo $REPO"
@@ -113,4 +143,5 @@ echo "  3. Update the Key Vault secret expiry (90 days):"
 echo "     az keyvault secret set-attributes \\"
 echo "       --vault-name $VAULT_NAME \\"
 echo "       --name $SECRET_NAME \\"
-echo "       --expires \$(date -u -v+90d '+%Y-%m-%dT00:00:00Z')"
+echo "       --expires \$(date -u -d '+90 days' '+%Y-%m-%dT00:00:00Z')  # GNU/Linux"
+echo "       # macOS: date -u -v+90d '+%Y-%m-%dT00:00:00Z'"
