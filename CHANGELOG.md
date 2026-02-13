@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.2](https://github.com/Azure/osdu-spi/compare/v1.0.1...v1.0.2) (2026-02-13)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** Remove bare expression syntax from cascade workflow comments ([a8d2ad8](https://github.com/Azure/osdu-spi/commit/a8d2ad8b5c1b386bd58c9e18fc73943e4654497d))
+
+
+### 📚 Documentation
+
+* **ci:** Clarify expression substitution terminology in comments ([6447775](https://github.com/Azure/osdu-spi/commit/6447775b0510f0a7e65f3eeab540cc86f35d4525))
+
 ## [1.0.1](https://github.com/Azure/osdu-spi/compare/v1.0.0...v1.0.1) (2026-02-13)
 
 
