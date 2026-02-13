@@ -372,7 +372,7 @@ jobs:
             echo "❌ Validation checks failed"
             echo "success=false" >> $GITHUB_OUTPUT
             # Write build output and validation details to files instead of step outputs.
-            # IMPORTANT: Do NOT pass these through step outputs + ${{ }} substitution,
+            # IMPORTANT: Do NOT pass these through step outputs and expression substitution,
             # because literal string substitution of build logs containing parentheses,
             # quotes, and other special characters will break shell parsing.
             echo "$BUILD_OUTPUT" > /tmp/build_output.txt
@@ -387,7 +387,7 @@ jobs:
           echo "🚨 Creating validation failure issue..."
 
           # Read validation details and build output from files written by validate step.
-          # IMPORTANT: These are passed via files (not step outputs) because ${{ }} literal
+          # IMPORTANT: These are passed via files (not step outputs) because expression
           # substitution of build logs breaks shell parsing when they contain parentheses,
           # quotes, backticks, or other special characters.
           VALIDATION_DETAILS=""
