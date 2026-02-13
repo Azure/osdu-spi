@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.1](https://github.com/Azure/osdu-spi/compare/v1.0.0...v1.0.1) (2026-02-13)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** Prevent shell injection in GitHub workflow issue/PR creation ([ca93968](https://github.com/Azure/osdu-spi/commit/ca9396840e03cab7b70c179e51f58a50ccccbc60))
+* **ci:** Prevent shell parsing errors in workflow templates ([8a2f24d](https://github.com/Azure/osdu-spi/commit/8a2f24d4f6ae118cddd0968c463a24a23f092e99))
+* **ci:** Replace echo with printf for safer PR body handling ([cf28988](https://github.com/Azure/osdu-spi/commit/cf28988c4fcf4eb21fd2c4f3a809b6c051493cf9))
+
+
+### 🔨 Build System
+
+* **deps:** Bump urllib3 from 2.6.0 to 2.6.3 in /doc ([149d2de](https://github.com/Azure/osdu-spi/commit/149d2de2ffb0b7eff0faf27db2a8fd324e089715))
+* **deps:** Bump urllib3 from 2.6.0 to 2.6.3 in /doc ([9c8d575](https://github.com/Azure/osdu-spi/commit/9c8d575e8cebebbd7bd79f5ae9e087e08d721739))
+
 ## 1.0.0 (2025-12-19)
 
 
