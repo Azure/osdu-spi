@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/Azure/osdu-spi/compare/v1.0.2...v1.1.0) (2026-02-13)
+
+
+### ✨ Features
+
+* **ci:** Add GitHub App private key rotation script ([0ec7fa3](https://github.com/Azure/osdu-spi/commit/0ec7fa347a16b8f9565dd6299229da386db4e8d1))
+* **ci:** Add GitHub App private key rotation script ([a01fb57](https://github.com/Azure/osdu-spi/commit/a01fb574fea6bea0e3772faa43c6cf81bd6c32e1))
+
+
+### ♻️ Code Refactoring
+
+* **ci:** Improve argument validation and error handling in key rotation script ([20ef855](https://github.com/Azure/osdu-spi/commit/20ef855751c3d9f043b407a29ee5d0b6d8960d3c))
+
 ## [1.0.2](https://github.com/Azure/osdu-spi/compare/v1.0.1...v1.0.2) (2026-02-13)
 
 
