@@ -274,10 +274,11 @@ jobs:
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
         run: |
-          # Get environment variables from previous step
-          SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
-          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
-          FALLBACK_DESCRIPTION="${{ env.FALLBACK_DESCRIPTION }}"
+          # SYNC_BRANCH, UPSTREAM_VERSION, and FALLBACK_DESCRIPTION are already
+          # available as environment variables via $GITHUB_ENV from previous step.
+          # IMPORTANT: Do NOT use ${{ env.X }} for these - it performs literal string
+          # substitution which breaks when values contain quotes or special characters
+          # (e.g. commit messages with double quotes cause shell parsing errors).
 
           # Detect available LLM provider
           # Note: LLM detection is duplicated inline instead of using .github/actions/llm-provider-detect
@@ -316,11 +317,11 @@ jobs:
             DIFF_LINES=0
           fi
           echo "Diff contains $DIFF_LINES lines"
-          
+
           # Generate PR description using AI if available with comprehensive error handling
           if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
             echo "Generating AI-enhanced PR description using $AIPR_MODEL..."
-            
+
             # Use aipr tool with vulnerability analysis and timeout protection
             PR_DESCRIPTION=""
             echo "   🔍 Attempting AIPR PR generation with model: $AIPR_MODEL"
@@ -357,24 +358,26 @@ jobs:
             fi
             PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
           fi
-          
-          # Create the PR
+
+          # Create the PR using --body-file to safely handle special characters
           echo "Creating PR from branch $SYNC_BRANCH to fork_upstream"
+          printf '%s\n' "$PR_DESCRIPTION" > /tmp/pr_body.txt
           PR_URL=$(gh pr create \
             --base fork_upstream \
             --head "$SYNC_BRANCH" \
             --title "⬆️ Sync with upstream $UPSTREAM_VERSION" \
-            --body "$PR_DESCRIPTION" \
+            --body-file /tmp/pr_body.txt \
             --label "upstream-sync,human-required")
-          
+          rm -f /tmp/pr_body.txt
+
           echo "PR created: $PR_URL"
-          
+
           # Extract PR number for output
           PR_NUMBER=$(basename "$PR_URL")
           echo "PR number: $PR_NUMBER"
-          
+
           # PR number will be tracked via issue description updates
-          
+
           # Set outputs for next step
           echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
           echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
@@ -392,9 +395,10 @@ jobs:
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
         run: |
           PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
-          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
-          SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
-          FALLBACK_DESCRIPTION="${{ env.FALLBACK_DESCRIPTION }}"
+          # UPSTREAM_VERSION, SYNC_BRANCH, and FALLBACK_DESCRIPTION are already
+          # available as environment variables via $GITHUB_ENV from previous step.
+          # IMPORTANT: Do NOT use ${{ env.X }} for these - it performs literal string
+          # substitution which breaks when values contain quotes or special characters.
 
           # Detect available LLM provider
           # Note: LLM detection is duplicated inline instead of using .github/actions/llm-provider-detect
@@ -433,11 +437,11 @@ jobs:
             DIFF_LINES=0
           fi
           echo "Diff contains $DIFF_LINES lines"
-          
+
           # Generate updated PR description using AI if available with comprehensive error handling
           if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
             echo "Generating AI-enhanced PR description using $AIPR_MODEL..."
-            
+
             # Use aipr tool with vulnerability analysis and timeout protection
             PR_DESCRIPTION=""
             echo "   🔍 Attempting AIPR PR generation with model: $AIPR_MODEL"
@@ -474,11 +478,14 @@ jobs:
             fi
             PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
           fi
-          
+
           # Update PR title and regenerate description with all commits
+          # Use --body-file to safely handle special characters in description
+          printf '%s\n' "$PR_DESCRIPTION" > /tmp/pr_body.txt
           gh pr edit "$PR_NUMBER" \
             --title "⬆️ Sync with upstream $UPSTREAM_VERSION (Updated)" \
-            --body "$PR_DESCRIPTION"
+            --body-file /tmp/pr_body.txt
+          rm -f /tmp/pr_body.txt
           
           # Check for existing "Sync Updated" comments to prevent duplicates
           EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.body | contains("🔄 **Sync Updated**")) | .body' | grep -c "New upstream version.*$UPSTREAM_VERSION" || echo "0")
@@ -512,10 +519,10 @@ jobs:
         run: |
           PR_URL="${{ steps.create-pr.outputs.pr-url }}"
           PR_NUMBER="${{ steps.create-pr.outputs.pr-number }}"
-          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
-          
+          # UPSTREAM_VERSION and SYNC_BRANCH are available via $GITHUB_ENV
+
           # Get commit count for the notification
-          COMMIT_COUNT=$(git rev-list --count fork_upstream..${{ env.SYNC_BRANCH }})
+          COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH)
           
           # Create issue first to get the issue number
           ISSUE_URL=$(gh issue create \
@@ -543,7 +550,7 @@ jobs:
             "**Sync Summary**" \
             "- **Upstream Version**: \`$UPSTREAM_VERSION\`" \
             "- **Changes**: $COMMIT_COUNT new commits from upstream" \
-            "- **Branch**: \`${{ env.SYNC_BRANCH }}\` → \`fork_upstream\`" \
+            "- **Branch**: \`$SYNC_BRANCH\` → \`fork_upstream\`" \
             "---" \
             "**Complete Integration Process**" \
             "### Phase 1: Review & Merge (**Current**)" \
@@ -582,8 +589,7 @@ jobs:
         run: |
           ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
           PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
-          UPSTREAM_VERSION="${{ env.UPSTREAM_VERSION }}"
-          SYNC_BRANCH="${{ env.SYNC_BRANCH }}"
+          # UPSTREAM_VERSION and SYNC_BRANCH are available via $GITHUB_ENV
           
           echo "Updating issue description for issue #$ISSUE_NUMBER"
           echo "Repository: $GH_REPO"

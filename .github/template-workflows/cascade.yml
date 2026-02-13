@@ -363,7 +363,7 @@ jobs:
           if [ "$VALIDATION_SUCCESS" = "true" ]; then
             echo "✅ All validation checks passed"
             echo "success=true" >> $GITHUB_OUTPUT
-            
+
             if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
               VALIDATION_DISPLAY=$(echo -e "${VALIDATION_DETAILS}")
               gh issue comment "$TRACKING_ISSUE" --body "✅ **Integration Validation Passed** - $(date -u +%Y-%m-%dT%H:%M:%SZ). All validation checks completed successfully: ${VALIDATION_DISPLAY}. **Next Step:** Creating production PR to merge validated changes to \`main\` branch."
@@ -371,12 +371,12 @@ jobs:
           else
             echo "❌ Validation checks failed"
             echo "success=false" >> $GITHUB_OUTPUT
-            echo "build_output<<EOF" >> $GITHUB_OUTPUT
-            echo "$BUILD_OUTPUT" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "validation_details<<EOF" >> $GITHUB_OUTPUT
-            echo -e "$VALIDATION_DETAILS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            # Write build output and validation details to files instead of step outputs.
+            # IMPORTANT: Do NOT pass these through step outputs + ${{ }} substitution,
+            # because literal string substitution of build logs containing parentheses,
+            # quotes, and other special characters will break shell parsing.
+            echo "$BUILD_OUTPUT" > /tmp/build_output.txt
+            echo -e "$VALIDATION_DETAILS" > /tmp/validation_details.txt
           fi
 
       - name: Create validation failure issue
@@ -385,62 +385,80 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🚨 Creating validation failure issue..."
-          
-          # Get validation details and build output
-          VALIDATION_DETAILS="${{ steps.validate.outputs.validation_details }}"
-          BUILD_OUTPUT="${{ steps.validate.outputs.build_output }}"
-          
+
+          # Read validation details and build output from files written by validate step.
+          # IMPORTANT: These are passed via files (not step outputs) because ${{ }} literal
+          # substitution of build logs breaks shell parsing when they contain parentheses,
+          # quotes, backticks, or other special characters.
+          VALIDATION_DETAILS=""
+          BUILD_OUTPUT=""
+          if [ -f /tmp/validation_details.txt ]; then
+            VALIDATION_DETAILS=$(cat /tmp/validation_details.txt)
+          fi
+          if [ -f /tmp/build_output.txt ]; then
+            BUILD_OUTPUT=$(cat /tmp/build_output.txt)
+          fi
+
           # Truncate build output if too long (GitHub issue limit)
           if [ ${#BUILD_OUTPUT} -gt 50000 ]; then
             BUILD_OUTPUT="${BUILD_OUTPUT:0:50000}
-            
+
             ... [Output truncated - see workflow logs for complete details]"
           fi
-          
-          # Create detailed failure issue
-          VALIDATION_BODY="🚨 **Integration Validation Failed**
-          
-          The cascade integration process has encountered validation failures on the \`fork_integration\` branch. This indicates that upstream changes cannot be safely integrated without resolution.
-          
-          **Branch:** \`fork_integration\`
-          **Validation Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          **Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          ## Validation Results
-          
-          ${VALIDATION_DETAILS}
-          
-          ## Build Output
-          
-          <details>
-          <summary>Click to view build logs</summary>
-          
-          \`\`\`
-          ${BUILD_OUTPUT}
-          \`\`\`
-          
-          </details>
-          
+
+          # Write issue body to file to safely handle special characters
+          cat > /tmp/validation_issue_body.md << 'ISSUE_BODY_EOF'
+          🚨 **Integration Validation Failed**
+
+          The cascade integration process has encountered validation failures on the `fork_integration` branch. This indicates that upstream changes cannot be safely integrated without resolution.
+          ISSUE_BODY_EOF
+
+          # Append dynamic content safely
+          {
+            echo ""
+            echo "**Branch:** \`fork_integration\`"
+            echo "**Validation Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "**Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo ""
+            echo "## Validation Results"
+            echo ""
+            echo "$VALIDATION_DETAILS"
+            echo ""
+            echo "## Build Output"
+            echo ""
+            echo "<details>"
+            echo "<summary>Click to view build logs</summary>"
+            echo ""
+            echo '```'
+            echo "$BUILD_OUTPUT"
+            echo '```'
+            echo ""
+            echo "</details>"
+            echo ""
+            cat << 'STATIC_EOF'
           ## Resolution Steps
-          
+
           1. **Review Error Details:** Examine the build output above to understand the specific failure
           2. **Fix Issues:** Resolve build errors, test failures, or other validation problems
           3. **Re-trigger Cascade:** Once issues are resolved, manually trigger the cascade workflow again
           4. **Monitor Progress:** Track resolution through the original upstream sync issue
-          
+
           ## Important Notes
-          
-          - The \`fork_integration\` branch contains the problematic changes
+
+          - The `fork_integration` branch contains the problematic changes
           - **Do not merge to main** until validation passes
-          - The upstream sync tracking issue has been updated with \`cascade-blocked\` label
+          - The upstream sync tracking issue has been updated with `cascade-blocked` label
           - All changes must pass validation before reaching production
-          
-          **SLA:** 48 hours for resolution"
-          
+
+          **SLA:** 48 hours for resolution
+          STATIC_EOF
+          } >> /tmp/validation_issue_body.md
+
           gh issue create \
             --title "🚨 Integration Validation Failed: Build/Test Errors - $(date +%Y-%m-%d)" \
-            --body "$VALIDATION_BODY" \
+            --body-file /tmp/validation_issue_body.md \
             --label "validation-failed,cascade-blocked,high-priority,human-required"
+          rm -f /tmp/validation_issue_body.md /tmp/build_output.txt /tmp/validation_details.txt
           
           # Update tracking issue if available
           # Note: Context reference depends on workflow structure:
