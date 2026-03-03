@@ -33,7 +33,7 @@ jobs:
     outputs:
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
       
       - name: "Check if Java Repository"
         id: check_java
@@ -52,17 +52,17 @@ jobs:
     outputs:
       build_result: ${{ steps.build.outputs.build_result }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
       
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
           
       - name: Cache Maven packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}

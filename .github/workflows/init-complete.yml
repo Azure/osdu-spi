@@ -18,6 +18,7 @@ jobs:
       github.event.issue.state == 'open' &&
       contains(github.event.issue.labels.*.name, 'initialization') &&
       github.event.comment.user.login != 'github-actions[bot]' &&
+      (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') &&
       vars.IS_TEMPLATE != 'true'
     runs-on: ubuntu-latest
     permissions:

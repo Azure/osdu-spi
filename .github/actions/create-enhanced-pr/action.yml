@@ -76,12 +76,14 @@ runs:
     - name: Map LLM model for aipr
       id: map-model
       shell: bash
+      env:
+        AIPR_MODEL_NAME: ${{ inputs.aipr-model }}
       run: |
         LLM_MODEL="${{ steps.detect-llm.outputs.llm_model }}"
 
         # Map model names for aipr compatibility
         if [[ "$LLM_MODEL" == "azure" ]]; then
-          AIPR_MODEL="azure/${{ inputs.aipr-model }}"
+          AIPR_MODEL="azure/$AIPR_MODEL_NAME"
           echo "Using Azure Foundry for PR description generation with model: $AIPR_MODEL"
         else
           AIPR_MODEL=""
