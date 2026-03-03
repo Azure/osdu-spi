@@ -329,17 +329,17 @@ jobs:
           git fetch origin "$BASE_REF"
           git fetch origin "$HEAD_REF"
           
-          if ! git rev-parse --verify $BASE_BRANCH >/dev/null 2>&1; then
+          if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
             echo "::error::Base branch $BASE_BRANCH not found"
             exit 1
           fi
-          
-          if ! git rev-parse --verify $CURRENT_BRANCH >/dev/null 2>&1; then
+
+          if ! git rev-parse --verify "$CURRENT_BRANCH" >/dev/null 2>&1; then
             echo "::error::Current branch $CURRENT_BRANCH not found"
             exit 1
           fi
-          
-          BEHIND_BY=$(git rev-list --count $CURRENT_BRANCH..$BASE_BRANCH)
+
+          BEHIND_BY=$(git rev-list --count "$CURRENT_BRANCH..$BASE_BRANCH")
           
           if [ "$BEHIND_BY" -gt 0 ]; then
             echo "::error::Branch is behind $BASE_BRANCH by $BEHIND_BY commits. Please update your branch."
