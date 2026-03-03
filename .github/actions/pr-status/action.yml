@@ -17,12 +17,13 @@ runs:
     - name: Comment PR Status
       shell: bash
       run: |
-        STATUS_ITEMS='${{ inputs.status_items }}'
         CHECKS_STATUS="## Validation Status"
         while IFS= read -r item; do
           CHECKS_STATUS="$CHECKS_STATUS
         - $item"
         done < <(echo "$STATUS_ITEMS" | jq -r '.[]')
-        gh pr comment ${{ inputs.pr_number }} --body "$CHECKS_STATUS"
+        gh pr comment "$PR_NUMBER" --body "$CHECKS_STATUS"
       env:
-        GITHUB_TOKEN: ${{ inputs.token }} 
+        GITHUB_TOKEN: ${{ inputs.token }}
+        STATUS_ITEMS: ${{ inputs.status_items }}
+        PR_NUMBER: ${{ inputs.pr_number }}

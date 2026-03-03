@@ -76,12 +76,14 @@ runs:
     - name: Map LLM model for aipr
       id: map-model
       shell: bash
+      env:
+        AIPR_MODEL_NAME: ${{ inputs.aipr-model }}
       run: |
         LLM_MODEL="${{ steps.detect-llm.outputs.llm_model }}"
 
         # Map model names for aipr compatibility
         if [[ "$LLM_MODEL" == "azure" ]]; then
-          AIPR_MODEL="azure/${{ inputs.aipr-model }}"
+          AIPR_MODEL="azure/$AIPR_MODEL_NAME"
           echo "Using Azure Foundry for PR description generation with model: $AIPR_MODEL"
         else
           AIPR_MODEL=""
@@ -97,44 +99,56 @@ runs:
         AZURE_OPENAI_ENDPOINT: ${{ inputs.azure-api-base }}
         AZURE_OPENAI_API_KEY: ${{ inputs.azure-api-key }}
         AZURE_API_VERSION: ${{ inputs.azure-api-version }}
+        MAX_DIFF_LINES: ${{ inputs.max-diff-lines }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        TARGET_BRANCH_FOR_AIPR: ${{ inputs.target-branch-for-aipr }}
+        USE_VULNS_FLAG: ${{ inputs.use-vulns-flag }}
+        FALLBACK_DESCRIPTION_B64: ${{ inputs.fallback-description-b64 }}
+        FALLBACK_DESCRIPTION: ${{ inputs.fallback-description }}
+        ADDITIONAL_DESCRIPTION: ${{ inputs.additional-description }}
       run: |
+        # Validate that MAX_DIFF_LINES is numeric
+        if [[ ! "$MAX_DIFF_LINES" =~ ^[0-9]+$ ]]; then
+          echo "Invalid max-diff-lines value: '$MAX_DIFF_LINES'; defaulting to 20000"
+          MAX_DIFF_LINES=20000
+        fi
+
         # Calculate diff size to avoid generating prompts that exceed model limits
-        MAX_DIFF_LINES=${{ inputs.max-diff-lines }}
-        DIFF_LINES=$(git diff ${{ inputs.base-branch }} | wc -l | tr -d ' ')
-        
+        DIFF_LINES=$(git diff "$BASE_BRANCH" | wc -l | tr -d ' ')
+
         # Ensure DIFF_LINES is a valid numeric value
         if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
           DIFF_LINES=0
         fi
         echo "Diff contains $DIFF_LINES lines"
-        
+
         if [[ "${{ steps.detect-llm.outputs.use_llm }}" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
           # Generate PR description using aipr
           echo "Generating PR description using ${{ steps.map-model.outputs.aipr-model }}..."
 
-          TARGET_BRANCH="${{ inputs.target-branch-for-aipr }}"
+          TARGET_BRANCH="$TARGET_BRANCH_FOR_AIPR"
           if [[ -z "$TARGET_BRANCH" ]]; then
-            TARGET_BRANCH="${{ inputs.base-branch }}"
+            TARGET_BRANCH="$BASE_BRANCH"
           fi
 
           AIPR_FLAGS="-t $TARGET_BRANCH -m ${{ steps.map-model.outputs.aipr-model }} -s"
-          if [[ "${{ inputs.use-vulns-flag }}" == "true" ]]; then
+          if [[ "$USE_VULNS_FLAG" == "true" ]]; then
             AIPR_FLAGS="$AIPR_FLAGS --vulns"
           fi
 
           PR_DESCRIPTION=$(aipr pr $AIPR_FLAGS 2>/dev/null || echo "")
-          
+
           if [[ -n "$PR_DESCRIPTION" ]]; then
             echo "Generated enhanced PR description using ${{ steps.map-model.outputs.aipr-model }}"
             echo "used-aipr=true" >> $GITHUB_OUTPUT
           else
             echo "aipr generation failed, using fallback description"
             # Check if we have a base64 encoded description first
-            if [[ -n "${{ inputs.fallback-description-b64 }}" ]]; then
+            if [[ -n "$FALLBACK_DESCRIPTION_B64" ]]; then
               echo "Using base64 encoded fallback description"
-              PR_DESCRIPTION=$(echo "${{ inputs.fallback-description-b64 }}" | base64 -d)
+              PR_DESCRIPTION=$(echo "$FALLBACK_DESCRIPTION_B64" | base64 -d)
             else
-              PR_DESCRIPTION="${{ inputs.fallback-description }}"
+              PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
             fi
             echo "used-aipr=false" >> $GITHUB_OUTPUT
           fi
@@ -142,22 +156,22 @@ runs:
           if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
             echo "Diff is larger than $MAX_DIFF_LINES lines; using fallback description"
           fi
-          
+
           # Check if we have a base64 encoded description first
-          if [[ -n "${{ inputs.fallback-description-b64 }}" ]]; then
+          if [[ -n "$FALLBACK_DESCRIPTION_B64" ]]; then
             echo "Using base64 encoded fallback description"
-            PR_DESCRIPTION=$(echo "${{ inputs.fallback-description-b64 }}" | base64 -d)
+            PR_DESCRIPTION=$(echo "$FALLBACK_DESCRIPTION_B64" | base64 -d)
           else
-            PR_DESCRIPTION="${{ inputs.fallback-description }}"
+            PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
           fi
           echo "used-aipr=false" >> $GITHUB_OUTPUT
         fi
-        
+
         # Append additional description if provided
-        if [[ -n "${{ inputs.additional-description }}" ]]; then
-          PR_DESCRIPTION="${PR_DESCRIPTION}"$'\n\n'"${{ inputs.additional-description }}"
+        if [[ -n "$ADDITIONAL_DESCRIPTION" ]]; then
+          PR_DESCRIPTION="${PR_DESCRIPTION}"$'\n\n'"$ADDITIONAL_DESCRIPTION"
         fi
-        
+
         # Save description to environment (handle multiline properly)
         echo "PR_DESCRIPTION<<EOF" >> $GITHUB_ENV
         echo "$PR_DESCRIPTION" >> $GITHUB_ENV
@@ -169,8 +183,11 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_LABELS: ${{ inputs.labels }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        PR_TITLE: ${{ inputs.pr-title }}
       run: |
-        echo "Creating PR from branch ${{ inputs.head-branch }} to ${{ inputs.base-branch }}"
+        echo "Creating PR from branch $HEAD_BRANCH to $BASE_BRANCH"
 
         LABEL_ARG=""
         if [[ -n "$PR_LABELS" ]]; then
@@ -178,9 +195,9 @@ runs:
         fi
 
         PR_URL=$(gh pr create \
-          --base "${{ inputs.base-branch }}" \
-          --head "${{ inputs.head-branch }}" \
-          --title "${{ inputs.pr-title }}" \
+          --base "$BASE_BRANCH" \
+          --head "$HEAD_BRANCH" \
+          --title "$PR_TITLE" \
           --body "$PR_DESCRIPTION" \
           $LABEL_ARG)
 

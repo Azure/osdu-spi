@@ -80,8 +80,9 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' || 
       github.event_name == 'pull_request' ||
-      (github.event_name == 'pull_request_target' && 
-       (github.actor == 'app/github-actions' || github.actor == 'github-actions[bot]' || github.actor == 'dependabot[bot]' || contains(github.actor, '[bot]'))) ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.actor == 'app/github-actions' || github.actor == 'github-actions[bot]' || github.actor == 'dependabot[bot]')) ||
       (github.event_name == 'push' && 
        !contains(github.event.head_commit.message, 'chore: complete repository initialization') &&
        !contains(github.event.head_commit.message, 'chore: clean up template files after initialization'))
@@ -90,7 +91,7 @@ jobs:
       initialized: ${{ steps.check.outputs.initialized }}
     steps:
       - name: "Checkout Code"
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           # For pull_request, this will be the same as the default behavior
@@ -144,7 +145,7 @@ jobs:
       is_initialized: ${{ steps.check_init.outputs.initialized }}
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
@@ -181,7 +182,7 @@ jobs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
       build_result: ${{ steps.build.outputs.build_result }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
@@ -209,14 +210,14 @@ jobs:
           echo "✅ Local actions restored - validation can proceed"
 
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
           
       - name: Cache Maven packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -248,7 +249,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Code"
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
           # For pull_request_target, we need to check out the PR head to validate the actual changes
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
@@ -289,7 +290,7 @@ jobs:
           !startsWith(github.event.pull_request.title, '🚀 Production Release: Upstream Integration') &&
           !startsWith(github.head_ref, 'release/upstream-') &&
           !startsWith(github.head_ref, 'release-please--branches--')
-        uses: amannn/action-semantic-pull-request@v6
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -317,25 +318,28 @@ jobs:
           
       - name: "Verify Branch Status"
         if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           git fetch origin
-          BASE_BRANCH="origin/${{ github.base_ref }}"
-          CURRENT_BRANCH="origin/${{ github.head_ref }}"
+          BASE_BRANCH="origin/$BASE_REF"
+          CURRENT_BRANCH="origin/$HEAD_REF"
+
+          git fetch origin "$BASE_REF"
+          git fetch origin "$HEAD_REF"
           
-          git fetch origin ${{ github.base_ref }}
-          git fetch origin ${{ github.head_ref }}
-          
-          if ! git rev-parse --verify $BASE_BRANCH >/dev/null 2>&1; then
+          if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
             echo "::error::Base branch $BASE_BRANCH not found"
             exit 1
           fi
-          
-          if ! git rev-parse --verify $CURRENT_BRANCH >/dev/null 2>&1; then
+
+          if ! git rev-parse --verify "$CURRENT_BRANCH" >/dev/null 2>&1; then
             echo "::error::Current branch $CURRENT_BRANCH not found"
             exit 1
           fi
-          
-          BEHIND_BY=$(git rev-list --count $CURRENT_BRANCH..$BASE_BRANCH)
+
+          BEHIND_BY=$(git rev-list --count "$CURRENT_BRANCH..$BASE_BRANCH")
           
           if [ "$BEHIND_BY" -gt 0 ]; then
             echo "::error::Branch is behind $BASE_BRANCH by $BEHIND_BY commits. Please update your branch."
