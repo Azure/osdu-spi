@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.1.0](https://github.com/Azure/osdu-spi/compare/v1.0.2...v1.1.0) (2026-03-03)
+
+
+### ✨ Features
+
+* **ci:** Add GitHub App private key rotation script ([0ec7fa3](https://github.com/Azure/osdu-spi/commit/0ec7fa347a16b8f9565dd6299229da386db4e8d1))
+* **ci:** Add GitHub App private key rotation script ([a01fb57](https://github.com/Azure/osdu-spi/commit/a01fb574fea6bea0e3772faa43c6cf81bd6c32e1))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** Add proper quoting to git branch validation commands ([abfb36b](https://github.com/Azure/osdu-spi/commit/abfb36bf2f855369d1e2fa525bb36e303fbcbbfa))
+* **ci:** Add repository fork check to pull_request_target validation ([92b13ea](https://github.com/Azure/osdu-spi/commit/92b13eaa5b1eb85a93a4944807098998906e384f))
+* **ci:** Harden GitHub Actions workflows against supply chain attacks ([e455e26](https://github.com/Azure/osdu-spi/commit/e455e26624a67a0a37c4b26034418d93fbec39c9))
+* **ci:** Update Trivy installation URL to use version-specific path ([97c7dd3](https://github.com/Azure/osdu-spi/commit/97c7dd3877ca146573a858a8edd6871842184176))
+* **ci:** Upgrade Trivy to v0.69.3 after upstream security incident ([62a7ebd](https://github.com/Azure/osdu-spi/commit/62a7ebd34a3faf454d46f3700eaf778393aa65f6))
+
+
+### 🔧 Miscellaneous
+
+* **ci:** Pin GitHub Actions to commit SHAs and improve security ([8bff7b3](https://github.com/Azure/osdu-spi/commit/8bff7b3667d488852a5ef20ad87a3f3c61eff420))
+
+
+### ♻️ Code Refactoring
+
+* **ci:** Improve argument validation and error handling in key rotation script ([20ef855](https://github.com/Azure/osdu-spi/commit/20ef855751c3d9f043b407a29ee5d0b6d8960d3c))
+* **ci:** Improve shell variable handling in PR creation action ([67f5893](https://github.com/Azure/osdu-spi/commit/67f5893810e8c7c93085d30b6a825412c8af9351))
+* **ci:** Use environment variable for upstream repo URL ([9e1b5d4](https://github.com/Azure/osdu-spi/commit/9e1b5d4c285b93f961ad4415a26769222624e1e4))
+
+
+### 🔨 Build System
+
+* **ci:** Pin GitHub Actions to commit SHAs for security ([49dce2d](https://github.com/Azure/osdu-spi/commit/49dce2d7f001cafeabbf70b957e2042a0d9dcbdf))
+* **ci:** Upgrade Trivy security scanner to v0.69.3 ([5e10f43](https://github.com/Azure/osdu-spi/commit/5e10f43bb48cd770f54df5490acf232be8b60620))
+
 ## [1.0.2](https://github.com/Azure/osdu-spi/compare/v1.0.1...v1.0.2) (2026-02-13)
 
 
