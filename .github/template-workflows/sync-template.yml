@@ -209,6 +209,10 @@ jobs:
             SYNC_BRANCH="${{ steps.detect-existing.outputs.existing_pr_branch }}"
             echo "🔄 Reusing existing branch: $SYNC_BRANCH"
 
+            # Clean up any untracked files created during bootstrap (e.g., .template-sync-commit)
+            # These would conflict with checkout since the existing branch also has them
+            git clean -f -- .github/.template-sync-commit
+
             # Fetch and checkout existing branch
             git fetch origin $SYNC_BRANCH
             git checkout -b $SYNC_BRANCH origin/$SYNC_BRANCH
