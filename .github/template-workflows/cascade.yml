@@ -502,11 +502,18 @@ jobs:
       needs.cascade-to-integration.outputs.conflicts_found == 'false'
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@67018539274d69449ef7c02e8e71183d1719ab42  # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure Git
         run: |
@@ -544,7 +551,7 @@ jobs:
       - name: Create main PR
         if: steps.verify_integration.outputs.needs_cascade == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Create a temporary release branch from fork_integration to preserve the integration branch
           RELEASE_BRANCH="release/upstream-$(date +%Y%m%d-%H%M%S)"
