@@ -82,10 +82,10 @@ require_arg() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo)           require_arg "$1" "$2"; REPO="$2"; shift 2 ;;
-    --upstream)       require_arg "$1" "$2"; UPSTREAM="$2"; shift 2 ;;
-    --vault-name)     require_arg "$1" "$2"; VAULT_NAME="$2"; shift 2 ;;
-    --template-repo)  require_arg "$1" "$2"; TEMPLATE_REPO="$2"; shift 2 ;;
+    --repo)           require_arg "$1" "${2-}"; REPO="${2-}"; shift 2 ;;
+    --upstream)       require_arg "$1" "${2-}"; UPSTREAM="${2-}"; shift 2 ;;
+    --vault-name)     require_arg "$1" "${2-}"; VAULT_NAME="${2-}"; shift 2 ;;
+    --template-repo)  require_arg "$1" "${2-}"; TEMPLATE_REPO="${2-}"; shift 2 ;;
     --dry-run)        DRY_RUN=true; shift ;;
     -h|--help)        usage 0 ;;
     *)                echo "Unknown option: $1"; usage ;;
