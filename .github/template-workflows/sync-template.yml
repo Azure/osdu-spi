@@ -211,7 +211,7 @@ jobs:
 
             # Clean up any untracked files created during bootstrap (e.g., .template-sync-commit)
             # These would conflict with checkout since the existing branch also has them
-            rm -f .github/.template-sync-commit
+            git clean -f -- .github/.template-sync-commit
 
             # Fetch and checkout existing branch
             git fetch origin $SYNC_BRANCH
