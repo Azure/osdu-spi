@@ -11,11 +11,21 @@ permissions:
   pull-requests: read
   issues: write
 
+concurrency:
+  group: integration-cleanup-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   update-integration-branch:
     name: "🔄 Update Fork Integration"
-    # Only run if PR was merged (not just closed) and has upstream-sync label
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'upstream-sync')
+    # Run if PR was merged AND either has upstream-sync label OR came from integration/release branches
+    # This prevents fork_integration from getting stuck when manual PRs are merged without the label
+    if: >
+      github.event.pull_request.merged == true && (
+        contains(github.event.pull_request.labels.*.name, 'upstream-sync') ||
+        github.event.pull_request.head.ref == 'fork_integration' ||
+        startsWith(github.event.pull_request.head.ref, 'release/upstream-')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,18 +45,18 @@ jobs:
           echo "Fetching latest branch states..."
           git fetch origin --prune
 
-          echo "Checking out fork_integration branch..."
-          git checkout fork_integration
-
-          # Check that required branches exist
+          # Check that required branches exist before attempting checkout
           if ! git show-ref --verify --quiet refs/remotes/origin/main; then
             echo "❌ Error: origin/main branch not found"
             exit 1
           fi
-          if ! git show-ref --verify --quiet refs/heads/fork_integration; then
+          if ! git show-ref --verify --quiet refs/remotes/origin/fork_integration; then
             echo "❌ Error: fork_integration branch not found"
             exit 1
           fi
+
+          echo "Checking out fork_integration branch..."
+          git checkout -b fork_integration --track origin/fork_integration 2>/dev/null || git checkout fork_integration
 
           # Check current state
           COMMITS_BEHIND=$(git rev-list --count fork_integration..origin/main)

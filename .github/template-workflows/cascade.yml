@@ -58,24 +58,60 @@ jobs:
           CONFLICT_COUNT=$(echo "$CONFLICT_ISSUES" | jq length)
           
           if [ "$INTEGRATION_COMMITS" -gt 0 ] || [ "$RELEASE_PR_COUNT" -gt 0 ] || [ "$CONFLICT_COUNT" -gt 0 ]; then
+            # Self-healing: If fork_integration is ahead but there are no release PRs and
+            # no conflict issues, the divergence is likely stale (e.g., a manual integration
+            # PR was merged without the upstream-sync label, so cleanup never ran).
+            # Auto-reset fork_integration to main to unblock the pipeline.
+            if [ "$INTEGRATION_COMMITS" -gt 0 ] && [ "$RELEASE_PR_COUNT" -eq 0 ] && [ "$CONFLICT_COUNT" -eq 0 ]; then
+              echo "::notice::fork_integration is $INTEGRATION_COMMITS commits ahead of main with no active release PRs or conflicts"
+              echo "::notice::Checking if this is a stale divergence that can be auto-healed..."
+
+              # Check if there are any open PRs from fork_integration to main
+              INTEGRATION_PRS=$(gh pr list --base main --head fork_integration --json number 2>/dev/null || echo "[]")
+              INTEGRATION_PR_COUNT=$(echo "$INTEGRATION_PRS" | jq length)
+
+              if [ "$INTEGRATION_PR_COUNT" -eq 0 ]; then
+                echo "::notice::No active integration PRs found - this is a stale divergence. Auto-resetting fork_integration to main."
+                git checkout -b fork_integration --track origin/fork_integration 2>/dev/null || git checkout fork_integration
+                OLD_SHA=$(git rev-parse HEAD)
+                git reset --hard origin/main
+                NEW_SHA=$(git rev-parse HEAD)
+                git push -f origin fork_integration
+                echo "::notice::fork_integration has been auto-reset to match main (${OLD_SHA:0:8} -> ${NEW_SHA:0:8})"
+
+                # Close any upstream-held issues
+                HELD_ISSUE=$(gh issue list --label "upstream-held" --json number 2>/dev/null | jq -r '.[0].number // empty')
+                if [ -n "$HELD_ISSUE" ]; then
+                  printf -v COMMENT_BODY "Auto-healed - %s\n\nDetected stale divergence between fork_integration and main (no active release PRs or conflict issues). Auto-reset fork_integration to match main.\n\nReset: %s to %s\n\nPipeline is now clear for processing upstream changes." \
+                    "$(date '+%Y-%m-%d %H:%M:%S UTC')" "${OLD_SHA:0:8}" "${NEW_SHA:0:8}"
+                  gh issue comment "$HELD_ISSUE" --body "$COMMENT_BODY"
+                  gh issue close "$HELD_ISSUE"
+                fi
+
+                # Continue with cascade instead of blocking
+                echo "integration_in_process=false" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
+
             echo "::notice::Integration pipeline busy - cannot start new cascade"
             echo "  - fork_integration is $INTEGRATION_COMMITS commits ahead of main"
             echo "  - $RELEASE_PR_COUNT release PRs open to main"
             echo "  - $CONFLICT_COUNT conflict issues blocking pipeline"
-            
+
             # Track held upstream changes
             HELD_ISSUE=$(gh issue list --label "upstream-held" --json number,title 2>/dev/null | jq -r '.[0].number // empty')
-            
+
             if [ -n "$HELD_ISSUE" ]; then
               # Update existing held issue
               echo "::notice::Updating existing upstream-held issue #$HELD_ISSUE"
               gh issue comment "$HELD_ISSUE" --body "🔄 **Additional upstream changes detected** - $(date '+%Y-%m-%d %H:%M:%S UTC')
-              
+
               Integration pipeline still busy:
               - fork_integration: $INTEGRATION_COMMITS commits ahead of main
               - Release PRs pending: $RELEASE_PR_COUNT
               - Conflict issues: $CONFLICT_COUNT
-              
+
               These upstream changes will be processed once current integration completes."
             else
               # Create new held issue
@@ -83,24 +119,24 @@ jobs:
               gh issue create \
                 --title "🚫 Upstream Changes Held - Integration Pipeline Busy" \
                 --body "Upstream changes are being held because integration is currently in progress.
-                
+
               **Current Pipeline Status:**
               - fork_integration: $INTEGRATION_COMMITS commits ahead of main
-              - Release PRs pending: $RELEASE_PR_COUNT  
+              - Release PRs pending: $RELEASE_PR_COUNT
               - Conflict issues blocking: $CONFLICT_COUNT
-              
+
               **Held Changes:**
               - $(date '+%Y-%m-%d'): Latest upstream sync detected
-              
+
               **Next Steps:**
               - Complete current integration to main
               - Process held upstream changes automatically
               - Monitor for cascade completion
-              
+
               This issue will be updated as additional upstream changes accumulate." \
                 --label "upstream-held,integration-blocked,human-required"
             fi
-            
+
             echo "integration_in_process=true" >> $GITHUB_OUTPUT
             exit 0
           fi
