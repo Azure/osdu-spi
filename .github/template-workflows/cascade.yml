@@ -82,11 +82,9 @@ jobs:
                 # Close any upstream-held issues
                 HELD_ISSUE=$(gh issue list --label "upstream-held" --json number 2>/dev/null | jq -r '.[0].number // empty')
                 if [ -n "$HELD_ISSUE" ]; then
-                  gh issue comment "$HELD_ISSUE" --body "✅ **Auto-healed** - $(date '+%Y-%m-%d %H:%M:%S UTC')
-
-              Detected stale divergence between \`fork_integration\` and \`main\` (no active release PRs or conflict issues). Auto-reset \`fork_integration\` to match \`main\`.
-
-              Pipeline is now clear for processing upstream changes."
+                  printf -v COMMENT_BODY "Auto-healed - %s\n\nDetected stale divergence between fork_integration and main (no active release PRs or conflict issues). Auto-reset fork_integration to match main.\n\nReset: %s to %s\n\nPipeline is now clear for processing upstream changes." \
+                    "$(date '+%Y-%m-%d %H:%M:%S UTC')" "${OLD_SHA:0:8}" "${NEW_SHA:0:8}"
+                  gh issue comment "$HELD_ISSUE" --body "$COMMENT_BODY"
                   gh issue close "$HELD_ISSUE"
                 fi
 
