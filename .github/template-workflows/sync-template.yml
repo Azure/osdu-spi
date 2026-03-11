@@ -478,6 +478,10 @@ jobs:
           # Also create a simple version for backwards compatibility
           echo "FALLBACK_DESCRIPTION=Template sync PR - see commit details for changes" >> $GITHUB_ENV
 
+      - name: Set current date
+        if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
+        run: echo "CURRENT_DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
+
       - name: Create new template sync PR
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'false'
         id: create-pr
@@ -486,7 +490,7 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           base-branch: main
           head-branch: ${{ env.SYNC_BRANCH }}
-          pr-title: "🔄 Sync template updates $(date +%Y-%m-%d)"
+          pr-title: "Sync template updates ${{ env.CURRENT_DATE }}"
           fallback-description: ${{ env.FALLBACK_DESCRIPTION }}
           fallback-description-b64: ${{ env.FALLBACK_DESCRIPTION_B64 }}
           azure-api-key: ${{ secrets.AZURE_API_KEY }}
