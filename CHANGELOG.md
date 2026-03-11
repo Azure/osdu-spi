@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.2.0](https://github.com/Azure/osdu-spi/compare/v1.1.0...v1.2.0) (2026-03-11)
+
+
+### ✨ Features
+
+* **ci:** Add fork repository setup automation with GitHub App token support ([19fbac5](https://github.com/Azure/osdu-spi/commit/19fbac5aa63d2a148c75d90a5597aa415e54c474))
+* **ci:** Add self-healing for stale fork_integration divergence ([684b21b](https://github.com/Azure/osdu-spi/commit/684b21b675e38455301c910baea110b4a4a95aa0))
+* **ci:** Use GitHub App token for cascade PR creation ([3a3b1ab](https://github.com/Azure/osdu-spi/commit/3a3b1abf5a2cab26897ae2d2d28c6f6b706f3b97))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** Clean up untracked files before checking out existing sync branch ([b2ab139](https://github.com/Azure/osdu-spi/commit/b2ab1397c85c0fcb2568c0c47a8d8a7271e028bf))
+* **ci:** Clean up untracked files before sync branch checkout ([45185c5](https://github.com/Azure/osdu-spi/commit/45185c5ea1cbf6fe4953d6e8622772636c2a178a))
+* **ci:** Correct actions/setup-node SHA pin ([ffb1b73](https://github.com/Azure/osdu-spi/commit/ffb1b7306b2497a3fd1bd8ceade8584a93ba5889))
+* **ci:** Resolve date command execution in PR title ([53e1828](https://github.com/Azure/osdu-spi/commit/53e1828ec7d6571fcc67a570cb1807fbd52bc059))
+* Prevent cascade deadlock from stale fork_integration divergence ([592165c](https://github.com/Azure/osdu-spi/commit/592165c649ca05b008b226f6a53af27760589cf2))
+* Resolve date rendering in sync template PR title ([91cc929](https://github.com/Azure/osdu-spi/commit/91cc929e9c9f0ba5074771b523f2d7e376b36254))
+
+
+### 📚 Documentation
+
+* Add repository links and update support documentation ([d689ce6](https://github.com/Azure/osdu-spi/commit/d689ce65849ee2fd7f8156a0d49db1892018e399))
+* Update SUPPORT.md and add service links to README ([5469e49](https://github.com/Azure/osdu-spi/commit/5469e4922710e314c8ffe2593589d2bdc4054e25))
+
+
+### ♻️ Code Refactoring
+
+* **ci:** Improve auto-heal comment formatting in cascade workflow ([1d8cca7](https://github.com/Azure/osdu-spi/commit/1d8cca742aab71a5c7ee3a4f9a9a18a97ece48d7))
+
+
+### 🔨 Build System
+
+* **ci:** Update actions/setup-node to latest v6 commit hash ([3296e17](https://github.com/Azure/osdu-spi/commit/3296e175e23c28f506f5e75fe589030648281462))
+
 ## [1.1.0](https://github.com/Azure/osdu-spi/compare/v1.0.2...v1.1.0) (2026-03-03)
 
 
