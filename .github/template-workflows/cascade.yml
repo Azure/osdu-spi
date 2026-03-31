@@ -224,6 +224,8 @@ jobs:
       - name: Merge upstream into fork_integration
         id: merge_upstream
         if: steps.check_state.outputs.integration_in_process == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Merge fork_upstream into fork_integration
           echo "Merging upstream changes into fork_integration..."
