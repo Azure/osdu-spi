@@ -523,27 +523,20 @@ jobs:
 
           # Get commit count for the notification
           COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH)
-          
-          # Create issue first to get the issue number
-          ISSUE_URL=$(gh issue create \
-            --title "📥 Upstream Sync Ready for Review - $(date +%Y-%m-%d)" \
-            --body "Creating sync tracking issue..." \
-            --label "upstream-sync,human-required")
-          
-          # Extract issue number
-          ISSUE_NUMBER=$(basename "$ISSUE_URL")
-          
-          # Issue state will be maintained by updating the issue description
-          
-          # Build notification body with the actual issue number
-          printf -v NOTIFICATION_BODY '%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s' \
+
+          # Build the full notification body upfront and create the issue in a
+          # single call. This avoids a create-then-edit race condition where the
+          # GraphQL API hasn't indexed the new issue yet, causing gh issue edit
+          # to fail with "Could not resolve to an issue or pull request".
+          WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/workflows/cascade.yml"
+          printf -v NOTIFICATION_BODY '%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s' \
             "📥 **Upstream Sync Ready for Review**" \
             "This issue tracks the integration of upstream changes into your fork." \
             "---" \
             "**What You Need to Do Now**" \
             "1. Review & merge the sync PR: [$PR_URL]($PR_URL)" \
-            "2. After merging, [run the Cascade Integration workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/cascade.yml):" \
-            "   - In the \`issue_number\` field, enter: \`$ISSUE_NUMBER\`" \
+            "2. After merging, [run the Cascade Integration workflow]($WORKFLOW_URL):" \
+            "   - In the \`issue_number\` field, enter this issue's number" \
             "   - Click **Run workflow**" \
             "> **Note**: If not triggered manually, the automated monitor will start the cascade process within 6 hours." \
             "---" \
@@ -577,9 +570,17 @@ jobs:
             "**Timeline**" \
             "- **Sync detected**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`" \
             "- **Current status**: Awaiting PR review and merge"
-          
-          # Update the issue with the complete description
-          gh issue edit "$ISSUE_NUMBER" --body "$NOTIFICATION_BODY"
+
+          # Create the issue with the complete body in a single call
+          printf '%s\n' "$NOTIFICATION_BODY" > /tmp/issue_body.txt
+          ISSUE_URL=$(gh issue create \
+            --title "📥 Upstream Sync Ready for Review - $(date +%Y-%m-%d)" \
+            --body-file /tmp/issue_body.txt \
+            --label "upstream-sync,human-required")
+          rm -f /tmp/issue_body.txt
+
+          ISSUE_NUMBER=$(basename "$ISSUE_URL")
+          echo "Created notification issue #$ISSUE_NUMBER: $ISSUE_URL"
 
       - name: Update issue description with current sync status
         if: steps.sync-state.outputs.sync_decision == 'add_reminder' || steps.sync-state.outputs.sync_decision == 'update_existing'
@@ -590,7 +591,15 @@ jobs:
           ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
           PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
           # UPSTREAM_VERSION and SYNC_BRANCH are available via $GITHUB_ENV
-          
+
+          # Guard: skip if no tracking issue exists (issue may have been closed by cascade)
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "⚠️ No open tracking issue found (issue may have been closed by cascade validation)"
+            echo "Skipping issue description update - no replacement tracking issue will be created in this workflow path"
+            echo "ISSUE_DESCRIPTION_UPDATE_SKIPPED=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           echo "Updating issue description for issue #$ISSUE_NUMBER"
           echo "Repository: $GH_REPO"
           echo "Parameters: UPSTREAM_VERSION=$UPSTREAM_VERSION, SYNC_BRANCH=$SYNC_BRANCH"
@@ -662,11 +671,19 @@ jobs:
             "update_existing")
               PR_URL="${{ steps.update-pr.outputs.pr-url }}"
               echo "✅ Existing sync PR updated successfully: $PR_URL"
-              echo "✅ Issue description updated with current sync status"
+              if [ "$ISSUE_DESCRIPTION_UPDATE_SKIPPED" = "true" ]; then
+                echo "⚠️ Issue description update skipped (tracking issue was closed)"
+              else
+                echo "✅ Issue description updated with current sync status"
+              fi
               echo "The updated PR can be reviewed and merged to integrate upstream changes."
               ;;
             "add_reminder")
-              echo "✅ Issue description updated with current sync status"
+              if [ "$ISSUE_DESCRIPTION_UPDATE_SKIPPED" = "true" ]; then
+                echo "⚠️ Issue description update skipped (tracking issue was closed)"
+              else
+                echo "✅ Issue description updated with current sync status"
+              fi
               echo "No new changes from upstream - existing PR is still current"
               ;;
             "no_action")
