@@ -590,7 +590,14 @@ jobs:
           ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
           PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
           # UPSTREAM_VERSION and SYNC_BRANCH are available via $GITHUB_ENV
-          
+
+          # Guard: skip if no tracking issue exists (issue may have been closed by cascade)
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "⚠️ No open tracking issue found (issue may have been closed by cascade validation)"
+            echo "Skipping issue description update - a new tracking issue will be created if needed"
+            exit 0
+          fi
+
           echo "Updating issue description for issue #$ISSUE_NUMBER"
           echo "Repository: $GH_REPO"
           echo "Parameters: UPSTREAM_VERSION=$UPSTREAM_VERSION, SYNC_BRANCH=$SYNC_BRANCH"
