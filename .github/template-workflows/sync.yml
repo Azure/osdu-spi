@@ -594,7 +594,8 @@ jobs:
           # Guard: skip if no tracking issue exists (issue may have been closed by cascade)
           if [ -z "$ISSUE_NUMBER" ]; then
             echo "⚠️ No open tracking issue found (issue may have been closed by cascade validation)"
-            echo "Skipping issue description update - a new tracking issue will be created if needed"
+            echo "Skipping issue description update - no replacement tracking issue will be created in this workflow path"
+            echo "ISSUE_DESCRIPTION_UPDATE_SKIPPED=true" >> "$GITHUB_ENV"
             exit 0
           fi
 
@@ -669,11 +670,19 @@ jobs:
             "update_existing")
               PR_URL="${{ steps.update-pr.outputs.pr-url }}"
               echo "✅ Existing sync PR updated successfully: $PR_URL"
-              echo "✅ Issue description updated with current sync status"
+              if [ "$ISSUE_DESCRIPTION_UPDATE_SKIPPED" = "true" ]; then
+                echo "⚠️ Issue description update skipped (tracking issue was closed)"
+              else
+                echo "✅ Issue description updated with current sync status"
+              fi
               echo "The updated PR can be reviewed and merged to integrate upstream changes."
               ;;
             "add_reminder")
-              echo "✅ Issue description updated with current sync status"
+              if [ "$ISSUE_DESCRIPTION_UPDATE_SKIPPED" = "true" ]; then
+                echo "⚠️ Issue description update skipped (tracking issue was closed)"
+              else
+                echo "✅ Issue description updated with current sync status"
+              fi
               echo "No new changes from upstream - existing PR is still current"
               ;;
             "no_action")
