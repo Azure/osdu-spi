@@ -66,6 +66,18 @@ jobs:
               echo "::notice::fork_integration is $INTEGRATION_COMMITS commits ahead of main with no active release PRs or conflicts"
               echo "::notice::Checking if this is a stale divergence that can be auto-healed..."
 
+              # Check if fork_upstream is already merged into fork_integration.
+              # If it is, this divergence is from a legitimate merge (possibly with
+              # manually resolved conflicts) — not stale. Skip the reset and let
+              # the cascade proceed to create the release PR.
+              UPSTREAM_IN_INTEGRATION=$(git rev-list --count origin/fork_integration..origin/fork_upstream 2>/dev/null || echo "999")
+              if [ "$UPSTREAM_IN_INTEGRATION" -eq 0 ]; then
+                echo "::notice::fork_upstream is already merged into fork_integration - this is a legitimate in-progress cascade, not stale divergence"
+                echo "::notice::Skipping self-heal, proceeding to create release PR"
+                echo "integration_in_process=false" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+
               # Check if there are any open PRs from fork_integration to main
               INTEGRATION_PRS=$(gh pr list --base main --head fork_integration --json number 2>/dev/null || echo "[]")
               INTEGRATION_PR_COUNT=$(echo "$INTEGRATION_PRS" | jq length)
@@ -224,11 +236,21 @@ jobs:
       - name: Merge upstream into fork_integration
         id: merge_upstream
         if: steps.check_state.outputs.integration_in_process == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Merge fork_upstream into fork_integration
           echo "Merging upstream changes into fork_integration..."
           CONFLICTS_FOUND=false
-          
+
+          # Check if fork_upstream is already merged (e.g., manual conflict resolution)
+          UPSTREAM_PENDING=$(git rev-list --count HEAD..origin/fork_upstream 2>/dev/null || echo "999")
+          if [ "$UPSTREAM_PENDING" -eq 0 ]; then
+            echo "✅ fork_upstream is already merged into fork_integration - skipping merge"
+            echo "conflicts=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           if git merge origin/fork_upstream --no-edit; then
             echo "✅ Clean merge of upstream changes achieved"
           else
