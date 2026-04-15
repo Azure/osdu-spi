@@ -698,8 +698,13 @@ jobs:
           # Update original tracking issue
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
           if [ -n "$TRACKING_ISSUE" ] && [ "${{ needs.cascade-to-integration.outputs.issue_valid }}" = "true" ]; then
+            # Clean up any failure-state labels from a prior failed cascade attempt.
+            # The success path needs to remove cascade-blocked / cascade-failed so a
+            # recovered cascade leaves the tracking issue in a clean state.
             gh issue edit "$TRACKING_ISSUE" \
               --remove-label "cascade-active" \
+              --remove-label "cascade-blocked" \
+              --remove-label "cascade-failed" \
               --add-label "validated"
             
             gh issue comment "$TRACKING_ISSUE" --body "🎯 **Production PR Created** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
