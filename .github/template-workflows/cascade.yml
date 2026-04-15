@@ -682,9 +682,18 @@ jobs:
           
           echo "Main PR created: $PR_URL"
           PR_NUMBER=$(basename $PR_URL)
-          
-          # All production PRs require human review - no auto-merge
-          echo "Production PR requires manual review before merge"
+
+          # Arm auto-merge with merge-commit method. The human gate is preserved
+          # by the required approval rule on main (Default Branch Protection
+          # ruleset, required_approving_review_count: 1) — auto-merge waits for
+          # that approval before firing. This locks the merge method in code so
+          # release PRs cannot be squash-merged, which would break fork_upstream
+          # ancestry and trigger the cascade-monitor duplicate-PR loop.
+          if gh pr merge "$PR_NUMBER" --auto --merge 2>/dev/null; then
+            echo "✅ Auto-merge armed with merge-commit method - awaiting human approval"
+          else
+            echo "::warning::Could not arm auto-merge on PR #$PR_NUMBER. Human must merge with 'Create a merge commit' (NOT squash) - squashing breaks the cascade ancestry check."
+          fi
           
           # Update original tracking issue
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"

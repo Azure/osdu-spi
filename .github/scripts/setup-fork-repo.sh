@@ -213,6 +213,24 @@ set_secret "AZURE_API_VERSION" "$AZURE_API_VERSION"
 
 echo ""
 
+# ── Repository settings ────────────────────────────────────────────
+#
+# allow_auto_merge: required for the cascade workflow to arm auto-merge on
+# release PRs. Without this, the workflow falls back to requiring humans to
+# manually click "Create a merge commit" on each release PR — which is the
+# foot-gun that caused the squash-merge cascade incident on osdu-spi-partition.
+
+echo "==> Configuring repository settings..."
+
+if $DRY_RUN; then
+  echo "    [DRY RUN] Would enable allow_auto_merge=true on $REPO"
+else
+  gh api --method PATCH "repos/$REPO" -F allow_auto_merge=true >/dev/null
+  echo "    Enabled allow_auto_merge"
+fi
+
+echo ""
+
 # ── Summary ────────────────────────────────────────────────────────
 
 if [ "$DRY_RUN" = true ]; then
