@@ -1,7 +1,7 @@
 # ADR-009: Asymmetric Cascade Review Strategy
 
 ## Status
-Accepted  
+Accepted (revised Apr 2026 — see "Revision: Merge Method Enforcement" below)
 
 ## Context
 The cascade workflow moves upstream changes through a three-branch hierarchy:
@@ -92,13 +92,72 @@ PR_URL=$(gh pr create \
   --body "$PR_BODY" \
   --label "upstream-sync,human-required")
 
+# Arm auto-merge with merge-commit method (see Revision below).
+# Wrapped in if/else so a failure to arm auto-merge is logged but does
+# not fail the cascade — humans can still merge manually as a fallback.
+if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --auto --merge 2>&1); then
+  echo "✅ Auto-merge armed - awaiting human approval"
+else
+  echo "::warning::Could not arm auto-merge on PR #$PR_NUMBER. Reason: $MERGE_OUTPUT"
+fi
+
 # Update tracking issue - production PR created
 gh issue comment "$TRACKING_ISSUE" --body "🎯 **Production PR Created** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 Integration completed successfully! Production PR has been created and is ready for final review."
 
-# All production PRs require manual review (implicit)
+# Human gate: approving the PR releases auto-merge
 ```
+
+## Revision: Merge Method Enforcement (Apr 2026)
+
+### Trigger
+The first cascade release PR on `osdu-spi-partition` was squash-merged by a human picking the GitHub UI's default button. The squash collapsed multiple upstream commits into one new commit on `main` that didn't share git ancestry with the original upstream commits. Two cascading consequences followed:
+
+1. `fork_upstream` was no longer a true ancestor of `main`. Cascade Monitor's `git rev-list fork_integration..fork_upstream` graph check started returning non-zero, so the monitor auto-dispatched cascade on every cron tick, creating duplicate "Upstream Integration to Main" PRs with the same upstream SHA.
+2. Subsequent cascades hit phantom merge conflicts on every file the squash had collapsed. Git couldn't reconcile main's squash blob with `fork_upstream`'s individual commits because the merge-base reverted to a point before the squash.
+
+The root vulnerability was that the human review gate and the merge-method choice were collapsed into a single click. A human reviewing a release PR could approve the changes correctly *and* misclick the merge method, with no separate gate to catch the merge-method mistake.
+
+A contributing factor was the template's `default-branch.json` ruleset including `required_linear_history`, which forbids merge commits in the GitHub UI regardless of repo settings. With merge commits hidden from the UI, "Squash" became the sticky default. That rule was removed alongside this revision.
+
+### Decision
+Separate the human review gate from the merge-method choice:
+
+- **Human gate becomes "approve the PR"**, expressed via the existing `required_approving_review_count: 1` rule on `main`.
+- **Merge method becomes workflow-enforced**, via `gh pr merge --auto --merge` armed by the cascade workflow immediately after the release PR is created.
+
+Auto-merge waits for both the required approval and any required status checks before firing. When it fires, it uses the merge-commit method that was armed by the workflow, not whatever sticky default the human had in the UI.
+
+The original asymmetric strategy is preserved — humans still gate production. The mechanism for expressing that gate moves from "click the right merge button" to "approve the PR." Both are explicit human actions, but approval has no dropdown of conflicting choices, so the merge-method foot-gun is eliminated.
+
+### Implementation
+
+```bash
+# Cascade workflow, immediately after gh pr create:
+PR_NUMBER=$(basename $PR_URL)
+
+# Arm auto-merge with merge-commit method. The human gate is preserved
+# by the required approval rule on main — auto-merge waits for that
+# approval before firing. Locks the merge method in code so release PRs
+# cannot be squash-merged.
+if gh pr merge "$PR_NUMBER" --auto --merge 2>/dev/null; then
+  echo "✅ Auto-merge armed - awaiting human approval"
+else
+  echo "::warning::Could not arm auto-merge. Human must merge with 'Create a merge commit' (NOT squash)."
+fi
+```
+
+### Prerequisites
+- `allow_auto_merge=true` on the repository (set during init by `setup-fork-repo.sh`)
+- `required_approving_review_count: 1` (or higher) on `main` via branch protection or ruleset
+- No `required_linear_history` rule on `main` (it forbids merge commits and would block the auto-merge)
+
+### Recovery (Reversibility)
+A human can disable auto-merge from the PR UI at any time and merge manually. The escape hatch is preserved — the workflow only sets the *default* path; humans retain full control if they need to override.
+
+### Why this is consistent with the original ADR
+The original decision says "All production PRs require manual approval before merge." That remains true. The revision only changes how that approval is *expressed*: approval was previously implicit in the merge-button click, now it's explicit via the Files Changed → Approve action. The asymmetry between the two cascade phases is unchanged — fork_upstream → fork_integration is human-initiated; fork_integration → main is human-approved.
 
 ## Alternatives Considered
 
@@ -110,6 +169,12 @@ Integration completed successfully! Production PR has been created and is ready 
 
 3. **Reversed Asymmetry**: Auto-merge first stage, manual second
    - Rejected: Backwards from a safety perspective
+
+4. **Disable squash-merge repo-wide** (considered during Apr 2026 revision)
+   - Rejected: Punishes feature-branch development for the sake of one specific PR pattern. Squash-merge is a reasonable choice for feature work.
+
+5. **Harden cascade-monitor to detect squash-merged release PRs** (considered during Apr 2026 revision)
+   - Rejected: Adds complexity to a stable safety-net workflow to defend against a failure mode that auto-merge prevents at the source. Re-evaluate only if real-world recurrence proves the prevention is insufficient.
 
 ## Related
 - [ADR-001: Three-Branch Fork Management Strategy](001-three-branch-strategy.md)

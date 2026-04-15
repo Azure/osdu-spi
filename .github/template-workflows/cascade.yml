@@ -682,15 +682,33 @@ jobs:
           
           echo "Main PR created: $PR_URL"
           PR_NUMBER=$(basename $PR_URL)
-          
-          # All production PRs require human review - no auto-merge
-          echo "Production PR requires manual review before merge"
+
+          # Arm auto-merge with merge-commit method. The human gate is preserved
+          # by the required approval rule on main (Default Branch Protection
+          # ruleset, required_approving_review_count: 1) — auto-merge waits for
+          # that approval before firing. This locks the merge method in code so
+          # release PRs cannot be squash-merged, which would break fork_upstream
+          # ancestry and trigger the cascade-monitor duplicate-PR loop.
+          # Capture combined output so a failure reason (auto-merge disabled,
+          # merge commits disabled, missing permissions, etc.) shows up in the
+          # warning — otherwise operators can't tell why arming failed.
+          if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --auto --merge 2>&1); then
+            echo "✅ Auto-merge armed with merge-commit method - awaiting human approval"
+          else
+            MERGE_REASON=$(printf '%s' "$MERGE_OUTPUT" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')
+            echo "::warning::Could not arm auto-merge on PR #$PR_NUMBER. Reason: $MERGE_REASON Human must merge with 'Create a merge commit' (NOT squash) - squashing breaks the cascade ancestry check."
+          fi
           
           # Update original tracking issue
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
           if [ -n "$TRACKING_ISSUE" ] && [ "${{ needs.cascade-to-integration.outputs.issue_valid }}" = "true" ]; then
+            # Clean up any failure-state labels from a prior failed cascade attempt.
+            # The success path needs to remove cascade-blocked / cascade-failed so a
+            # recovered cascade leaves the tracking issue in a clean state.
             gh issue edit "$TRACKING_ISSUE" \
               --remove-label "cascade-active" \
+              --remove-label "cascade-blocked" \
+              --remove-label "cascade-failed" \
               --add-label "validated"
             
             gh issue comment "$TRACKING_ISSUE" --body "🎯 **Production PR Created** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
