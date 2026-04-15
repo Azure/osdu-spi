@@ -92,8 +92,14 @@ PR_URL=$(gh pr create \
   --body "$PR_BODY" \
   --label "upstream-sync,human-required")
 
-# Arm auto-merge with merge-commit method (see Revision below)
-gh pr merge "$PR_NUMBER" --auto --merge
+# Arm auto-merge with merge-commit method (see Revision below).
+# Wrapped in if/else so a failure to arm auto-merge is logged but does
+# not fail the cascade — humans can still merge manually as a fallback.
+if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --auto --merge 2>&1); then
+  echo "✅ Auto-merge armed - awaiting human approval"
+else
+  echo "::warning::Could not arm auto-merge on PR #$PR_NUMBER. Reason: $MERGE_OUTPUT"
+fi
 
 # Update tracking issue - production PR created
 gh issue comment "$TRACKING_ISSUE" --body "🎯 **Production PR Created** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -127,7 +133,7 @@ The original asymmetric strategy is preserved — humans still gate production. 
 
 ### Implementation
 
-```yaml
+```bash
 # Cascade workflow, immediately after gh pr create:
 PR_NUMBER=$(basename $PR_URL)
 

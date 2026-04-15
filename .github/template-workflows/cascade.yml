@@ -689,10 +689,14 @@ jobs:
           # that approval before firing. This locks the merge method in code so
           # release PRs cannot be squash-merged, which would break fork_upstream
           # ancestry and trigger the cascade-monitor duplicate-PR loop.
-          if gh pr merge "$PR_NUMBER" --auto --merge 2>/dev/null; then
+          # Capture combined output so a failure reason (auto-merge disabled,
+          # merge commits disabled, missing permissions, etc.) shows up in the
+          # warning — otherwise operators can't tell why arming failed.
+          if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --auto --merge 2>&1); then
             echo "✅ Auto-merge armed with merge-commit method - awaiting human approval"
           else
-            echo "::warning::Could not arm auto-merge on PR #$PR_NUMBER. Human must merge with 'Create a merge commit' (NOT squash) - squashing breaks the cascade ancestry check."
+            MERGE_REASON=$(printf '%s' "$MERGE_OUTPUT" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')
+            echo "::warning::Could not arm auto-merge on PR #$PR_NUMBER. Reason: $MERGE_REASON Human must merge with 'Create a merge commit' (NOT squash) - squashing breaks the cascade ancestry check."
           fi
           
           # Update original tracking issue
