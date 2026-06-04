@@ -39,6 +39,10 @@ Architecture Decision Records for Fork Management Template
 | 029 | GitHub App Authentication Strategy         | [ADR-029](029-github-app-authentication-strategy.md) |
 | 030 | CodeQL Summary Job Pattern                 | [ADR-030](030-codeql-summary-job-pattern.md) |
 | 031 | Template Sync Duplicate Prevention Pattern | [ADR-031](031-template-sync-duplicate-prevention.md) |
+| 033 | GHCR as Service Image Registry             | [ADR-033](033-ghcr-as-service-image-registry.md) |
+| 035 | Azure-Only Maven Profile Restriction       | [ADR-035](035-azure-only-maven-profile.md) |
+| 036 | Workflow Trust Boundaries for CI/CD        | [ADR-036](036-workflow-trust-boundaries.md) |
+| 037 | Engineering System Owns the Canonical Service Dockerfile | [ADR-037](037-engineering-system-owns-service-dockerfile.md) |
 
 ## Overview
 
@@ -200,4 +204,24 @@ These Architecture Decision Records document the key design choices made in the 
 - Label-based tracking with `template-sync` label for PR identification
 - Branch reuse with force-push when template advances
 - Eliminates daily accumulation of open template-sync PRs
+
+**GHCR as Service Image Registry (ADR-033)**
+- Public GHCR for SPI service CI/test artifacts consumed by the `osdu-spi-stack` AKS cluster
+- Push via `GITHUB_TOKEN`, pull anonymously from AKS — no `imagePullSecret`
+- MCR migration deferred; ACR/MCR swap is localized to the visibility helper, private-GHCR fallback is broader-touch
+
+**Azure-Only Maven Profile Restriction (ADR-035)**
+- CI builds the Azure profile set with a hardcoded default of `core,azure` (correct for 9/10 forks); `core` is `activeByDefault`, so a bare `-P azure` would drop it
+- `MAVEN_PROFILE` is an optional per-fork override (`${{ vars.MAVEN_PROFILE || 'core,azure' }}`) for forks that deviate (e.g. `indexer-queue`); never emits a bare `-P`
+- Faster, Azure-relevant CI signal with zero per-fork config in the common case; non-Azure provider regressions are intentionally out of the default path
+
+**Workflow Trust Boundaries for CI/CD (ADR-036)**
+- Credential-bearing jobs (`docker-push`, `deploy`, `integration-test`) run only in trusted event contexts
+- Canonical `if:` gate excludes `dependabot[bot]` and `pull_request_target` and permits only internal PR heads
+- External-fork PRs lose deploy/test signal by design to protect the cluster federated identity
+
+**Engineering System Owns the Canonical Service Dockerfile (ADR-037)**
+- One canonical `build/Dockerfile` lives in the template and syncs to every fork (`sync-config.json` `directories[]`); services do not supply their own
+- Mirrors the OSDU community `service-base-image/java/Dockerfile`: `COPY ${JAR_FILE} /app.jar` (no Maven in the image build); the JAR is the one our `java-build` job compiled from source, never a prebuilt artifact from OSDU's Maven registry
+- `JAR_FILE` defaults to `provider/<SERVICE_NAME>-azure/target/*-spring-boot.jar` (override via the `SERVICE_TARGET_JAR` repository variable); `BASE_IMAGE` is an `ARG` defaulting to OSDU `alpine-zulu17` so a later registry pivot is a one-line swap
 
