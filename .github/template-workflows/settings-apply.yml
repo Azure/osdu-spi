@@ -1,0 +1,67 @@
+name: Settings Apply
+
+# Reconciles per-fork repository settings that init.yml can only set once:
+#   - branch-protection rulesets (idempotent create/update, per-fork required-check filter)
+#   - deploy-onboarding readiness (opens/updates/closes a human-required issue)
+#   - GHCR package visibility (public, per ADR-033)
+# Runs on a schedule, on demand, and whenever the synced ruleset/helper sources change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print planned changes without applying'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 4 * * 1'   # Weekly, Mondays 04:00 UTC
+  push:
+    branches: [main]
+    paths:
+      - '.github/rulesets/**'
+      - '.github/scripts/settings-apply/**'
+
+permissions:
+  contents: read
+  issues: write
+  packages: write
+
+jobs:
+  settings-apply:
+    name: "⚙️ Apply Repository Settings"
+    if: ${{ vars.INITIALIZATION_COMPLETE == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Generate GitHub App Token"
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: "Checkout Code"
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+
+      - name: "Reconcile rulesets"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}      # admin: ruleset + secret/variable name reads
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # issue comments
+          DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+        run: bash .github/scripts/settings-apply/setup-rulesets.sh "${{ github.repository }}" $DRY
+
+      - name: "Check required variables"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}      # reads secret/variable names; manages tracking issue
+          DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+        run: bash .github/scripts/settings-apply/check-required-variables.sh "${{ github.repository }}" $DRY
+
+      - name: "Verify GHCR visibility"
+        env:
+          # Read-only check. GHCR has no API to change package visibility (verified — 404 on any
+          # token); it is governed by the org default and set once per package. This reports if a
+          # package is unexpectedly not public; the default GITHUB_TOKEN suffices to read it.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash .github/scripts/settings-apply/reconcile-ghcr-visibility.sh \
+            "${{ github.repository_owner }}" "${{ vars.SERVICE_NAME || github.event.repository.name }}"
