@@ -1,0 +1,177 @@
+name: 'Docker Build'
+description: 'Build a service container image from Maven JAR artifacts and optionally push it to GHCR with SHA/branch tags and a public-visibility flip'
+
+inputs:
+  image_name:
+    description: 'Short service name (e.g. partition); set from vars.SERVICE_NAME. Required.'
+    required: true
+  dockerfile_path:
+    description: 'Path to the Dockerfile relative to the repo root. Defaults to the canonical Dockerfile the engineering system syncs to every fork (ADR-037).'
+    required: false
+    default: 'build/Dockerfile'
+  build_context:
+    description: 'Docker build context directory'
+    required: false
+    default: '.'
+  registry:
+    description: 'Container registry host'
+    required: false
+    default: 'ghcr.io'
+  org:
+    description: 'Registry organisation/owner. Falls back to the workflow github.repository_owner at runtime when omitted.'
+    required: false
+  jar_artifact_name:
+    description: 'Name of the GitHub Actions artifact that contains the built JARs'
+    required: false
+    default: 'build-artifacts'
+  build_args:
+    description: 'Optional --build-arg values (newline-separated KEY=VALUE). Never pass GITHUB_TOKEN here.'
+    required: false
+  jar_file:
+    description: 'Conventional path/glob of the service Spring Boot JAR (default provider/<service>-azure/target/*-spring-boot.jar, from SERVICE_TARGET_JAR or SERVICE_NAME). If it matches no file the action auto-discovers the Azure JAR; SERVICE_TARGET_JAR is only needed to disambiguate a service that builds more than one.'
+    required: false
+  push:
+    description: 'When true, log in to GHCR, push the image, compute branch (snapshot) tags, and flip package visibility. When false, build only (no registry auth). The caller must set this explicitly per job.'
+    required: false
+    default: 'true'
+  github_token:
+    description: 'Token for GHCR login and the package-visibility flip. Only consumed on the push path; omit for build-only callers.'
+    required: false
+
+outputs:
+  image_repository:
+    description: "Full registry path, e.g. ghcr.io/<org>/<service> (always set)"
+    value: ${{ steps.meta.outputs.image_repository }}
+  image_digest:
+    description: "sha256:... digest of the pushed image (prefix already included; empty string when push is not true)"
+    value: ${{ inputs.push == 'true' && steps.build.outputs.digest || '' }}
+  image_tags:
+    description: "Comma-separated tags pushed; for human/log use only. Deploy stages must use image_digest, not a tag."
+    value: ${{ steps.tags.outputs.image_tags }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Validate push prerequisites"
+      if: ${{ inputs.push == 'true' }}
+      shell: bash
+      run: |
+        # Fail fast: the push path needs a token for GHCR login and the visibility flip
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "::error::push=true requires github_token (GHCR login + visibility flip)."
+          exit 1
+        fi
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: "Compute image metadata"
+      id: meta
+      shell: bash
+      # Inputs are passed via env (never interpolated into the script body) so a value
+      # containing $(...) or backticks cannot be shell-evaluated.
+      run: |
+        "$GITHUB_ACTION_PATH/compute-metadata.sh" "$REGISTRY" "$ORG" "$IMAGE_NAME"
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        ORG: ${{ inputs.org || github.repository_owner }}
+        IMAGE_NAME: ${{ inputs.image_name }}
+
+    - name: "Download build artifacts"
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: ${{ inputs.jar_artifact_name }}
+        # Download into the build context so resolve-jar.sh and the context-relative COPY agree.
+        path: ${{ inputs.build_context }}
+
+    - name: "Resolve service JAR path"
+      id: jar
+      shell: bash
+      # Honours the conventional/override path, else discovers the Azure JAR so a deviant-module
+      # fork (e.g. entitlements-v2-azure) builds with no manual variable (ADR-037).
+      run: "$GITHUB_ACTION_PATH/resolve-jar.sh"
+      env:
+        REQUESTED_JAR: ${{ inputs.jar_file }}
+        IMAGE_NAME: ${{ inputs.image_name }}
+        BUILD_CONTEXT: ${{ inputs.build_context }}
+
+    - name: "Compute image tags"
+      id: tags
+      shell: bash
+      run: |
+        "$GITHUB_ACTION_PATH/compute-tags.sh" "$IMAGE_REPOSITORY" "$SHORT_SHA" "$REF_NAME" "$PUSH"
+      env:
+        IMAGE_REPOSITORY: ${{ steps.meta.outputs.image_repository }}
+        SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+        REF_NAME: ${{ github.ref_name }}
+        PUSH: ${{ inputs.push }}
+
+    - name: "Set up Docker Buildx"
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+    - name: "Log in to GHCR"
+      if: ${{ inputs.push == 'true' }}
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: "Build container image"
+      id: build
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+      with:
+        context: ${{ inputs.build_context }}
+        file: ${{ inputs.dockerfile_path }}
+        push: ${{ inputs.push == 'true' }}
+        tags: ${{ steps.tags.outputs.docker_tags }}
+        build-args: |
+          JAR_FILE=${{ steps.jar.outputs.jar_file }}
+          ${{ inputs.build_args }}
+        # Links the package to its repo in the GHCR UI (provenance). Visibility is governed
+        # by the org default, not this label — repo-linkage inherits permissions, not visibility.
+        labels: |
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: "Verify package visibility"
+      if: ${{ inputs.push == 'true' && steps.build.outcome == 'success' }}
+      shell: bash
+      run: |
+        "$GITHUB_ACTION_PATH/set-package-visibility.sh" "$ORG" "$IMAGE_NAME"
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        ORG: ${{ inputs.org || github.repository_owner }}
+        IMAGE_NAME: ${{ inputs.image_name }}
+
+    - name: "Summary"
+      shell: bash
+      run: |
+        # Never echoes the token. Mirror to $GITHUB_STEP_SUMMARY so the validate-only
+        # required check (and the push job's digest) are legible in the PR Checks UI.
+        if [ "$PUSH" = "true" ]; then
+          HEADING="🐳 Docker Push"
+          MSG="Image pushed: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`"
+        else
+          HEADING="🐳 Docker Build"
+          MSG="Dockerfile validated; no GHCR push (validate-only job)"
+        fi
+        echo "Repository: $IMAGE_REPOSITORY"
+        echo "Tags: $IMAGE_TAGS"
+        echo "$MSG"
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "### ${HEADING}"
+            echo ""
+            echo "- Repository: \`${IMAGE_REPOSITORY}\`"
+            if [ "$PUSH" = "true" ]; then
+              echo "- Tags: \`${IMAGE_TAGS}\`"
+            fi
+            echo "- ${MSG}"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+      env:
+        IMAGE_REPOSITORY: ${{ steps.meta.outputs.image_repository }}
+        IMAGE_TAGS: ${{ steps.tags.outputs.image_tags }}
+        PUSH: ${{ inputs.push }}
+        IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
