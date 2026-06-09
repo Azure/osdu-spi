@@ -106,7 +106,8 @@ runs:
         PUSH: ${{ inputs.push }}
 
     - name: "Set up QEMU"
-      # Enables the emulated linux/arm64 leg of the multi-arch build on the amd64 runner.
+      # Only needed for the emulated linux/arm64 leg, which runs on the push path (multi-arch).
+      if: ${{ inputs.push == 'true' }}
       uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
 
     - name: "Set up Docker Buildx"
@@ -127,9 +128,11 @@ runs:
         context: ${{ inputs.build_context }}
         file: ${{ inputs.dockerfile_path }}
         push: ${{ inputs.push == 'true' }}
-        # Multi-arch (Apple Silicon + amd64). provenance:false keeps the published index to the two
-        # real platforms — the unknown/unknown attestation manifest makes a bare `docker pull` miss on arm64.
-        platforms: linux/amd64,linux/arm64
+        # Multi-arch only on the push path (release images). The validate-only build (push:false) stays
+        # amd64-only to avoid QEMU emulation cost on every PR; the Dockerfile is arch-agnostic (no RUN),
+        # so the push build still validates arm64 before release. provenance:false keeps the pushed index
+        # to the two real platforms — the unknown/unknown attestation manifest makes a bare `docker pull` miss on arm64.
+        platforms: ${{ inputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
         provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}
         build-args: |

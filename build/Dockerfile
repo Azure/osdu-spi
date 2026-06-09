@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.24.0@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 # Canonical service container image for OSDU SPI Java services (ADR-037).
 # Owned by the engineering system and synced to every fork; services do not supply their own.
 # Mirrors the OSDU community service-base-image (java/Dockerfile): the prebuilt Spring Boot JAR

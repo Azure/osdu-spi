@@ -64,7 +64,9 @@ java-build (uploads build-artifacts) → docker-build (this action)
 
 ## Platforms
 
-The image is built multi-arch for `linux/amd64` and `linux/arm64`. The `arm64` leg is emulated via QEMU on the amd64 runner; because the canonical Dockerfile (ADR-037) has no `RUN` steps, this costs only the arm64 base-layer pull plus the arch-independent JAR copy. `provenance: false` keeps the pushed manifest a clean two-platform index (no `unknown/unknown` attestation entry), so a bare `docker pull` resolves natively on Apple Silicon and amd64 alike — without it, a single-arch build still publishes as an index and `docker pull` fails to match on arm64.
+The `push: 'true'` (release) path builds multi-arch for `linux/amd64` and `linux/arm64`; the `arm64` leg is emulated via QEMU on the amd64 runner. Because the canonical Dockerfile (ADR-037) has no `RUN` steps, emulation cost is limited to the arm64 base-layer pull plus the arch-independent JAR copy — so arm64 is still fully validated before release. The `push: 'false'` (validate-only) path builds `linux/amd64` only and skips QEMU entirely, avoiding emulation overhead on every PR.
+
+`provenance: false` keeps the pushed manifest a clean two-platform index (no `unknown/unknown` attestation entry), so a bare `docker pull` resolves natively on Apple Silicon and amd64 alike — without it, a single-arch build still publishes as an index and `docker pull` fails to match on arm64.
 
 ## Digest Usage
 
