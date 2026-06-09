@@ -105,6 +105,10 @@ runs:
         REF_NAME: ${{ github.ref_name }}
         PUSH: ${{ inputs.push }}
 
+    - name: "Set up QEMU"
+      # Enables the emulated linux/arm64 leg of the multi-arch build on the amd64 runner.
+      uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+
     - name: "Set up Docker Buildx"
       uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
 
@@ -123,11 +127,15 @@ runs:
         context: ${{ inputs.build_context }}
         file: ${{ inputs.dockerfile_path }}
         push: ${{ inputs.push == 'true' }}
+        # Multi-arch (Apple Silicon + amd64). provenance:false keeps the published index to the two
+        # real platforms — the unknown/unknown attestation manifest makes a bare `docker pull` miss on arm64.
+        platforms: linux/amd64,linux/arm64
+        provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}
         build-args: |
           JAR_FILE=${{ steps.jar.outputs.jar_file }}
           ${{ inputs.build_args }}
-        # Links the package to its repo in the GHCR UI (provenance). Visibility is governed
+        # Links the package to its repo in the GHCR UI (source link). Visibility is governed
         # by the org default, not this label — repo-linkage inherits permissions, not visibility.
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

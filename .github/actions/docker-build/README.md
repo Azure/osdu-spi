@@ -62,6 +62,10 @@ java-build (uploads build-artifacts) → docker-build (this action)
 - The visibility flip is idempotent (skips when already public) and **soft-fail** — a permission error logs a warning with a `gh workflow run settings-apply.yml` remediation hint but never fails the build.
 - The trust boundary (ADR-036) lives on the `docker-push` **job** in `validate.yml`, not in this action.
 
+## Platforms
+
+The image is built multi-arch for `linux/amd64` and `linux/arm64`. The `arm64` leg is emulated via QEMU on the amd64 runner; because the canonical Dockerfile (ADR-037) has no `RUN` steps, this costs only the arm64 base-layer pull plus the arch-independent JAR copy. `provenance: false` keeps the pushed manifest a clean two-platform index (no `unknown/unknown` attestation entry), so a bare `docker pull` resolves natively on Apple Silicon and amd64 alike — without it, a single-arch build still publishes as an index and `docker pull` fails to match on arm64.
+
 ## Digest Usage
 
 Deploy references are composed as `${image_repository}@${image_digest}`. The digest already includes the `sha256:` prefix — **do not** prepend it again, or the reference becomes `@sha256:sha256:…` and the kubelet fails to pull.
