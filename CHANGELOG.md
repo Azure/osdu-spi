@@ -1,5 +1,70 @@
 # Changelog
 
+## [1.2.0](https://github.com/Azure/osdu-spi/compare/v1.1.0...v1.2.0) (2026-06-10)
+
+
+### ✨ Features
+
+* **build:** Enable multi-arch docker image with entrypoint script ([5443d47](https://github.com/Azure/osdu-spi/commit/5443d470b9325ae2ebdf6538db7527ce44a61437))
+* **build:** Multi-arch service images on Microsoft Azure Linux base ([7e8caeb](https://github.com/Azure/osdu-spi/commit/7e8caebd27e70b85004799b47e189c7f96d0d97c))
+* **cascade:** Enable merge commits and improve auto-merge error reporting ([073cb57](https://github.com/Azure/osdu-spi/commit/073cb57a94d9709769c5a75b2c54a2b36d6d1212))
+* **cascade:** Enforce merge-commit method via auto-merge on release PRs ([5c3540c](https://github.com/Azure/osdu-spi/commit/5c3540caed8c0df30aa7481063a2b3faa9b7c74e))
+* **ci:** Add fork repository setup automation with GitHub App token support ([19fbac5](https://github.com/Azure/osdu-spi/commit/19fbac5aa63d2a148c75d90a5597aa415e54c474))
+* **ci:** Add self-healing for stale fork_integration divergence ([684b21b](https://github.com/Azure/osdu-spi/commit/684b21b675e38455301c910baea110b4a4a95aa0))
+* **ci:** Build and publish service container images to GHCR ([2e40e87](https://github.com/Azure/osdu-spi/commit/2e40e874a39a2006ba1cd9075abd570423a62311))
+* **ci:** Use GitHub App token for cascade PR creation ([3a3b1ab](https://github.com/Azure/osdu-spi/commit/3a3b1abf5a2cab26897ae2d2d28c6f6b706f3b97))
+* **ghcr:** Enable GHCR as service image registry for SPI ([5019039](https://github.com/Azure/osdu-spi/commit/5019039b89d5d114250822e7120ff2d24ef5b6b6))
+
+
+### 🐛 Bug Fixes
+
+* **cascade:** Enforce merge-commit method on release PRs via auto-merge ([d77997d](https://github.com/Azure/osdu-spi/commit/d77997d2540af262f2d3d0ca487c5c1a71c25a7a))
+* **ci:** Add guard for missing tracking issue in sync workflow ([9b0961e](https://github.com/Azure/osdu-spi/commit/9b0961e896ee2af4e15776a22ae0bd0567bb6656))
+* **ci:** Add guard to skip issue update when tracking issue is closed ([7975d25](https://github.com/Azure/osdu-spi/commit/7975d256dc2b788df28e0648752603c9463d8182))
+* **ci:** Add missing GH_TOKEN to cascade merge step ([978f3b6](https://github.com/Azure/osdu-spi/commit/978f3b67ea0be67376ebd0503f3b58f6ad9824a3))
+* **ci:** Clean up untracked files before checking out existing sync branch ([b2ab139](https://github.com/Azure/osdu-spi/commit/b2ab1397c85c0fcb2568c0c47a8d8a7271e028bf))
+* **ci:** Clean up untracked files before sync branch checkout ([45185c5](https://github.com/Azure/osdu-spi/commit/45185c5ea1cbf6fe4953d6e8622772636c2a178a))
+* **ci:** Correct actions/setup-node SHA pin ([ffb1b73](https://github.com/Azure/osdu-spi/commit/ffb1b7306b2497a3fd1bd8ceade8584a93ba5889))
+* **ci:** Handle tracking issue closure in sync workflow status updates ([713a29c](https://github.com/Azure/osdu-spi/commit/713a29cb7e96831ecf07f71b278955df8741685b))
+* **ci:** Prevent cascade self-heal when upstream already merged ([26b6932](https://github.com/Azure/osdu-spi/commit/26b6932b193e38925a47273192086c6e97c4ec3c))
+* **ci:** Remove failure-state labels on successful cascade completion ([0f6af7c](https://github.com/Azure/osdu-spi/commit/0f6af7cbf489dc7381c94aba4bcf4fcb02a358ee))
+* **ci:** Resolve date command execution in PR title ([53e1828](https://github.com/Azure/osdu-spi/commit/53e1828ec7d6571fcc67a570cb1807fbd52bc059))
+* **ci:** Resolve race condition in upstream sync issue creation ([1c8a85c](https://github.com/Azure/osdu-spi/commit/1c8a85c580384d94207c684450c77f3bbdec689a))
+* Prevent cascade deadlock from stale fork_integration divergence ([592165c](https://github.com/Azure/osdu-spi/commit/592165c649ca05b008b226f6a53af27760589cf2))
+* Resolve date rendering in sync template PR title ([91cc929](https://github.com/Azure/osdu-spi/commit/91cc929e9c9f0ba5074771b523f2d7e376b36254))
+
+
+### 📚 Documentation
+
+* Add repository links and update support documentation ([d689ce6](https://github.com/Azure/osdu-spi/commit/d689ce65849ee2fd7f8156a0d49db1892018e399))
+* Update SUPPORT.md and add service links to README ([5469e49](https://github.com/Azure/osdu-spi/commit/5469e4922710e314c8ffe2593589d2bdc4054e25))
+
+
+### ♻️ Code Refactoring
+
+* **ci:** Improve auto-heal comment formatting in cascade workflow ([1d8cca7](https://github.com/Azure/osdu-spi/commit/1d8cca742aab71a5c7ee3a4f9a9a18a97ece48d7))
+
+
+### 🔨 Build System
+
+* **ci:** Update actions/setup-node to latest v6 commit hash ([3296e17](https://github.com/Azure/osdu-spi/commit/3296e175e23c28f506f5e75fe589030648281462))
+* **deps:** Bump idna from 3.11 to 3.15 in /doc ([9fca1d2](https://github.com/Azure/osdu-spi/commit/9fca1d2bb8cda3ad8b32d4e6868d3646661f2712))
+* **deps:** Bump idna from 3.11 to 3.15 in /doc ([e2a4beb](https://github.com/Azure/osdu-spi/commit/e2a4bebb020afdd521090807144bed7ee5ecfafb))
+* **deps:** Bump pygments from 2.19.2 to 2.20.0 in /doc ([09eb9dc](https://github.com/Azure/osdu-spi/commit/09eb9dcfeb235dd6ed6cc07ea909d0a593c20f6b))
+* **deps:** Bump pygments from 2.19.2 to 2.20.0 in /doc ([79c79ba](https://github.com/Azure/osdu-spi/commit/79c79ba792d3b6919cc91a94d043fc65add9565a))
+* **deps:** Bump pymdown-extensions from 10.16.1 to 10.21.3 in /doc ([52722d8](https://github.com/Azure/osdu-spi/commit/52722d86e9278cd32415410067becd0efecb112c))
+* **deps:** Bump pymdown-extensions from 10.16.1 to 10.21.3 in /doc ([ad4897b](https://github.com/Azure/osdu-spi/commit/ad4897bc4dfebc5d887ff73487c15d2f82f04e62))
+* **deps:** Bump requests from 2.32.5 to 2.33.0 in /doc ([89058a1](https://github.com/Azure/osdu-spi/commit/89058a11b34f66bc95cde790dce9b732c7ef34a9))
+* **deps:** Bump requests from 2.32.5 to 2.33.0 in /doc ([aeb299b](https://github.com/Azure/osdu-spi/commit/aeb299befab9ff0e0bf2798f33133f6912ea1935))
+* **deps:** Bump urllib3 from 2.6.3 to 2.7.0 in /doc ([f36faaa](https://github.com/Azure/osdu-spi/commit/f36faaa8807b1be779456363aa826790e1da8ce1))
+* **deps:** Bump urllib3 from 2.6.3 to 2.7.0 in /doc ([020de71](https://github.com/Azure/osdu-spi/commit/020de713451a498a280c96eb95b316dc9bb710b3))
+
+
+### ⚙️ Continuous Integration
+
+* **docker:** Enable multi-arch builds only on push ([c8114a2](https://github.com/Azure/osdu-spi/commit/c8114a2f49774231c412828573ab7fc2b7bdc2fb))
+* **workflow:** Add GITHUB_TOKEN environment variable to merge step ([158f2aa](https://github.com/Azure/osdu-spi/commit/158f2aa14e23656843da5e4ed543ec055d173e3e))
+
 ## [1.1.0](https://github.com/Azure/osdu-spi/compare/v1.0.2...v1.1.0) (2026-03-03)
 
 
