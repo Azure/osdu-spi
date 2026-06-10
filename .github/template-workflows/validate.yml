@@ -1,24 +1,11 @@
 name: Validation
 
 on:
+  # No paths-ignore here: validate.yml must always trigger on PRs to a protected branch so the
+  # required "🐳 Docker Build" summary check always reports (a path-skipped workflow stays Pending
+  # and wedges the PR; a path-skipped heavy job is gated below via check-paths instead). ADR-030.
   pull_request:
     branches: [main, fork_integration, fork_upstream]
-    paths-ignore:
-      - '.github/workflows/**'
-      - '.github/template-workflows/**'
-      - '.github/ISSUE_TEMPLATE/**'
-      - '.github/actions/**'
-      - '.github/*.md'
-      - '.github/*.json'
-      - '.github/*.yml'
-      - '.github/*.yaml'
-      - '.github/.template-sync-commit'
-      - '.vscode/**'
-      - 'docs/**'
-      - '**.md'
-      - '**.txt'
-      - 'LICENSE'
-      - 'NOTICE'
   pull_request_target:
     branches: [main, fork_integration, fork_upstream]
     types: [opened, synchronize, reopened]
@@ -169,13 +156,69 @@ jobs:
             echo "is_java=false" >> $GITHUB_OUTPUT
           fi
 
+  check-paths:
+    name: "🔍 Check for Build-Relevant Changes"
+    needs: check-initialization
+    if: needs.check-initialization.outputs.initialized == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.filter.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          # For pull_request_target, diff against the PR head; pull_request resolves to the merge sha.
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: "Check for build-relevant changes"
+        id: filter
+        run: |
+          # push / workflow_dispatch always count as build-relevant.
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Build-relevant: ${{ github.event_name }} trigger"
+            exit 0
+          fi
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || echo "")
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Build-relevant: unable to determine changed files"
+            exit 0
+          fi
+
+          # Config-only ignore set (mirrors codeql.yml). .mvn/ is special-cased as build-relevant:
+          # the build copies .mvn/community-maven.settings.xml into Maven settings, so it can affect it.
+          SHOULD_RUN=false
+          while IFS= read -r file; do
+            # .mvn/ affects the Maven build (settings/mirror config); never config-only.
+            case "$file" in .mvn/*) SHOULD_RUN=true; break ;; esac
+            if echo "$file" | grep -qE '^(\.github/|devops/|docs/|\..*|.*\.md)$'; then
+              continue
+            fi
+            SHOULD_RUN=true
+            break
+          done <<< "$CHANGED_FILES"
+
+          echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
+          if [ "$SHOULD_RUN" = "true" ]; then
+            echo "Build-relevant: code changes detected"
+          else
+            echo "Skipping build: only config/docs paths changed"
+          fi
+
   java-build:
     name: "🔨 Java Build"
-    needs: [check-initialization, check-repo-state]
+    needs: [check-initialization, check-repo-state, check-paths]
     # Skip java-build for Dependabot PRs (handled by dependabot-validation.yml)
+    # and for docs/config-only PRs (check-paths.should_run == 'false').
     if: |
       needs.check-repo-state.outputs.is_initialized == 'true' &&
       needs.check-repo-state.outputs.is_java_repo == 'true' &&
+      needs.check-paths.outputs.should_run == 'true' &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
@@ -217,7 +260,7 @@ jobs:
           cache: 'maven'
           
       - name: Cache Maven packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -239,12 +282,123 @@ jobs:
         with:
           generate_coverage: ${{ github.event_name == 'pull_request' }}
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
+          # Default core,azure (ADR-035); core is activeByDefault, so a bare profile would drop it.
+          # MAVEN_PROFILE overrides for services that deviate (e.g. indexer-queue).
+          maven_profile: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
+
+  docker-build:
+    # Validate-only worker. NOT the required check — the required "🐳 Docker Build" context is the
+    # summary job below (docker-build-required), which reports once even when this job is skipped.
+    name: "🐳 Docker Build (validate)"
+    needs: [check-initialization, check-repo-state, java-build]
+    if: needs.java-build.outputs.build_result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # no packages: write — runs untrusted Dockerfile content
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          # For pull_request_target, check out the PR head to validate the actual Dockerfile
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: "Restore local actions for sync PRs"
+        if: |
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.base.ref == 'fork_upstream' &&
+          startsWith(github.event.pull_request.head.ref, 'sync/')
+        run: |
+          set -euo pipefail
+          # Sync branches carry only upstream content: no local actions and no canonical
+          # build/Dockerfile (ADR-037). Restore both from main so docker validation can run.
+          # This also provides security hardening - we always use trusted actions for validation.
+          echo "🔧 Restoring local actions and Dockerfile from main branch for sync PR validation..."
+          if ! git fetch origin main --depth=1; then
+            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
+            exit 1
+          fi
+          if ! git checkout origin/main -- .github/actions/ build/; then
+            echo "❌ Failed to restore .github/actions/ and build/ from origin/main. Cannot proceed with validation."
+            exit 1
+          fi
+          echo "✅ Local actions and Dockerfile restored - validation can proceed"
+
+      - name: "Docker Build (validate-only)"
+        uses: ./.github/actions/docker-build
+        with:
+          push: 'false'                       # validates the Dockerfile compiles; no GHCR login/push
+          image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          # Conventional JAR path; the docker-build action auto-discovers the Azure JAR when a deviant
+          # module name (e.g. entitlements-v2-azure) doesn't match, so a fresh fork needs no variable.
+          # SERVICE_NAME falls back to the repo name; SERVICE_TARGET_JAR forces a specific path (ADR-037).
+          jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
+
+  docker-push:
+    name: "🐳 Docker Push"
+    needs: [check-initialization, check-repo-state, java-build, docker-build]
+    # §5.5 trust boundary (ADR-036): push to GHCR only on trusted events. The force_full_pipeline
+    # arm is declared by W13 (#19); until then it evaluates null and is harmless.
+    if: |
+      (
+        needs.java-build.outputs.build_result == 'success' &&
+        github.actor != 'dependabot[bot]' &&
+        github.event_name != 'pull_request_target' &&
+        github.event_name != 'workflow_dispatch' &&
+        (github.event_name != 'pull_request' ||
+         github.event.pull_request.head.repo.full_name == github.repository)
+      ) || (
+        github.event_name == 'workflow_dispatch' &&
+        inputs.force_full_pipeline == true
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write         # only this job has registry write
+    outputs:
+      image_repository: ${{ steps.push.outputs.image_repository }}
+      image_digest: ${{ steps.push.outputs.image_digest }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: "Restore local actions for sync PRs"
+        if: |
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.base.ref == 'fork_upstream' &&
+          startsWith(github.event.pull_request.head.ref, 'sync/')
+        run: |
+          set -euo pipefail
+          # Sync branches contain only upstream content and don't have local actions.
+          # Restore .github/actions/ from main branch to enable validation.
+          # This also provides security hardening - we always use trusted actions for validation.
+          echo "🔧 Restoring local actions from main branch for sync PR validation..."
+          if ! git fetch origin main --depth=1; then
+            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
+            exit 1
+          fi
+          if ! git checkout origin/main -- .github/actions/; then
+            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
+            exit 1
+          fi
+          echo "✅ Local actions restored - validation can proceed"
+
+      - name: "Docker Build and Push"
+        id: push
+        uses: ./.github/actions/docker-build
+        with:
+          push: 'true'
+          image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Conventional JAR path; the docker-build action auto-discovers the Azure JAR when a deviant
+          # module name (e.g. entitlements-v2-azure) doesn't match, so a fresh fork needs no variable.
+          # SERVICE_NAME falls back to the repo name; SERVICE_TARGET_JAR forces a specific path (ADR-037).
+          jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
 
   code-validation:
     name: "✅ Code Quality Checks"
-    needs: [check-initialization, check-repo-state, java-build]
+    needs: [check-initialization, check-repo-state, check-paths, java-build]
     if: |
-      always() && 
+      always() &&
       needs.check-initialization.outputs.initialized == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -365,6 +519,10 @@ jobs:
             if [[ "${{ needs.check-repo-state.outputs.is_java_repo }}" == "true" ]]; then
               if [[ "${{ needs.java-build.result }}" == "success" ]]; then
                 ITEMS=$(echo "$ITEMS" | jq '. + ["✓ Java Build Successful"]')
+              elif [[ "${{ needs.java-build.result }}" == "skipped" && "${{ needs.check-paths.outputs.should_run }}" == "false" ]]; then
+                # Build gated out by check-paths: only config/docs paths changed, nothing to build.
+                # A skip for any other reason (e.g. check-paths itself failed) falls through to "Failed".
+                ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Java Build Skipped (no build-relevant changes)"]')
               else
                 ITEMS=$(echo "$ITEMS" | jq '. + ["❌ Java Build Failed"]')
               fi
@@ -385,3 +543,44 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ github.event.pull_request.number }}
           status_items: ${{ steps.status.outputs.items }}
+
+  docker-build-required:
+    # Required branch-protection check "🐳 Docker Build" (ADR-030 summary-job pattern, mirrors the
+    # CodeQL summary job). Consolidates the validate-only build into one always-reporting context so
+    # the required check never wedges (config-only/non-Java/dependabot/uninitialized all pass) and a
+    # real build failure blocks. Suppressed on pull_request_target so the dual trigger reports it once.
+    name: "🐳 Docker Build"
+    needs: [check-initialization, check-repo-state, check-paths, java-build, docker-build]
+    if: always() && github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Report Docker Build Status"
+        run: |
+          # Fail the required check if any validation prerequisite genuinely failed/cancelled — a
+          # broken validation pipeline must not pass as "skipped". A *skipped* prerequisite is
+          # legitimate (wrong-event dedup or an uninitialized repo) and is handled by the output
+          # checks below, which is why we test result == failure/cancelled, not result != success.
+          if [ "${{ needs.check-initialization.result }}" = "failure" ] || [ "${{ needs.check-initialization.result }}" = "cancelled" ] || \
+             [ "${{ needs.check-repo-state.result }}" = "failure" ] || [ "${{ needs.check-repo-state.result }}" = "cancelled" ] || \
+             [ "${{ needs.check-paths.result }}" = "failure" ] || [ "${{ needs.check-paths.result }}" = "cancelled" ]; then
+            echo "❌ A validation prerequisite job failed or was cancelled"; exit 1
+          fi
+          if [ "${{ needs.check-initialization.outputs.initialized }}" != "true" ]; then
+            echo "✅ Docker Build skipped - repository not yet initialized"; exit 0
+          fi
+          if [ "${{ needs.check-paths.outputs.should_run }}" = "false" ]; then
+            echo "✅ Docker Build skipped - only configuration/docs files changed"; exit 0
+          fi
+          if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
+            echo "✅ Docker Build skipped - Dependabot build handled by dependabot-validation.yml"; exit 0
+          fi
+          if [ "${{ needs.check-repo-state.outputs.is_java_repo }}" != "true" ]; then
+            echo "✅ Docker Build skipped - non-Java repository"; exit 0
+          fi
+          if [ "${{ needs.java-build.result }}" = "failure" ] || [ "${{ needs.java-build.result }}" = "cancelled" ]; then
+            echo "❌ Java build failed or was cancelled"; exit 1
+          fi
+          if [ "${{ needs.docker-build.result }}" = "failure" ] || [ "${{ needs.docker-build.result }}" = "cancelled" ]; then
+            echo "❌ Docker build failed or was cancelled"; exit 1
+          fi
+          echo "✅ Docker Build checks completed successfully"

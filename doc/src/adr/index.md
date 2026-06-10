@@ -17,11 +17,11 @@ This catalog documents the architectural choices that shape the OSDU SPI Fork Ma
 
 Foundation decisions that define the system's structure and approach:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [001](001-three-branch-strategy.md) | **Three-Branch Strategy** | :material-star: Critical | :material-check-circle: Accepted |
-| [002](002-github-actions-automation.md) | **GitHub Actions Automation** | :material-star: Critical | :material-check-circle: Accepted |
-| [003](003-template-repository-pattern.md) | **Template Repository Pattern** | :material-star: Critical | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [001](001-three-branch-strategy.md) | **Three-Branch Strategy** | :material-star: Critical |
+| [002](002-github-actions-automation.md) | **GitHub Actions Automation** | :material-star: Critical |
+| [003](003-template-repository-pattern.md) | **Template Repository Pattern** | :material-star: Critical |
 
 ### :material-rocket-launch-outline: Repository Initialization & Setup
 
@@ -29,13 +29,13 @@ Foundation decisions that define the system's structure and approach:
 
 Decisions governing repository initialization, configuration, and security setup:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [006](006-two-workflow-initialization.md) | **Two-Workflow Initialization** | :material-trending-up: High | :material-check-circle: Accepted |
-| [007](007-initialization-workflow-bootstrap.md) | **Workflow Bootstrap Pattern** | :material-minus: Medium | :material-check-circle: Accepted |
-| [008](008-centralized-label-management.md) | **Centralized Label Management** | :material-minus: Medium | :material-check-circle: Accepted |
-| [016](016-initialization-security-handling.md) | **Initialization Security Handling** | :material-minus: Medium | :material-check-circle: Accepted |
-| [017](017-mcp-server-integration-pattern.md) | **MCP Server Integration** | :material-minus: Medium | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [006](006-two-workflow-initialization.md) | **Two-Workflow Initialization** | :material-trending-up: High |
+| [007](007-initialization-workflow-bootstrap.md) | **Workflow Bootstrap Pattern** | :material-minus: Medium |
+| [008](008-centralized-label-management.md) | **Centralized Label Management** | :material-minus: Medium |
+| [016](016-initialization-security-handling.md) | **Initialization Security Handling** | :material-minus: Medium |
+| [017](017-mcp-server-integration-pattern.md) | **MCP Server Integration** | :material-minus: Medium |
 
 ### :material-sync: Upstream Synchronization & Integration
 
@@ -43,14 +43,14 @@ Decisions governing repository initialization, configuration, and security setup
 
 Decisions for synchronizing with upstream repositories and integrating changes:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [005](005-conflict-management.md) | **Conflict Management Strategy** | :material-star: Critical | :material-check-circle: Accepted |
-| [009](009-asymmetric-cascade-review-strategy.md) | **Asymmetric Cascade Review** | :material-minus: Medium | :material-check-circle: Accepted |
-| [019](019-cascade-monitor-pattern.md) | **Cascade Monitor Pattern** | :material-trending-up: High | :material-check-circle: Accepted |
-| [021](021-pull-request-target-trigger-pattern.md) | **Pull Request Target Pattern** | :material-minus: Medium | :material-check-circle: Accepted |
-| [023](023-meta-commit-strategy-for-release-please.md) | **Meta Commit Strategy** | :material-trending-up: High | :material-check-circle: Accepted |
-| [024](024-sync-workflow-duplicate-prevention-architecture.md) | **Duplicate Prevention Architecture** | :material-minus: Medium | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [005](005-conflict-management.md) | **Conflict Management Strategy** | :material-star: Critical |
+| [009](009-asymmetric-cascade-review-strategy.md) | **Asymmetric Cascade Review** | :material-minus: Medium |
+| [019](019-cascade-monitor-pattern.md) | **Cascade Monitor Pattern** | :material-trending-up: High |
+| [021](021-pull-request-target-trigger-pattern.md) | **Pull Request Target Pattern** | :material-minus: Medium |
+| [023](023-meta-commit-strategy-for-release-please.md) | **Meta Commit Strategy** | :material-trending-up: High |
+| [024](024-sync-workflow-duplicate-prevention-architecture.md) | **Duplicate Prevention Architecture** | :material-minus: Medium |
 
 ### :material-label-outline: State Management & Tracking
 
@@ -58,10 +58,10 @@ Decisions for synchronizing with upstream repositories and integrating changes:
 
 Decisions for managing workflow state and tracking lifecycle:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [020](020-human-required-label-strategy.md) | **Human-Required Label Strategy** | :material-trending-up: High | :material-check-circle: Accepted |
-| [022](022-issue-lifecycle-tracking-pattern.md) | **Issue Lifecycle Tracking** | :material-minus: Medium | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [020](020-human-required-label-strategy.md) | **Human-Required Label Strategy** | :material-trending-up: High |
+| [022](022-issue-lifecycle-tracking-pattern.md) | **Issue Lifecycle Tracking** | :material-minus: Medium |
 
 ### :material-hammer-wrench: Build, Test & Dependencies
 
@@ -69,11 +69,24 @@ Decisions for managing workflow state and tracking lifecycle:
 
 Build architecture, dependency management, and documentation:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [025](025-java-maven-build-architecture.md) | **Java/Maven Build Architecture** | :material-trending-up: High | :material-check-circle: Accepted |
-| [026](026-dependabot-security-update-strategy.md) | **Dependabot Security Updates** | :material-minus: Medium | :material-check-circle: Accepted |
-| [027](027-documentation-generation-strategy.md) | **Documentation Generation** | :material-minus: Medium | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [025](025-java-maven-build-architecture.md) | **Java/Maven Build Architecture** | :material-trending-up: High |
+| [026](026-dependabot-security-update-strategy.md) | **Dependabot Security Updates** | :material-minus: Medium |
+| [027](027-documentation-generation-strategy.md) | **Documentation Generation** | :material-minus: Medium |
+
+### :material-rocket-launch: CI/CD & Deployment
+
+*"How do services get built, deployed, and tested per PR?"*
+
+Decisions for the container-image build, cluster deploy, and integration-test pipeline:
+
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [033](033-ghcr-as-service-image-registry.md) | **GHCR as Service Image Registry** | :material-minus: Medium |
+| [035](035-azure-only-maven-profile.md) | **Azure-Only Maven Profile Restriction** | :material-minus: Medium |
+| [036](036-workflow-trust-boundaries.md) | **Workflow Trust Boundaries for CI/CD** | :material-trending-up: High |
+| [037](037-engineering-system-owns-service-dockerfile.md) | **Engineering System Owns the Canonical Service Dockerfile** | :material-trending-up: High |
 
 ### :material-package-variant: Release Management
 
@@ -81,9 +94,9 @@ Build architecture, dependency management, and documentation:
 
 Version management and release automation:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [004](004-release-please-versioning.md) | **Release Please Versioning** | :material-trending-up: High | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [004](004-release-please-versioning.md) | **Release Please Versioning** | :material-trending-up: High |
 
 ### :material-update: Template Maintenance & Evolution
 
@@ -91,12 +104,12 @@ Version management and release automation:
 
 Decisions for propagating template updates to fork repositories:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [011](011-configuration-driven-template-sync.md) | **Configuration-Driven Sync** | :material-trending-up: High | :material-check-circle: Accepted |
-| [012](012-template-update-propagation-strategy.md) | **Template Update Propagation** | :material-trending-up: High | :material-check-circle: Accepted |
-| [018](018-fork-resources-staging-pattern.md) | **Fork-Resources Staging** | :material-minus: Medium | :material-check-circle: Accepted |
-| [031](031-template-sync-duplicate-prevention.md) | **Template Sync Duplicate Prevention** | :material-minus: Medium | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [011](011-configuration-driven-template-sync.md) | **Configuration-Driven Sync** | :material-trending-up: High |
+| [012](012-template-update-propagation-strategy.md) | **Template Update Propagation** | :material-trending-up: High |
+| [018](018-fork-resources-staging-pattern.md) | **Fork-Resources Staging** | :material-minus: Medium |
+| [031](031-template-sync-duplicate-prevention.md) | **Template Sync Duplicate Prevention** | :material-minus: Medium |
 
 ### :material-cog-outline: Workflow Infrastructure & Patterns
 
@@ -104,15 +117,15 @@ Decisions for propagating template updates to fork repositories:
 
 Technical patterns and infrastructure for workflow implementation:
 
-| ADR | Decision | Impact | Status |
-|-----|----------|--------|--------|
-| [010](010-yaml-safe-shell-scripting.md) | **YAML-Safe Shell Scripting** | :material-minus: Medium | :material-check-circle: Accepted |
-| [013](013-reusable-github-actions-pattern.md) | **Reusable GitHub Actions** | :material-minus: Medium | :material-check-circle: Accepted |
-| [014](014-ai-enhanced-development-workflow.md) | **AI-Enhanced Workflows** | :material-trending-up: High | :material-check-circle: Accepted |
-| [015](015-template-workflows-separation-pattern.md) | **Template-Workflows Separation** | :material-minus: Medium | :material-check-circle: Accepted |
-| [028](028-workflow-script-extraction-pattern.md) | **Workflow Script Extraction** | :material-minus: Medium | :material-check-circle: Accepted |
-| [029](029-github-app-authentication-strategy.md) | **GitHub App Authentication** | :material-trending-up: High | :material-check-circle: Accepted |
-| [030](030-codeql-summary-job-pattern.md) | **CodeQL Summary Job Pattern** | :material-trending-up: High | :material-check-circle: Accepted |
+| ADR | Decision | Impact |
+|-----|----------|--------|
+| [010](010-yaml-safe-shell-scripting.md) | **YAML-Safe Shell Scripting** | :material-minus: Medium |
+| [013](013-reusable-github-actions-pattern.md) | **Reusable GitHub Actions** | :material-minus: Medium |
+| [014](014-ai-enhanced-development-workflow.md) | **AI-Enhanced Workflows** | :material-trending-up: High |
+| [015](015-template-workflows-separation-pattern.md) | **Template-Workflows Separation** | :material-minus: Medium |
+| [028](028-workflow-script-extraction-pattern.md) | **Workflow Script Extraction** | :material-minus: Medium |
+| [029](029-github-app-authentication-strategy.md) | **GitHub App Authentication** | :material-trending-up: High |
+| [030](030-codeql-summary-job-pattern.md) | **CodeQL Summary Job Pattern** | :material-trending-up: High |
 
 ## Navigation Tips
 
