@@ -36,6 +36,25 @@ updates:
           - "patch"
     open-pull-requests-limit: 5
 
+  # Docker base image - Canonical service Dockerfile (Engineering System, ADR-037)
+  # Template-only: bumps the digest pinned in build/Dockerfile; template-sync then propagates the
+  # updated Dockerfile to every fork. Forks carry no docker ecosystem, so they never author their
+  # own base-image bump. The App Insights agent (ADD --checksum) is not a FROM ref, so Dependabot
+  # does not track it — agent version bumps stay manual.
+  - package-ecosystem: "docker"
+    directory: "/build"
+    schedule:
+      interval: "daily"
+      time: "08:30"
+    target-branch: "main"
+    labels:
+      - "dependencies"
+    groups:
+      docker:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
   # Python/doc dependencies removed to prevent fork initialization issues
   # Issue: Forks inherit this config momentarily before deploy-fork-resources.sh runs,
   # causing Dependabot to cache the pip/doc ecosystem even after replacement
