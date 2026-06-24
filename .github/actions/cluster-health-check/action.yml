@@ -1,0 +1,105 @@
+# Pre-flight cluster health probe for the deploy lane.
+#
+# Distinguishes "the cluster is down / not in CI mode" from "your code is broken" so a PR
+# author is not blamed for an infra outage (§8.4). Used by the deploy job and (optionally)
+# by a scheduled health-badge workflow.
+#
+# CALLER REQUIREMENTS (composite actions cannot install tools or log in):
+#   - The caller MUST have already authenticated to Azure (azure/login) and pulled cluster
+#     credentials (az aks get-credentials + kubelogin convert-kubeconfig -l azurecli) before
+#     invoking this action -- it takes NO Azure inputs and does NOT run login. Without that,
+#     kubectl calls fail with a confusing "cluster unreachable" error.
+#   - kubectl + kubelogin must be on the runner.
+#
+# Reference: design doc §8.4 + §7.5 (CI-mode invariant).
+
+name: 'Cluster Health Check (deploy pre-flight)'
+description: >-
+  Verify the spi-stack cluster is reachable and in CI mode: nodes Ready, gateway returns 2xx,
+  and Flux Kustomizations are suspended. Emits a status so callers can fail fast with a clear
+  "infra is down" signal rather than a misleading deploy error.
+
+inputs:
+  gateway_url:
+    description: 'Base gateway URL to probe, e.g. https://<gateway-host> (org variable GATEWAY_URL).'
+    required: true
+  health_path:
+    description: 'Path appended to gateway_url for the HTTP probe.'
+    required: false
+    default: '/api/partition/v1/info'
+  flux_namespace:
+    description: 'Namespace holding the spi-stack Flux Kustomizations (this stack uses osdu-flux; default flux-system).'
+    required: false
+    default: 'flux-system'
+
+outputs:
+  status:
+    description: "'healthy' | 'degraded' | 'down'. 'down' = nodes not Ready or gateway unreachable; 'degraded' = reachable but an invariant (gateway non-2xx or Flux not suspended) is violated."
+    value: ${{ steps.check.outputs.status }}
+  summary:
+    description: 'One-line human-readable summary of the check result.'
+    value: ${{ steps.check.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - name: 'Probe cluster health'
+      id: check
+      shell: bash
+      # Each check emits a distinct message so the failing component is unambiguous. The
+      # action never logs secrets; gateway URL / namespace / node names are safe to print.
+      run: |
+        set -uo pipefail
+        STATUS=healthy
+        DETAILS=""
+
+        fail_down()    { STATUS=down;     DETAILS="${DETAILS}${1}; "; }
+        fail_degraded(){ if [ "$STATUS" != "down" ]; then STATUS=degraded; fi; DETAILS="${DETAILS}${1}; "; }
+
+        # 1. Nodes Ready -- if the API server is unreachable this also catches "cluster down".
+        if ! NODE_JSON=$(kubectl get nodes -o json 2>/dev/null); then
+          fail_down "API server unreachable (kubectl get nodes failed)"
+        else
+          NOT_READY=$(jq -r '.items[] | select((.status.conditions[] | select(.type=="Ready") | .status) != "True") | .metadata.name' <<< "$NODE_JSON")
+          if [ -n "$NOT_READY" ]; then
+            fail_down "Nodes not Ready: $(echo "$NOT_READY" | tr "\n" " ")"
+          fi
+        fi
+
+        # 2. Gateway returns 2xx.
+        CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${GATEWAY_URL}${HEALTH_PATH}" || echo "000")
+        if [ "$CODE" = "000" ]; then
+          fail_down "Gateway unreachable at ${GATEWAY_URL}${HEALTH_PATH}"
+        elif [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
+          fail_degraded "Gateway returned HTTP ${CODE} at ${GATEWAY_URL}${HEALTH_PATH}"
+        fi
+
+        # 3. Flux Kustomizations suspended (CI-mode invariant, §7.5). A namespace with zero
+        #    Kustomizations almost certainly means the wrong flux_namespace -> treat as degraded.
+        if ! K_JSON=$(kubectl get kustomizations -n "$FLUX_NS" -o json 2>/dev/null); then
+          fail_degraded "Could not list Kustomizations in '$FLUX_NS' (wrong flux_namespace, or Flux CRDs absent?)"
+        else
+          COUNT=$(jq -r '.items | length' <<< "$K_JSON")
+          if [ "$COUNT" -eq 0 ]; then
+            fail_degraded "No Kustomizations found in '$FLUX_NS' -- cannot confirm CI mode (wrong flux_namespace?)"
+          else
+            RUNNING=$(jq -r '.items[] | select(.spec.suspend != true) | .metadata.name' <<< "$K_JSON")
+            if [ -n "$RUNNING" ]; then
+              fail_degraded "Flux not suspended in ${FLUX_NS}: $(echo "$RUNNING" | tr "\n" " ") (cluster not in CI mode)"
+            fi
+          fi
+        fi
+
+        [ -n "$DETAILS" ] || DETAILS="nodes Ready, gateway 2xx, Flux suspended"
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "summary=$DETAILS" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Cluster health: \`${STATUS}\`"
+          echo ""
+          echo "- ${DETAILS}"
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "Cluster health: $STATUS -- $DETAILS"
+      env:
+        GATEWAY_URL: ${{ inputs.gateway_url }}
+        HEALTH_PATH: ${{ inputs.health_path }}
+        FLUX_NS: ${{ inputs.flux_namespace }}
