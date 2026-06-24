@@ -1,0 +1,116 @@
+# Manually roll a service's Deployment back to a previous-good image digest.
+#
+# Operator break-glass for §8.9: when one bad deploy is poisoning cross-service tests, restore
+# the service to its last-known-good digest without waiting for the original PR author to push
+# a fix. Human-triggered only -- there is NO auto-rollback (NG5 stands).
+#
+# Reads the previous-good digest from a prior deploy run's `aks-deploy` `previous_digest` output
+# (operators copy it from that run's logs/summary). The image already exists in GHCR, so this
+# skips docker-build entirely and just re-points the Deployment.
+#
+# Single-service workflow: the target service is read from `vars.SERVICE_NAME`, NOT a dispatch
+# input. Each fork hosts exactly one service; taking `service` as an input would let an operator
+# dispatch `service=storage` in the partition fork and deploy the wrong image into partition's
+# Deployment.
+#
+# Reference: design doc §8.9 + §5.2 (aks-deploy contract). Blocked from merge until W3
+# (.github/actions/aks-deploy) lands -- this workflow `uses:` that action.
+
+name: Restore Deployment
+
+run-name: "restore ${{ vars.SERVICE_NAME }} -> ${{ inputs.digest }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: 'Previous-good image digest to restore (must start with sha256:, e.g. sha256:abc123...). Copy it from a prior deploy run''s aks-deploy previous_digest output.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  # Per-service group, identical to the deploy job's, so a restore cannot race an in-flight
+  # PR deploy for the same service. cancel-in-progress: false -- never abandon a rollout midway.
+  group: spi-stack-${{ vars.SERVICE_NAME }}
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: "Restore deployment"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Pre-flight: SERVICE_NAME must be set"
+        shell: bash
+        # Catches forks where onboarding has not completed -- without SERVICE_NAME the image
+        # reference and concurrency group are wrong.
+        run: |
+          if [ -z "$SERVICE_NAME" ]; then
+            echo "::error::vars.SERVICE_NAME is not set on this repo. Set it (gh variable set SERVICE_NAME=<name>) or complete onboarding before restoring."
+            exit 1
+          fi
+          echo "Target service: $SERVICE_NAME"
+        env:
+          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+
+      - name: "Validate digest format"
+        shell: bash
+        # Catches the "double sha256:" foot-gun and typos before kubectl ever runs.
+        run: |
+          if ! printf '%s' "$DIGEST" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+            echo "::error::digest must match ^sha256:[a-f0-9]{64}$ (got: '$DIGEST')."
+            exit 1
+          fi
+        env:
+          DIGEST: ${{ inputs.digest }}
+
+      - name: "Checkout (for the aks-deploy composite action)"
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: "Install kubectl"
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0
+
+      - name: "Install kubelogin"
+        uses: azure/use-kubelogin@0ce7c36141aa27d4934872cf00b0120804c98a29  # v1.3
+        with:
+          kubelogin-version: 'v0.1.4'
+
+      - name: "Restore image (by digest)"
+        uses: ./.github/actions/aks-deploy
+        with:
+          azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          aks_resource_group: ${{ vars.AKS_RESOURCE_GROUP }}
+          aks_cluster_name: ${{ vars.AKS_CLUSTER_NAME }}
+          namespace: ${{ vars.K8S_NAMESPACE }}
+          flux_namespace: ${{ vars.FLUX_NAMESPACE }}
+          deployment_name: ${{ vars.K8S_DEPLOYMENT_NAME }}
+          container_name: ${{ vars.K8S_CONTAINER_NAME }}
+          image_repository: ghcr.io/${{ github.repository_owner }}/${{ vars.SERVICE_NAME }}
+          image_digest: ${{ inputs.digest }}
+        id: restore
+
+      - name: "Audit summary"
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### ♻️ Restore Deployment"
+            echo ""
+            echo "- Triggered by: \`${{ github.actor }}\`"
+            echo "- Service: \`${SERVICE_NAME}\` (from vars.SERVICE_NAME)"
+            echo "- Deployment: \`${DEPLOYMENT}\`"
+            echo "- Restored to digest: \`${DIGEST}\`"
+            echo "- aks-deploy previous_digest: \`${PREV:-<none>}\`"
+            echo "- aks-deploy deployed_digest: \`${DEPLOYED:-<none>}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+          DEPLOYMENT: ${{ vars.K8S_DEPLOYMENT_NAME }}
+          DIGEST: ${{ inputs.digest }}
+          PREV: ${{ steps.restore.outputs.previous_digest }}
+          DEPLOYED: ${{ steps.restore.outputs.deployed_digest }}
