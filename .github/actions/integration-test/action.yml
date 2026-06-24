@@ -58,8 +58,27 @@ inputs:
     description: 'Key Vault holding acceptance-test secrets (org variable KEYVAULT_NAME).'
     required: true
   secret_map:
-    description: 'JSON map of env-var-name -> kv-secret-name, e.g. {"INTEGRATION_TESTER":"integration-tester-id"}. Per-service.'
-    required: true
+    description: 'JSON map of env-var-name -> kv-secret-name, e.g. {"INTEGRATION_TESTER":"integration-tester-id"}. Per-service. Empty {} when the suite needs no KV secrets (e.g. a service that authorizes any AAD service-principal token).'
+    required: false
+    default: '{}'
+  aad_client_id:
+    description: >-
+      Optional Entra app id to mint an app-only ROOT_USER_TOKEN for (org/service variable AAD_CLIENT_ID).
+      When set, the action runs `az account get-access-token --resource <aad_client_id>` AS THE CI federated
+      identity (no secret -- the GitHub-Actions port of ADME's GenerateTokenWithoutSecret.yml) and exports the
+      raw token as the env var named by root_token_env (default ROOT_USER_TOKEN), masked. OSDU acceptance suites
+      (TestTokenUtils) consume that token directly and skip the client_credentials OIDC flow. Leave empty to use
+      the suite's own OIDC flow via secret_map instead.
+    required: false
+    default: ''
+  root_token_env:
+    description: 'Env var name the acceptance suite reads a pre-minted bearer token from (raw, no "Bearer " prefix; the suite adds it). Only used when aad_client_id is set.'
+    required: false
+    default: 'ROOT_USER_TOKEN'
+  env_map:
+    description: 'Optional JSON map of NON-SECRET env-var-name -> literal value to export to the test run, e.g. {"PARTITION_BASE_URL":"https://gw/","MY_TENANT":"opendes"}. Per-service; never logged-masked (use secret_map for secrets).'
+    required: false
+    default: '{}'
   expected_digest:
     description: 'sha256 digest the deploy job set (needs.deploy.outputs.deployed_digest). The pod image is re-read and the run fails on mismatch (mid-test Flux resume / stale restart guard).'
     required: true
@@ -165,6 +184,48 @@ runs:
       env:
         DEPS: ${{ inputs.dependencies }}
         GW: ${{ inputs.gateway_url }}
+
+    - name: 'Mint ROOT_USER_TOKEN (no secret) + inject non-secret env'
+      shell: bash
+      # GitHub-Actions port of ADME's GenerateTokenWithoutSecret.yml: mint an app-only token AS the CI
+      # federated identity (azure/login already ran) and hand it to the suite as ROOT_USER_TOKEN, so the
+      # suite skips its client_credentials OIDC flow. This keeps the stack managed-identity-only -- no test
+      # service-principal secret. The token's aud=<aad_client_id> matches the istio RequestAuthentication
+      # audience + the Spring AAD filter; an app-only token (no upn/unique_name, iss=sts.windows.net) is
+      # authorized as a service principal by services that trust AAD SPs (e.g. partition's domain-admin check).
+      # env_map carries NON-SECRET config (e.g. PARTITION_BASE_URL, MY_TENANT) the suite reads from the env.
+      run: |
+        if [ -n "$AAD_CLIENT_ID" ]; then
+          TOKEN=$(az account get-access-token --resource "$AAD_CLIENT_ID" --query accessToken -o tsv)
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Failed to mint app-only token for resource '$AAD_CLIENT_ID' as the CI identity."
+            exit 1
+          fi
+          # Mask BEFORE writing to GITHUB_ENV so the token never appears in logs. Raw token only --
+          # the OSDU suite (TestTokenUtils) prepends 'Bearer ' itself.
+          echo "::add-mask::$TOKEN"
+          {
+            printf '%s<<__TOKEN_EOF__\n' "$ROOT_TOKEN_ENV"
+            printf '%s\n' "$TOKEN"
+            printf '__TOKEN_EOF__\n'
+          } >> "$GITHUB_ENV"
+          echo "Minted '$ROOT_TOKEN_ENV' (app-only, aud=$AAD_CLIENT_ID) as the CI identity."
+        fi
+        if [ -n "$ENV_MAP" ] && [ "$ENV_MAP" != "{}" ]; then
+          for env_name in $(jq -r 'keys[]' <<< "$ENV_MAP"); do
+            value=$(jq -r --arg k "$env_name" '.[$k]' <<< "$ENV_MAP")
+            {
+              printf '%s<<__ENV_EOF__\n' "$env_name"
+              printf '%s\n' "$value"
+              printf '__ENV_EOF__\n'
+            } >> "$GITHUB_ENV"
+            echo "Exported non-secret env: $env_name"
+          done
+        fi
+      env:
+        AAD_CLIENT_ID: ${{ inputs.aad_client_id }}
+        ROOT_TOKEN_ENV: ${{ inputs.root_token_env }}
+        ENV_MAP: ${{ inputs.env_map }}
 
     - name: 'Load acceptance-test secrets from Key Vault (masked, multiline-safe)'
       shell: bash

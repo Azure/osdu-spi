@@ -706,7 +706,9 @@ jobs:
           gateway_url: ${{ vars.GATEWAY_URL }}
           keyvault_name: ${{ vars.KEYVAULT_NAME }}
           test_dir: ${{ vars.ACCEPTANCE_TEST_DIR }}
-          secret_map: ${{ vars.ACCEPTANCE_TEST_SECRET_MAP }}
+          secret_map: ${{ vars.ACCEPTANCE_TEST_SECRET_MAP || '{}' }}
+          aad_client_id: ${{ vars.AAD_CLIENT_ID }}
+          env_map: ${{ vars.ACCEPTANCE_TEST_ENV_MAP || '{}' }}
           dependencies: ${{ vars.ACCEPTANCE_TEST_DEPENDENCIES || '{}' }}
           maven_profile: ${{ vars.MAVEN_PROFILE || '' }}
           expected_digest: ${{ needs.deploy.outputs.deployed_digest }}
