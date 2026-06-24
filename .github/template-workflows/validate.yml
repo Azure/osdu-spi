@@ -595,3 +595,118 @@ jobs:
             echo "❌ Docker build failed or was cancelled"; exit 1
           fi
           echo "✅ Docker Build checks completed successfully"
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Deploy lane (W5b). Appended after docker-push; both jobs consume the trusted
+  # push job's digest and replicate its §5.5 trust-boundary if: (defense in depth --
+  # they also needs:[docker-push], which is itself trust-gated). The extra
+  # `vars.AZURE_CLIENT_ID != ''` conjunct makes un-onboarded forks SKIP these jobs
+  # cleanly (no red azure/login failure) until `spi onboard` has run -- onboarding
+  # writes AZURE_CLIENT_ID as both a secret and a variable for exactly this gate.
+  # ──────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: "🚀 Deploy to spi-stack"
+    needs: [check-initialization, check-repo-state, java-build, docker-push]
+    if: |
+      (
+        needs.java-build.outputs.build_result == 'success' &&
+        vars.AZURE_CLIENT_ID != '' &&
+        github.actor != 'dependabot[bot]' &&
+        github.event_name != 'pull_request_target' &&
+        github.event_name != 'workflow_dispatch' &&
+        (github.event_name != 'pull_request' ||
+         github.event.pull_request.head.repo.full_name == github.repository)
+      ) || (
+        github.event_name == 'workflow_dispatch' &&
+        inputs.force_full_pipeline == true &&
+        vars.AZURE_CLIENT_ID != ''
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write          # mint the OIDC token for azure/login
+      contents: read
+    # Per-service lock (not cluster-wide): two services deploy in parallel, two PRs
+    # for the SAME service queue. cancel-in-progress: false -- never abandon a rollout.
+    concurrency:
+      group: spi-stack-${{ vars.SERVICE_NAME || github.event.repository.name }}
+      cancel-in-progress: false
+    outputs:
+      previous_digest: ${{ steps.deploy.outputs.previous_digest }}
+      deployed_digest: ${{ steps.deploy.outputs.deployed_digest }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - name: "Install kubectl"
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0
+      - name: "Install kubelogin"
+        uses: azure/use-kubelogin@0ce7c36141aa27d4934872cf00b0120804c98a29  # v1.3
+        with:
+          kubelogin-version: 'v0.1.4'
+      - name: "Deploy to spi-stack (by digest)"
+        id: deploy
+        uses: ./.github/actions/aks-deploy
+        with:
+          azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          aks_resource_group: ${{ vars.AKS_RESOURCE_GROUP }}
+          aks_cluster_name: ${{ vars.AKS_CLUSTER_NAME }}
+          namespace: ${{ vars.K8S_NAMESPACE }}
+          flux_namespace: ${{ vars.FLUX_NAMESPACE }}
+          deployment_name: ${{ vars.K8S_DEPLOYMENT_NAME }}
+          container_name: ${{ vars.K8S_CONTAINER_NAME }}
+          image_repository: ${{ needs.docker-push.outputs.image_repository }}
+          image_digest: ${{ needs.docker-push.outputs.image_digest }}
+
+  integration-test:
+    name: "🧪 Integration Tests"
+    needs: [check-initialization, check-repo-state, java-build, docker-push, deploy]
+    if: |
+      (
+        needs.java-build.outputs.build_result == 'success' &&
+        vars.AZURE_CLIENT_ID != '' &&
+        github.actor != 'dependabot[bot]' &&
+        github.event_name != 'pull_request_target' &&
+        github.event_name != 'workflow_dispatch' &&
+        (github.event_name != 'pull_request' ||
+         github.event.pull_request.head.repo.full_name == github.repository)
+      ) || (
+        github.event_name == 'workflow_dispatch' &&
+        inputs.force_full_pipeline == true &&
+        vars.AZURE_CLIENT_ID != ''
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - name: "Set up Java"
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+      - name: "Install kubectl"
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0
+      - name: "Install kubelogin"
+        uses: azure/use-kubelogin@0ce7c36141aa27d4934872cf00b0120804c98a29  # v1.3
+        with:
+          kubelogin-version: 'v0.1.4'
+      - name: "Run integration tests"
+        uses: ./.github/actions/integration-test
+        with:
+          azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          aks_resource_group: ${{ vars.AKS_RESOURCE_GROUP }}
+          aks_cluster_name: ${{ vars.AKS_CLUSTER_NAME }}
+          namespace: ${{ vars.K8S_NAMESPACE }}
+          deployment_name: ${{ vars.K8S_DEPLOYMENT_NAME }}
+          container_name: ${{ vars.K8S_CONTAINER_NAME }}
+          gateway_url: ${{ vars.GATEWAY_URL }}
+          keyvault_name: ${{ vars.KEYVAULT_NAME }}
+          test_dir: ${{ vars.ACCEPTANCE_TEST_DIR }}
+          secret_map: ${{ vars.ACCEPTANCE_TEST_SECRET_MAP }}
+          dependencies: ${{ vars.ACCEPTANCE_TEST_DEPENDENCIES || '{}' }}
+          maven_profile: ${{ vars.MAVEN_PROFILE || '' }}
+          expected_digest: ${{ needs.deploy.outputs.deployed_digest }}
