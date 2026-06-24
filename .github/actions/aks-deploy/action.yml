@@ -1,0 +1,208 @@
+# Deploy a service image to the shared spi-stack AKS cluster, by digest.
+#
+# CALLER REQUIREMENTS (composite actions cannot declare permissions or install tools):
+#   - The calling workflow job MUST set `permissions: { id-token: write, contents: read }`
+#     so azure/login can request the federated OIDC token.
+#   - The caller MUST have already installed `kubectl` and `kubelogin` on the runner
+#     (e.g. azure/setup-kubectl + a kubelogin install step). `az` is provided by azure/login.
+#   - Cluster auth is Entra-only + Azure RBAC for Kubernetes (Phase 0 gate 0b), so this action
+#     runs `kubelogin convert-kubeconfig -l azurecli` after fetching credentials.
+#
+# Reference: design doc §5.2 (Deploy) + Appendix A.3. Trust boundary lives on the caller
+# job (§5.5 / ADR-036) -- this action never decides whether it is safe to run.
+
+name: 'AKS Deploy (set image by digest)'
+description: >-
+  OIDC login, assert Flux is suspended (CI mode), `kubectl set image` by digest, wait for
+  rollout, and emit the previous + deployed digests. By digest only -- tags are never accepted.
+
+inputs:
+  azure_client_id:
+    description: 'Federated-identity client ID for OIDC login (repo secret AZURE_CLIENT_ID).'
+    required: true
+  azure_tenant_id:
+    description: 'Entra tenant ID (repo secret AZURE_TENANT_ID).'
+    required: true
+  azure_subscription_id:
+    description: 'Subscription ID (repo secret AZURE_SUBSCRIPTION_ID).'
+    required: true
+  aks_resource_group:
+    description: 'Resource group of the AKS cluster (org variable AKS_RESOURCE_GROUP).'
+    required: true
+  aks_cluster_name:
+    description: 'AKS cluster name (org variable AKS_CLUSTER_NAME).'
+    required: true
+  namespace:
+    description: 'Target Kubernetes namespace (org variable K8S_NAMESPACE, e.g. osdu).'
+    required: true
+  deployment_name:
+    description: 'Deployment to patch -- per-service variable K8S_DEPLOYMENT_NAME (NOT derived from SERVICE_NAME; see D13).'
+    required: true
+  container_name:
+    description: 'Container within the Deployment to set -- per-service variable K8S_CONTAINER_NAME.'
+    required: true
+  image_repository:
+    description: 'Image repository without tag/digest, e.g. ghcr.io/<org>/<service>.'
+    required: true
+  image_digest:
+    description: 'Image digest INCLUDING the sha256: prefix, e.g. sha256:abc123... The deploy reference is composed as <image_repository>@<image_digest>. Tags are not accepted.'
+    required: true
+  rollout_timeout:
+    description: 'kubectl rollout status timeout.'
+    required: false
+    default: '5m'
+  flux_namespace:
+    description: 'Namespace holding the spi-stack Flux Kustomizations, for the CI-mode suspend pre-check. Defaults to flux-system; THIS stack uses osdu-flux (the AKS Flux extension is configured there). Wire from an org variable so it tracks the cluster.'
+    required: false
+    default: 'flux-system'
+
+outputs:
+  previous_digest:
+    description: 'sha256 digest running BEFORE this deploy (captured pre-patch; consumed by restore-deployment.yml per §8.9). Empty when nothing was running.'
+    value: ${{ steps.capture-previous.outputs.digest }}
+  deployed_digest:
+    description: 'sha256 digest running AFTER rollout (read from the live pod; for downstream pin-verification in integration-test).'
+    value: ${{ steps.verify.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    - name: 'Azure login (OIDC)'
+      uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
+      with:
+        client-id: ${{ inputs.azure_client_id }}
+        tenant-id: ${{ inputs.azure_tenant_id }}
+        subscription-id: ${{ inputs.azure_subscription_id }}
+
+    - name: 'Validate image digest format'
+      shell: bash
+      # Catch the "double sha256:" foot-gun and tag-as-digest mistakes before kubectl runs.
+      run: |
+        if ! printf '%s' "$IMAGE_DIGEST" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+          echo "::error::image_digest must match ^sha256:[a-f0-9]{64}$ (got: '$IMAGE_DIGEST'). Pass a digest, never a tag."
+          exit 1
+        fi
+      env:
+        IMAGE_DIGEST: ${{ inputs.image_digest }}
+
+    - name: 'Get AKS credentials'
+      shell: bash
+      # Entra-only cluster with Azure RBAC (gate 0b): convert to the azurecli exec plugin so
+      # kubectl uses the az CLI token non-interactively. Caller must have kubelogin installed.
+      run: |
+        az aks get-credentials \
+          --resource-group "$RG" \
+          --name "$CLUSTER" \
+          --overwrite-existing \
+          --only-show-errors
+        kubelogin convert-kubeconfig -l azurecli
+      env:
+        RG: ${{ inputs.aks_resource_group }}
+        CLUSTER: ${{ inputs.aks_cluster_name }}
+
+    - name: 'Assert Flux suspended (pre-flight, §7.5 CI-mode invariant)'
+      shell: bash
+      # Fail fast if the cluster is not in CI mode: an unsuspended Kustomization reverts our
+      # `kubectl set image` within its reconcile interval via Helm drift correction.
+      # NOTE: the suspend flag lives on the Kustomizations, not the GitRepository source --
+      # source-suspend (ADR-014) alone does NOT stop reconciliation from the cached artifact.
+      run: |
+        all=$(kubectl get kustomizations -n "$FLUX_NS" -o json 2>/dev/null | jq -r '.items[].metadata.name')
+        if [ -z "$all" ]; then
+          # A vacuous "0 unsuspended" would be a false negative. If the namespace has no
+          # Kustomizations, flux_namespace is almost certainly wrong (this stack uses osdu-flux).
+          echo "::error::No Flux Kustomizations found in namespace '$FLUX_NS' -- wrong flux_namespace? Refusing to deploy without verifying CI mode."
+          exit 1
+        fi
+        running=$(kubectl get kustomizations -n "$FLUX_NS" -o json \
+          | jq -r '.items[] | select(.spec.suspend != true) | .metadata.name')
+        if [ -n "$running" ]; then
+          echo "::error::Flux Kustomizations not suspended in $FLUX_NS: $running. Cluster is not in CI mode (see ADR-032 / §7.5). Run: flux suspend kustomization --all -n $FLUX_NS"
+          exit 1
+        fi
+      env:
+        FLUX_NS: ${{ inputs.flux_namespace }}
+
+    - name: 'Capture previous digest (for restore)'
+      id: capture-previous
+      shell: bash
+      # Derive the pod selector from the live Deployment rather than assuming a label
+      # convention -- chart-prefixed names vary across services.
+      run: |
+        SELECTOR=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NS" \
+          -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
+        IMAGE_ID=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
+          | jq -r --arg c "$CONTAINER_NAME" '[.items[].status.containerStatuses[]? | select(.name==$c) | .imageID] | .[0] // ""')
+        DIGEST="${IMAGE_ID##*@}"
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+        echo "Previous digest: ${DIGEST:-<none>}"
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
+        CONTAINER_NAME: ${{ inputs.container_name }}
+        NS: ${{ inputs.namespace }}
+
+    - name: 'Set image (by digest)'
+      shell: bash
+      run: |
+        kubectl set image "deployment/$DEPLOYMENT_NAME" \
+          "$CONTAINER_NAME=$IMAGE_REPOSITORY@$IMAGE_DIGEST" \
+          -n "$NS"
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
+        CONTAINER_NAME: ${{ inputs.container_name }}
+        IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+        IMAGE_DIGEST: ${{ inputs.image_digest }}
+        NS: ${{ inputs.namespace }}
+
+    - name: 'Wait for rollout'
+      shell: bash
+      run: |
+        kubectl rollout status "deployment/$DEPLOYMENT_NAME" -n "$NS" --timeout="$TIMEOUT"
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
+        NS: ${{ inputs.namespace }}
+        TIMEOUT: ${{ inputs.rollout_timeout }}
+
+    - name: 'Capture deployed digest (post-rollout verification)'
+      id: verify
+      shell: bash
+      run: |
+        SELECTOR=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NS" \
+          -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
+        IMAGE_ID=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
+          | jq -r --arg c "$CONTAINER_NAME" '[.items[].status.containerStatuses[]? | select(.name==$c) | .imageID] | .[0] // ""')
+        DIGEST="${IMAGE_ID##*@}"
+        if [ -z "$DIGEST" ]; then
+          echo "::error::Could not read deployed digest for container '$CONTAINER_NAME' in deployment/$DEPLOYMENT_NAME."
+          exit 1
+        fi
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+        echo "Deployed digest: ${DIGEST}"
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
+        CONTAINER_NAME: ${{ inputs.container_name }}
+        NS: ${{ inputs.namespace }}
+
+    - name: 'Collect diagnostics on failure'
+      if: failure()
+      shell: bash
+      run: |
+        mkdir -p deploy-diagnostics
+        {
+          echo "### deployment/$DEPLOYMENT_NAME (namespace $NS)"
+          kubectl describe "deployment/$DEPLOYMENT_NAME" -n "$NS" 2>&1 || true
+          echo
+          echo "### recent pod logs (--tail=200)"
+          kubectl logs "deployment/$DEPLOYMENT_NAME" -n "$NS" --tail=200 --all-containers 2>&1 || true
+        } > "deploy-diagnostics/${DEPLOYMENT_NAME}.txt"
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
+        NS: ${{ inputs.namespace }}
+
+    - name: 'Upload failure diagnostics'
+      if: failure()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: aks-deploy-diagnostics-${{ inputs.deployment_name }}
+        path: deploy-diagnostics/
+        if-no-files-found: ignore
