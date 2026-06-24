@@ -55,6 +55,17 @@ on:
         required: false
         type: boolean
         default: false
+      # Declared by W13 (#9), inert until W5a/W5b reference it. Lets an operator force a full
+      # docker-push -> deploy -> integration-test run on the current HEAD even for paths-ignored
+      # events (e.g. after a template-sync PR brings workflow/action changes into a fork). The
+      # `if:` wiring lives in the docker-push job (W5a) and the deploy/integration-test jobs
+      # (W5b) -- this slot only declares the input. Run me after template-sync to verify workflow
+      # changes still pass the full pipeline.
+      force_full_pipeline:
+        description: 'Force the full docker-push + deploy + integration-test pipeline on the current HEAD (used after template-sync to verify workflow changes).'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
