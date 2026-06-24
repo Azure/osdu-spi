@@ -1,0 +1,246 @@
+# Run a service's acceptance-test suite against the live spi-stack gateway, after
+# verifying the pod still runs the digest we just deployed.
+#
+# CALLER REQUIREMENTS (composite actions cannot declare permissions or install tools):
+#   - The calling workflow job MUST set `permissions: { id-token: write, contents: read }`.
+#   - The caller MUST have already run azure/login + az aks get-credentials + kubelogin
+#     (the deploy job does this; integration-test reuses the same job's kube context only if
+#     in the same job -- when in a separate job it logs in itself; see inputs azure_*).
+#   - kubectl, kubelogin, Java 17, and Maven must be available on the runner.
+#
+# ENCAPSULATION: this action takes only explicit inputs. It never reads vars.* or secrets.*
+# directly -- the workflow caller wires them in (§5.3).
+#
+# EXIT-CODE SEMANTICS (required-check compatible, §5.3): the job exit is binary on the TEST
+# outcome only. The cross-service health probe is advisory -- it sets cluster_state +
+# test_result=pass-advisory and drives a PR label, but NEVER changes the exit code.
+#
+# Reference: design doc §5.3 + Appendix A.4 + §8.6 + §8.9.
+
+name: 'Integration Test (acceptance suite vs gateway)'
+description: >-
+  Verify the deployed digest is still running, run an advisory cross-service health probe,
+  pull acceptance-test secrets from Key Vault (masked), and run the service's acceptance-test
+  Maven module against the gateway with retry-on-flake.
+
+inputs:
+  azure_client_id:
+    description: 'Federated-identity client ID for OIDC login (repo secret AZURE_CLIENT_ID).'
+    required: true
+  azure_tenant_id:
+    description: 'Entra tenant ID (repo secret AZURE_TENANT_ID).'
+    required: true
+  azure_subscription_id:
+    description: 'Subscription ID (repo secret AZURE_SUBSCRIPTION_ID).'
+    required: true
+  aks_resource_group:
+    description: 'Resource group of the AKS cluster (org variable AKS_RESOURCE_GROUP).'
+    required: true
+  aks_cluster_name:
+    description: 'AKS cluster name (org variable AKS_CLUSTER_NAME).'
+    required: true
+  test_dir:
+    description: 'Acceptance-test Maven module directory (per-service variable ACCEPTANCE_TEST_DIR; convention <service>-acceptance-test).'
+    required: true
+  namespace:
+    description: 'Target namespace (org variable K8S_NAMESPACE, e.g. osdu).'
+    required: true
+  deployment_name:
+    description: 'Deployment under test (per-service variable K8S_DEPLOYMENT_NAME).'
+    required: true
+  container_name:
+    description: 'Container within the Deployment (per-service variable K8S_CONTAINER_NAME).'
+    required: true
+  gateway_url:
+    description: 'Base gateway URL, e.g. https://<gateway-host> (org variable GATEWAY_URL).'
+    required: true
+  keyvault_name:
+    description: 'Key Vault holding acceptance-test secrets (org variable KEYVAULT_NAME).'
+    required: true
+  secret_map:
+    description: 'JSON map of env-var-name -> kv-secret-name, e.g. {"INTEGRATION_TESTER":"integration-tester-id"}. Per-service.'
+    required: true
+  expected_digest:
+    description: 'sha256 digest the deploy job set (needs.deploy.outputs.deployed_digest). The pod image is re-read and the run fails on mismatch (mid-test Flux resume / stale restart guard).'
+    required: true
+  dependencies:
+    description: 'Optional JSON map of dependency-service -> gateway health path, e.g. {"partition":"/api/partition/v1/info"}. Probed at start; advisory only (drives cluster_state + PR label, never the exit code).'
+    required: false
+    default: '{}'
+  maven_goal:
+    description: 'Maven goal for the acceptance tests.'
+    required: false
+    default: 'verify'
+  maven_profile:
+    description: 'Optional Maven profile for the acceptance-test module.'
+    required: false
+    default: ''
+  max_attempts:
+    description: 'Acceptance-test retry attempts (flaky-test mitigation, §8.6).'
+    required: false
+    default: '2'
+  timeout_minutes:
+    description: 'Per-attempt timeout for the acceptance-test run.'
+    required: false
+    default: '10'
+
+outputs:
+  test_result:
+    description: "'pass' | 'fail' | 'pass-advisory' (tests passed but a dependency was unhealthy at probe time)."
+    value: ${{ steps.result.outputs.test_result }}
+  cluster_state:
+    description: "'healthy' | 'contaminated' (cross-service health probe at start of run)."
+    value: ${{ steps.health.outputs.cluster_state }}
+  test_report_url:
+    description: 'Link to the uploaded JUnit XML artifact (empty if none produced).'
+    value: ${{ steps.report.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - name: 'Azure login (OIDC)'
+      uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
+      with:
+        client-id: ${{ inputs.azure_client_id }}
+        tenant-id: ${{ inputs.azure_tenant_id }}
+        subscription-id: ${{ inputs.azure_subscription_id }}
+
+    - name: 'Get AKS credentials'
+      shell: bash
+      run: |
+        az aks get-credentials \
+          --resource-group "$RG" \
+          --name "$CLUSTER" \
+          --overwrite-existing \
+          --only-show-errors
+        kubelogin convert-kubeconfig -l azurecli
+      env:
+        RG: ${{ inputs.aks_resource_group }}
+        CLUSTER: ${{ inputs.aks_cluster_name }}
+
+    - name: 'Verify deployed digest still running'
+      shell: bash
+      # Guards against a mid-test Flux resume, a pod restart with a stale image, or a
+      # cross-service overwrite -- if the live pod is not the digest we deployed, the test
+      # result would be meaningless, so fail fast (§8.9, Appendix A.4).
+      run: |
+        if ! printf '%s' "$EXPECTED" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+          echo "::error::expected_digest must be a sha256:<64-hex> digest (got: '$EXPECTED')."
+          exit 1
+        fi
+        SELECTOR=$(kubectl get deployment "$DEPLOYMENT" -n "$NS" \
+          -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
+        CURRENT=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
+          | jq -r --arg c "$CONTAINER" '[.items[].status.containerStatuses[]? | select(.name==$c) | .imageID] | .[0] // ""')
+        CURRENT_DIGEST="${CURRENT##*@}"
+        if [ "$CURRENT_DIGEST" != "$EXPECTED" ]; then
+          echo "::error::Pod is running '${CURRENT_DIGEST:-<none>}' but deploy set '$EXPECTED'. Possible Flux resume, pod restart with stale image, or cross-service overwrite."
+          exit 1
+        fi
+        echo "Verified pod is running the expected digest: $EXPECTED"
+      env:
+        NS: ${{ inputs.namespace }}
+        DEPLOYMENT: ${{ inputs.deployment_name }}
+        CONTAINER: ${{ inputs.container_name }}
+        EXPECTED: ${{ inputs.expected_digest }}
+
+    - name: 'Cross-service health probe (advisory)'
+      id: health
+      shell: bash
+      # Advisory ONLY: sets cluster_state but never the job exit code (§5.3 exit-code table).
+      run: |
+        STATE=healthy
+        if [ -n "$DEPS" ] && [ "$DEPS" != "{}" ]; then
+          for svc in $(jq -r 'keys[]' <<< "$DEPS"); do
+            path=$(jq -r --arg s "$svc" '.[$s]' <<< "$DEPS")
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${GW}${path}" || echo "000")
+            if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+              echo "::warning::Dependency '$svc' unhealthy at ${GW}${path} (HTTP $code)"
+              STATE=contaminated
+            fi
+          done
+        fi
+        echo "cluster_state=$STATE" >> "$GITHUB_OUTPUT"
+        echo "Cluster state at start of run: $STATE"
+      env:
+        DEPS: ${{ inputs.dependencies }}
+        GW: ${{ inputs.gateway_url }}
+
+    - name: 'Load acceptance-test secrets from Key Vault (masked, multiline-safe)'
+      shell: bash
+      run: |
+        for env_name in $(jq -r 'keys[]' <<< "$MAP"); do
+          secret_name=$(jq -r --arg k "$env_name" '.[$k]' <<< "$MAP")
+          value=$(az keyvault secret show --vault-name "$KV" --name "$secret_name" --query value -o tsv)
+          # Mask BEFORE writing to GITHUB_ENV so it never appears in logs.
+          echo "::add-mask::$value"
+          {
+            printf '%s<<__SECRET_EOF__\n' "$env_name"
+            printf '%s\n' "$value"
+            printf '__SECRET_EOF__\n'
+          } >> "$GITHUB_ENV"
+        done
+      env:
+        KV: ${{ inputs.keyvault_name }}
+        MAP: ${{ inputs.secret_map }}
+
+    - name: 'Run acceptance tests (retry on flake)'
+      id: tests
+      uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60  # v4.0.0
+      with:
+        timeout_minutes: ${{ inputs.timeout_minutes }}
+        max_attempts: ${{ inputs.max_attempts }}
+        # GATEWAY_URL is exported so acceptance suites that read it from the environment
+        # (e.g. PARTITION_BASE_URL derivations) pick it up; KV-sourced env vars are already
+        # in GITHUB_ENV from the previous step.
+        command: |
+          cd "${{ inputs.test_dir }}"
+          PROFILE_ARG=""
+          if [ -n "${{ inputs.maven_profile }}" ]; then PROFILE_ARG="-P ${{ inputs.maven_profile }}"; fi
+          GATEWAY_URL="${{ inputs.gateway_url }}" mvn --batch-mode --no-transfer-progress $PROFILE_ARG ${{ inputs.maven_goal }}
+
+    - name: 'Upload JUnit results'
+      id: report
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: integration-test-results-${{ inputs.deployment_name }}
+        path: |
+          ${{ inputs.test_dir }}/**/target/surefire-reports/*.xml
+          ${{ inputs.test_dir }}/**/target/failsafe-reports/*.xml
+        if-no-files-found: ignore
+
+    - name: 'Compute test_result + summary'
+      id: result
+      if: always()
+      shell: bash
+      # Binary exit on the TEST outcome; cluster_state only annotates (pass-advisory + label).
+      run: |
+        echo "url=${ARTIFACT_URL}" >> "$GITHUB_OUTPUT"
+        if [ "$TESTS_OUTCOME" = "success" ]; then
+          if [ "$CLUSTER_STATE" = "contaminated" ]; then
+            RESULT="pass-advisory"
+          else
+            RESULT="pass"
+          fi
+        else
+          RESULT="fail"
+        fi
+        echo "test_result=$RESULT" >> "$GITHUB_OUTPUT"
+        {
+          echo "### 🧪 Integration Tests"
+          echo ""
+          echo "- Service: \`${DEPLOYMENT}\`"
+          echo "- Result: \`${RESULT}\`"
+          echo "- Cluster state at start: \`${CLUSTER_STATE}\`"
+          if [ "$RESULT" = "pass-advisory" ]; then
+            echo "- ⚠️ A dependency was unhealthy at probe time; the pass may not be fully authoritative (label \`ci/cluster-was-contaminated\`)."
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+        # Re-surface the real test outcome as this action's exit code.
+        [ "$TESTS_OUTCOME" = "success" ]
+      env:
+        TESTS_OUTCOME: ${{ steps.tests.outcome }}
+        CLUSTER_STATE: ${{ steps.health.outputs.cluster_state }}
+        DEPLOYMENT: ${{ inputs.deployment_name }}
+        ARTIFACT_URL: ${{ steps.report.outputs.artifact-url }}
