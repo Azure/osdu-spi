@@ -39,7 +39,9 @@ Architecture Decision Records for Fork Management Template
 | 029 | GitHub App Authentication Strategy         | [ADR-029](029-github-app-authentication-strategy.md) |
 | 030 | CodeQL Summary Job Pattern                 | [ADR-030](030-codeql-summary-job-pattern.md) |
 | 031 | Template Sync Duplicate Prevention Pattern | [ADR-031](031-template-sync-duplicate-prevention.md) |
+| 032 | CI/CD Deploy Loop via Suspended Flux       | [ADR-032](032-cicd-deploy-loop-via-suspended-flux.md) |
 | 033 | GHCR as Service Image Registry             | [ADR-033](033-ghcr-as-service-image-registry.md) |
+| 034 | Federated Identity for Actions to Azure    | [ADR-034](034-federated-identity-actions-to-azure.md) |
 | 035 | Azure-Only Maven Profile Restriction       | [ADR-035](035-azure-only-maven-profile.md) |
 | 036 | Workflow Trust Boundaries for CI/CD        | [ADR-036](036-workflow-trust-boundaries.md) |
 | 037 | Engineering System Owns the Canonical Service Dockerfile | [ADR-037](037-engineering-system-owns-service-dockerfile.md) |
@@ -205,10 +207,20 @@ These Architecture Decision Records document the key design choices made in the 
 - Branch reuse with force-push when template advances
 - Eliminates daily accumulation of open template-sync PRs
 
+**CI/CD Deploy Loop via Suspended Flux (ADR-032)**
+- Shared `osdu-spi-stack` cluster runs with all Flux Kustomizations permanently suspended (CI steady state)
+- Per-PR deploy jobs `kubectl set image` by immutable digest; a pre-flight asserts Flux is still suspended
+- Flux is resumed only during a planned baseline refresh; `K8S_DEPLOYMENT_NAME`/`K8S_CONTAINER_NAME` insulate CI from chart naming
+
 **GHCR as Service Image Registry (ADR-033)**
 - Public GHCR for SPI service CI/test artifacts consumed by the `osdu-spi-stack` AKS cluster
 - Push via `GITHUB_TOKEN`, pull anonymously from AKS — no `imagePullSecret`
 - MCR migration deferred; ACR/MCR swap is localized to the visibility helper, private-GHCR fallback is broader-touch
+
+**Federated Identity for Actions to Azure (ADR-034)**
+- One User-Assigned Managed Identity per service fork; GitHub Actions auth via OIDC `azure/login` (no static `AZURE_CREDENTIALS`)
+- Handoff contract is three repo secrets (`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`); `AZURE_CLIENT_ID` is also a variable for `if:`/diagnostics
+- `oidc-smoke-test.yml` validates each federated-credential subject in isolation
 
 **Azure-Only Maven Profile Restriction (ADR-035)**
 - CI builds the Azure profile set with a hardcoded default of `core,azure` (correct for 9/10 forks); `core` is `activeByDefault`, so a bare `-P azure` would drop it

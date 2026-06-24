@@ -1,0 +1,135 @@
+name: OIDC Smoke Test
+
+# Validates federated credential for branch + tag subjects against the dispatched ref.
+# Does NOT validate pull_request subject — that's exercised by validate.yml on a real PR (W5b).
+# Run this after any federated-credential edit, or to debug 'azure/login fails on branch Y' /
+# 'fails on tag Z' issues. Phase 0 step 4a uses this workflow.
+#
+# Scope: workflow_dispatch only — no push/pull_request triggers.
+# This is an operator-run tool, not CI. A workflow_dispatch trigger always presents one of the
+# branch/tag claim shapes (repo:org/repo:ref:refs/heads/<branch> or
+# repo:org/repo:ref:refs/tags/<tag>), regardless of the ref input value. The pull_request
+# subject (repo:org/repo:pull_request) is never exercised by this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >
+          Git ref being validated (branch name or tag name, e.g. 'main' or 'v1.0.0').
+          NOTE: This input is for operator reference only — it does NOT control which ref
+          the workflow runs on or which OIDC subject claim is presented to Azure. The OIDC
+          subject is determined by the branch/tag you select in the GitHub UI 'Run workflow'
+          dropdown. Dispatch this workflow from the matching branch/tag so the OIDC subject
+          claim aligns with your federated-credential subject configuration.
+        required: false
+        default: 'main'
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  oidc-smoke-test:
+    name: "🔐 OIDC Federated Credential Smoke Test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Preflight — verify required secrets and variables"
+        env:
+          SECRET_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          SECRET_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          SECRET_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          VAR_AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+          VAR_AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+          VAR_AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          VAR_AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          missing=0
+
+          if [ -z "$SECRET_CLIENT_ID" ]; then
+            echo "::error::Required secret AZURE_CLIENT_ID is not set."
+            missing=1
+          fi
+          if [ -z "$SECRET_TENANT_ID" ]; then
+            echo "::error::Required secret AZURE_TENANT_ID is not set."
+            missing=1
+          fi
+          if [ -z "$SECRET_SUBSCRIPTION_ID" ]; then
+            echo "::error::Required secret AZURE_SUBSCRIPTION_ID is not set."
+            missing=1
+          fi
+          if [ -z "$VAR_AKS_RESOURCE_GROUP" ]; then
+            echo "::error::Required variable AKS_RESOURCE_GROUP is not set."
+            missing=1
+          fi
+          if [ -z "$VAR_AKS_CLUSTER_NAME" ]; then
+            echo "::error::Required variable AKS_CLUSTER_NAME is not set."
+            missing=1
+          fi
+
+          if [ -z "$VAR_AZURE_CLIENT_ID" ]; then
+            echo "::warning::Recommended variable AZURE_CLIENT_ID is not set — login-failure diagnostics will show a placeholder."
+          fi
+          if [ -z "$VAR_AZURE_TENANT_ID" ]; then
+            echo "::warning::Recommended variable AZURE_TENANT_ID is not set — login-failure diagnostics will show a placeholder."
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::One or more required secrets/variables are missing. Configure them before re-running."
+            exit 1
+          fi
+
+      - name: "Compute expected OIDC subject claim"
+        id: subject
+        run: |
+          # The OIDC subject claim is derived from the ref this workflow was dispatched on
+          # (github.ref), not from inputs.ref.
+          # Claim shapes produced by workflow_dispatch:
+          #   branch: repo:<owner>/<repo>:ref:refs/heads/<branch>
+          #   tag:    repo:<owner>/<repo>:ref:refs/tags/<tag>
+          EXPECTED_SUBJECT="repo:${{ github.repository }}:ref:${{ github.ref }}"
+          echo "subject=${EXPECTED_SUBJECT}" >> "$GITHUB_OUTPUT"
+          echo "Expected OIDC subject: ${EXPECTED_SUBJECT}"
+
+      - name: "Azure Login (OIDC federated credential)"
+        id: az_login
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5  # v2.3.0
+        with:
+          # Use the SAME secret inputs the deploy workflow (aks-deploy) uses, so this smoke test
+          # exercises the real federated-credential path — the onboarding contract writes these as
+          # secrets. The failure-guidance step below prints the *variable* copy of the client-id for
+          # operator diagnostics, since secrets are masked in logs (design §6.1 sets AZURE_CLIENT_ID
+          # as both a secret and a variable).
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "On login failure — print subject claim guidance"
+        if: failure() && steps.az_login.outcome == 'failure'
+        run: |
+          echo "::error::azure/login failed for subject: ${{ steps.subject.outputs.subject }}"
+          echo "::error::Verify that a federated credential with exactly this subject exists on"
+          echo "::error::the user-assigned managed identity (client-id '${{ vars.AZURE_CLIENT_ID || '<AZURE_CLIENT_ID variable not set>' }}')"
+          echo "::error::in tenant '${{ vars.AZURE_TENANT_ID || '<AZURE_TENANT_ID variable not set>' }}'."
+          echo "::error::If you just changed federated credentials, wait ~30 s and retry."
+          echo "::error::To add a missing credential:"
+          echo "::error::  az identity federated-credential create ... --subject '${{ steps.subject.outputs.subject }}'"
+
+      - name: "Get AKS credentials (Entra-only cluster — convert kubeconfig via kubelogin)"
+        run: |
+          # The shared cluster runs with disableLocalAccounts=true + Azure RBAC (Phase 0 gate 0b),
+          # so a plain kubeconfig cannot authenticate non-interactively. Install kubelogin (and
+          # kubectl) and convert the kubeconfig to reuse the azure/login federated identity —
+          # otherwise kubectl would hang on an interactive device-code prompt in CI.
+          az aks install-cli
+          az aks get-credentials \
+            --resource-group "${{ vars.AKS_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_CLUSTER_NAME }}" \
+            --overwrite-existing
+          kubelogin convert-kubeconfig -l azurecli
+
+      - name: "Verify service namespace is reachable"
+        run: |
+          NS="${{ vars.K8S_NAMESPACE }}"
+          kubectl get deployments -n "${NS:-osdu}"

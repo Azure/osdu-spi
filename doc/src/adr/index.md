@@ -83,7 +83,9 @@ Decisions for the container-image build, cluster deploy, and integration-test pi
 
 | ADR | Decision | Impact |
 |-----|----------|--------|
+| [032](032-cicd-deploy-loop-via-suspended-flux.md) | **CI/CD Deploy Loop via Suspended Flux** | :material-trending-up: High |
 | [033](033-ghcr-as-service-image-registry.md) | **GHCR as Service Image Registry** | :material-minus: Medium |
+| [034](034-federated-identity-actions-to-azure.md) | **Federated Identity for Actions to Azure** | :material-trending-up: High |
 | [035](035-azure-only-maven-profile.md) | **Azure-Only Maven Profile Restriction** | :material-minus: Medium |
 | [036](036-workflow-trust-boundaries.md) | **Workflow Trust Boundaries for CI/CD** | :material-trending-up: High |
 | [037](037-engineering-system-owns-service-dockerfile.md) | **Engineering System Owns the Canonical Service Dockerfile** | :material-trending-up: High |

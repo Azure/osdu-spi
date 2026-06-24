@@ -101,6 +101,10 @@
         {
           "path": ".github/template-workflows/settings-apply.yml",
           "description": "Per-fork settings reconciliation: idempotent rulesets + required-variable check + GHCR visibility"
+        },
+        {
+          "path": ".github/template-workflows/oidc-smoke-test.yml",
+          "description": "Operator-run OIDC federated-credential smoke test (Phase 0 step 4a; branch/tag subjects)"
         }
       ],
       "template_only": [
