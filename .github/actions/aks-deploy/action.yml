@@ -117,7 +117,17 @@ runs:
         running=$(kubectl get kustomizations -n "$FLUX_NS" -o json \
           | jq -r '.items[] | select(.spec.suspend != true) | .metadata.name')
         if [ -n "$running" ]; then
-          echo "::error::Flux Kustomizations not suspended in $FLUX_NS: $running. Cluster is not in CI mode (see ADR-032 / §7.5). Run: flux suspend kustomization --all -n $FLUX_NS"
+          echo "::error::Flux Kustomizations not suspended in $FLUX_NS: $running. Cluster is not in CI mode (ADR-020/ADR-032). Run: spi reconcile --suspend (or flux suspend kustomization --all -n $FLUX_NS)"
+          exit 1
+        fi
+        # Services are HelmRelease-managed; a suspended Kustomization does NOT stop the
+        # HelmRelease's own reconcile loop from drift-correcting our `kubectl set image`
+        # back to the chart's pinned image (ADR-020). Assert the HelmReleases are suspended
+        # too -- `spi reconcile --suspend` freezes Kustomizations AND HelmReleases.
+        hr=$(kubectl get helmrelease -n "$FLUX_NS" -o json 2>/dev/null \
+          | jq -r '.items[] | select(.spec.suspend != true) | .metadata.name')
+        if [ -n "$hr" ]; then
+          echo "::error::Flux HelmReleases not suspended in $FLUX_NS: $hr. Cluster is not in CI mode (ADR-020/ADR-032). Run: spi reconcile --suspend (or flux suspend helmrelease --all -n $FLUX_NS)"
           exit 1
         fi
       env:
