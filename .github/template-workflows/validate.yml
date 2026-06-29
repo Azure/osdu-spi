@@ -678,6 +678,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    # Same per-service lock as the deploy job: a run must hold the cluster from
+    # deploy through integration-test so a superseded run's deploy cannot swap the
+    # pod under a running suite. cancel-in-progress: false -- never abandon a run.
+    concurrency:
+      group: spi-stack-${{ vars.SERVICE_NAME || github.event.repository.name }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
       - name: "Set up Java"
@@ -711,4 +717,8 @@ jobs:
           env_map: ${{ vars.ACCEPTANCE_TEST_ENV_MAP || '{}' }}
           dependencies: ${{ vars.ACCEPTANCE_TEST_DEPENDENCIES || '{}' }}
           maven_profile: ${{ vars.MAVEN_PROFILE || '' }}
+          maven_goal: ${{ vars.MAVEN_GOAL || 'verify' }}
+          root_token_env: ${{ vars.ROOT_TOKEN_ENV || 'ROOT_USER_TOKEN' }}
+          timeout_minutes: ${{ vars.IT_TIMEOUT_MINUTES || '25' }}
+          max_attempts: ${{ vars.IT_MAX_ATTEMPTS || '2' }}
           expected_digest: ${{ needs.deploy.outputs.deployed_digest }}

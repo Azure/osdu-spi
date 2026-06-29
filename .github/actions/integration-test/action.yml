@@ -210,6 +210,19 @@ runs:
             printf '__TOKEN_EOF__\n'
           } >> "$GITHUB_ENV"
           echo "Minted '$ROOT_TOKEN_ENV' (app-only, aud=$AAD_CLIENT_ID) as the CI identity."
+          # ADME standardizes every OSDU service IT on -DINTEGRATION_TESTER_ACCESS_TOKEN, minted
+          # without a secret via federated identity (oep-deployment-resources
+          # GenerateTokenWithoutSecret.yml). Export the same mint under that canonical name so the
+          # upstream testing/<svc>-test-azure suites consume it directly; the SPI-custom
+          # partition-acceptance-test reads ROOT_USER_TOKEN (the $ROOT_TOKEN_ENV default above).
+          if [ "$ROOT_TOKEN_ENV" != "INTEGRATION_TESTER_ACCESS_TOKEN" ]; then
+            {
+              printf 'INTEGRATION_TESTER_ACCESS_TOKEN<<__TOKEN_EOF__\n'
+              printf '%s\n' "$TOKEN"
+              printf '__TOKEN_EOF__\n'
+            } >> "$GITHUB_ENV"
+            echo "Also exported the mint as INTEGRATION_TESTER_ACCESS_TOKEN (ADME standard)."
+          fi
         fi
         if [ -n "$ENV_MAP" ] && [ "$ENV_MAP" != "{}" ]; then
           for env_name in $(jq -r 'keys[]' <<< "$ENV_MAP"); do

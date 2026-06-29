@@ -131,8 +131,10 @@ runs:
       run: |
         SELECTOR=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NS" \
           -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
+        # Only sample a Running, non-terminating pod whose target container is Ready, so a
+        # still-draining previous-RS pod (rolling update) can't yield a stale/foreign digest.
         IMAGE_ID=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
-          | jq -r --arg c "$CONTAINER_NAME" '[.items[].status.containerStatuses[]? | select(.name==$c) | .imageID] | .[0] // ""')
+          | jq -r --arg c "$CONTAINER_NAME" '[.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running") | .status.containerStatuses[]? | select(.name==$c and .ready==true) | .imageID] | .[0] // ""')
         DIGEST="${IMAGE_ID##*@}"
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
         echo "Previous digest: ${DIGEST:-<none>}"
@@ -169,8 +171,10 @@ runs:
       run: |
         SELECTOR=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NS" \
           -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
+        # Only sample a Running, non-terminating pod whose target container is Ready, so a
+        # still-draining previous-RS pod (rolling update) can't yield a stale/foreign digest.
         IMAGE_ID=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
-          | jq -r --arg c "$CONTAINER_NAME" '[.items[].status.containerStatuses[]? | select(.name==$c) | .imageID] | .[0] // ""')
+          | jq -r --arg c "$CONTAINER_NAME" '[.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running") | .status.containerStatuses[]? | select(.name==$c and .ready==true) | .imageID] | .[0] // ""')
         DIGEST="${IMAGE_ID##*@}"
         if [ -z "$DIGEST" ]; then
           echo "::error::Could not read deployed digest for container '$CONTAINER_NAME' in deployment/$DEPLOYMENT_NAME."
