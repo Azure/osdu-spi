@@ -89,6 +89,7 @@ Decisions for the container-image build, cluster deploy, and integration-test pi
 | [035](035-azure-only-maven-profile.md) | **Azure-Only Maven Profile Restriction** | :material-minus: Medium |
 | [036](036-workflow-trust-boundaries.md) | **Workflow Trust Boundaries for CI/CD** | :material-trending-up: High |
 | [037](037-engineering-system-owns-service-dockerfile.md) | **Engineering System Owns the Canonical Service Dockerfile** | :material-trending-up: High |
+| [038](038-defer-extra-file-dockerfile-support.md) | **Defer Extra-File Dockerfile Support for Core Service Onboarding** | :material-minus: Medium |
 
 ### :material-package-variant: Release Management
 

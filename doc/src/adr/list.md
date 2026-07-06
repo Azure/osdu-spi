@@ -45,6 +45,7 @@ Architecture Decision Records for Fork Management Template
 | 035 | Azure-Only Maven Profile Restriction       | [ADR-035](035-azure-only-maven-profile.md) |
 | 036 | Workflow Trust Boundaries for CI/CD        | [ADR-036](036-workflow-trust-boundaries.md) |
 | 037 | Engineering System Owns the Canonical Service Dockerfile | [ADR-037](037-engineering-system-owns-service-dockerfile.md) |
+| 038 | Defer Extra-File Dockerfile Support for Core Service Onboarding | [ADR-038](038-defer-extra-file-dockerfile-support.md) |
 
 ## Overview
 
@@ -237,3 +238,7 @@ These Architecture Decision Records document the key design choices made in the 
 - Mirrors the OSDU community `service-base-image/java/Dockerfile`: `COPY ${JAR_FILE} /app.jar` (no Maven in the image build); the JAR is the one our `java-build` job compiled from source, never a prebuilt artifact from OSDU's Maven registry
 - `JAR_FILE` defaults to `provider/<SERVICE_NAME>-azure/target/*-spring-boot.jar` (override via the `SERVICE_TARGET_JAR` repository variable); `BASE_IMAGE` is an `ARG` defaulting to OSDU `alpine-zulu17` so a later registry pivot is a one-line swap
 
+**Defer Extra-File Dockerfile Support for Core Service Onboarding (ADR-038)**
+- No Dockerfile or `docker-build` action change is required for the immediate 10 core service onboarding wave
+- ADME `OPTIONAL_FILES` usage was found only in reference services (`crs-catalog`, `crs-conversion`, `unit`), not Partition, Entitlements, or the 10 core service set
+- Extra-file image support should be deferred until reference-service onboarding and implemented with validated paths, not a raw Docker build-arg passthrough
