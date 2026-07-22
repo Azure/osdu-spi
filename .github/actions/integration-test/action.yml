@@ -20,8 +20,9 @@
 name: 'Integration Test (acceptance suite vs gateway)'
 description: >-
   Verify the deployed digest is still running, run an advisory cross-service health probe,
-  pull acceptance-test secrets from Key Vault (masked), and run the service's acceptance-test
-  Maven module against the gateway with retry-on-flake.
+  pull acceptance-test secrets from Key Vault (masked), mint entitled and no-data-access
+  federated tokens, and run the service's acceptance-test Maven module against the gateway
+  with retry-on-flake.
 
 inputs:
   azure_client_id:
@@ -69,6 +70,19 @@ inputs:
       raw token as the env var named by root_token_env (default ROOT_USER_TOKEN), masked. OSDU acceptance suites
       (TestTokenUtils) consume that token directly and skip the client_credentials OIDC flow. Leave empty to use
       the suite's own OIDC flow via secret_map instead.
+    required: false
+    default: ''
+  no_data_access_client_id:
+    description: >-
+      Client ID of the shared no-entitlements UAMI created by spi onboard for services that opt in
+      to negative-authorization tests. Used only when no_data_access_token_env is set.
+    required: false
+    default: ''
+  no_data_access_token_env:
+    description: >-
+      Env var that receives the short-lived no-data-access bearer token. Empty disables the second
+      token exchange. Most services use NO_DATA_ACCESS_TESTER_ACCESS_TOKEN; Workflow uses
+      NO_ACCESS_USER_TOKEN.
     required: false
     default: ''
   root_token_env:
@@ -149,11 +163,11 @@ runs:
         fi
         SELECTOR=$(kubectl get deployment "$DEPLOYMENT" -n "$NS" \
           -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
-        CURRENT=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
-          | jq -r --arg c "$CONTAINER" '[.items[].status.containerStatuses[]? | select(.name==$c) | .imageID] | .[0] // ""')
-        CURRENT_DIGEST="${CURRENT##*@}"
-        if [ "$CURRENT_DIGEST" != "$EXPECTED" ]; then
-          echo "::error::Pod is running '${CURRENT_DIGEST:-<none>}' but deploy set '$EXPECTED'. Possible Flux resume, pod restart with stale image, or cross-service overwrite."
+        CURRENT_DIGESTS=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
+          | jq -r --arg c "$CONTAINER" '.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running") | .status.containerStatuses[]? | select(.name==$c and .ready==true) | .imageID | split("@")[-1]' \
+          | sort -u)
+        if ! grep -Fxq "$EXPECTED" <<< "$CURRENT_DIGESTS"; then
+          echo "::error::No ready, non-terminating pod is running '$EXPECTED'. Observed: ${CURRENT_DIGESTS:-<none>}. Possible Flux resume, pod restart with a stale image, or cross-service overwrite."
           exit 1
         fi
         echo "Verified pod is running the expected digest: $EXPECTED"
@@ -257,6 +271,96 @@ runs:
       env:
         KV: ${{ inputs.keyvault_name }}
         MAP: ${{ inputs.secret_map }}
+
+    - name: 'Mint no-data-access token (isolated OIDC login)'
+      if: ${{ inputs.no_data_access_token_env != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "$NO_DATA_ACCESS_CLIENT_ID" ]; then
+          echo "::error::no_data_access_client_id is required when no_data_access_token_env is set."
+          exit 1
+        fi
+        if [ -z "$AAD_CLIENT_ID" ]; then
+          echo "::error::aad_client_id is required when no_data_access_token_env is set."
+          exit 1
+        fi
+        if ! [[ "$NO_DATA_ACCESS_TOKEN_ENV" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+          echo "::error::Invalid no_data_access_token_env '$NO_DATA_ACCESS_TOKEN_ENV'."
+          exit 1
+        fi
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+          echo "::error::GitHub OIDC request variables are unavailable. The job needs id-token: write."
+          exit 1
+        fi
+
+        OIDC_TOKEN=$(curl --fail-with-body --silent --show-error \
+          -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api%3A%2F%2FAzureADTokenExchange" \
+          | jq -er '.value')
+        echo "::add-mask::$OIDC_TOKEN"
+
+        TEMP_AZURE_CONFIG=$(mktemp -d)
+        cleanup() {
+          rm -r -- "$TEMP_AZURE_CONFIG"
+        }
+        trap cleanup EXIT
+
+        LOGIN_OK=false
+        for attempt in 1 2 3; do
+          if AZURE_CONFIG_DIR="$TEMP_AZURE_CONFIG" az login \
+            --service-principal \
+            --username "$NO_DATA_ACCESS_CLIENT_ID" \
+            --tenant "$AZURE_TENANT_ID" \
+            --federated-token "$OIDC_TOKEN" \
+            --allow-no-subscriptions \
+            --output none \
+            --only-show-errors; then
+            LOGIN_OK=true
+            break
+          fi
+          echo "::warning::No-data-access OIDC login attempt $attempt failed; retrying."
+          if [ "$attempt" -lt 3 ]; then
+            sleep $((attempt * 10))
+          fi
+        done
+        if [ "$LOGIN_OK" != "true" ]; then
+          echo "::error::Failed to authenticate the shared no-data-access identity."
+          exit 1
+        fi
+
+        TOKEN=""
+        for attempt in 1 2 3; do
+          TOKEN=$(AZURE_CONFIG_DIR="$TEMP_AZURE_CONFIG" az account get-access-token \
+            --resource "$AAD_CLIENT_ID" \
+            --query accessToken \
+            --output tsv \
+            --only-show-errors || true)
+          if [ -n "$TOKEN" ]; then
+            break
+          fi
+          echo "::warning::No-data-access token attempt $attempt failed; retrying."
+          if [ "$attempt" -lt 3 ]; then
+            sleep $((attempt * 5))
+          fi
+        done
+        if [ -z "$TOKEN" ]; then
+          echo "::error::Failed to mint the no-data-access token for resource '$AAD_CLIENT_ID'."
+          exit 1
+        fi
+
+        echo "::add-mask::$TOKEN"
+        {
+          printf '%s<<__TOKEN_EOF__\n' "$NO_DATA_ACCESS_TOKEN_ENV"
+          printf '%s\n' "$TOKEN"
+          printf '__TOKEN_EOF__\n'
+        } >> "$GITHUB_ENV"
+        echo "Minted $NO_DATA_ACCESS_TOKEN_ENV as the shared no-entitlements identity."
+      env:
+        AAD_CLIENT_ID: ${{ inputs.aad_client_id }}
+        AZURE_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        NO_DATA_ACCESS_CLIENT_ID: ${{ inputs.no_data_access_client_id }}
+        NO_DATA_ACCESS_TOKEN_ENV: ${{ inputs.no_data_access_token_env }}
 
     - name: 'Run acceptance tests (retry on flake)'
       id: tests

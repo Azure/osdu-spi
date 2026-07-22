@@ -221,6 +221,7 @@ These Architecture Decision Records document the key design choices made in the 
 **Federated Identity for Actions to Azure (ADR-034)**
 - One User-Assigned Managed Identity per service fork; GitHub Actions auth via OIDC `azure/login` (no static `AZURE_CREDENTIALS`)
 - Handoff contract is three repo secrets (`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`); `AZURE_CLIENT_ID` is also a variable for `if:`/diagnostics
+- Selected negative-auth test profiles use one shared role-free, entitlement-free UAMI; other services skip the second token exchange
 - `oidc-smoke-test.yml` validates each federated-credential subject in isolation
 
 **Azure-Only Maven Profile Restriction (ADR-035)**

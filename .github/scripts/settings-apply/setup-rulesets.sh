@@ -66,11 +66,17 @@ deploy_ready() {
   local ready=true name
   local secret_names variable_names
   secret_names="$(gh api --paginate "repos/${REPO_FULL_NAME}/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")"
-  variable_names="$(gh api --paginate "repos/${REPO_FULL_NAME}/actions/variables" --jq '.variables[].name' 2>/dev/null || echo "")"
+  local variables_json no_data_token_env
+  variables_json="$(gh api --paginate --slurp "repos/${REPO_FULL_NAME}/actions/variables?per_page=100" 2>/dev/null || echo '[{"variables":[]}]')"
+  variable_names="$(jq -r '.[].variables[].name' <<< "$variables_json")"
+  no_data_token_env="$(jq -r '[.[].variables[] | select(.name == "NO_DATA_ACCESS_TOKEN_ENV") | .value][0] // ""' <<< "$variables_json")"
   grep -qx "AZURE_CLIENT_ID" <<< "$secret_names" || ready=false
   for name in ACCEPTANCE_TEST_DIR ACCEPTANCE_TEST_SECRET_MAP ACCEPTANCE_TEST_DEPENDENCIES K8S_DEPLOYMENT_NAME K8S_CONTAINER_NAME; do
     grep -qx "$name" <<< "$variable_names" || ready=false
   done
+  if [[ -n "$no_data_token_env" ]]; then
+    grep -qx "NO_DATA_ACCESS_TESTER_CLIENT_ID" <<< "$variable_names" || ready=false
+  fi
   [[ "$ready" == "true" ]]
 }
 

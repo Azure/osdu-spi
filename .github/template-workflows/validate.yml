@@ -714,6 +714,8 @@ jobs:
           test_dir: ${{ vars.ACCEPTANCE_TEST_DIR }}
           secret_map: ${{ vars.ACCEPTANCE_TEST_SECRET_MAP || '{}' }}
           aad_client_id: ${{ vars.AAD_CLIENT_ID }}
+          no_data_access_client_id: ${{ vars.NO_DATA_ACCESS_TESTER_CLIENT_ID }}
+          no_data_access_token_env: ${{ vars.NO_DATA_ACCESS_TOKEN_ENV || '' }}
           env_map: ${{ vars.ACCEPTANCE_TEST_ENV_MAP || '{}' }}
           dependencies: ${{ vars.ACCEPTANCE_TEST_DEPENDENCIES || '{}' }}
           maven_profile: ${{ vars.MAVEN_PROFILE || '' }}

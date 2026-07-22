@@ -35,7 +35,9 @@ export GH_TOKEN="${GH_TOKEN:-}"
 ISSUE_TITLE="⚙️ Deploy onboarding: required CI configuration missing"
 
 secret_names="$(gh api --paginate "repos/${REPO}/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")"
-variable_names="$(gh api --paginate "repos/${REPO}/actions/variables" --jq '.variables[].name' 2>/dev/null || echo "")"
+variables_json="$(gh api --paginate --slurp "repos/${REPO}/actions/variables?per_page=100" 2>/dev/null || echo '[{"variables":[]}]')"
+variable_names="$(jq -r '.[].variables[].name' <<< "$variables_json")"
+no_data_token_env="$(jq -r '[.[].variables[] | select(.name == "NO_DATA_ACCESS_TOKEN_ENV") | .value][0] // ""' <<< "$variables_json")"
 
 missing=()
 have_secret() { grep -qx "$1" <<< "$secret_names"; }
@@ -45,6 +47,10 @@ have_secret "AZURE_CLIENT_ID" || missing+=("secret \`AZURE_CLIENT_ID\` — set b
 for v in K8S_DEPLOYMENT_NAME K8S_CONTAINER_NAME; do
   have_var "$v" || missing+=("variable \`$v\` — set by \`spi onboard\`")
 done
+if [[ -n "$no_data_token_env" ]]; then
+  have_var "NO_DATA_ACCESS_TESTER_CLIENT_ID" \
+    || missing+=("variable \`NO_DATA_ACCESS_TESTER_CLIENT_ID\` — set by \`spi onboard\` for negative-authorization tests")
+fi
 for v in ACCEPTANCE_TEST_DIR ACCEPTANCE_TEST_SECRET_MAP ACCEPTANCE_TEST_DEPENDENCIES; do
   have_var "$v" || missing+=("variable \`$v\` — set by the operator")
 done

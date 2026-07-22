@@ -107,15 +107,19 @@ runs:
       # NOTE: the suspend flag lives on the Kustomizations, not the GitRepository source --
       # source-suspend (ADR-014) alone does NOT stop reconciliation from the cached artifact.
       run: |
-        all=$(kubectl get kustomizations -n "$FLUX_NS" -o json 2>/dev/null | jq -r '.items[].metadata.name')
+        if ! kustomizations_json=$(kubectl get kustomizations -n "$FLUX_NS" -o json 2>&1); then
+          echo "::error::Cannot list Flux Kustomizations in '$FLUX_NS'. Re-run spi onboard to reconcile Flux read RBAC. kubectl: $kustomizations_json"
+          exit 1
+        fi
+        all=$(jq -r '.items[].metadata.name' <<< "$kustomizations_json")
         if [ -z "$all" ]; then
           # A vacuous "0 unsuspended" would be a false negative. If the namespace has no
           # Kustomizations, flux_namespace is almost certainly wrong (this stack uses osdu-flux).
           echo "::error::No Flux Kustomizations found in namespace '$FLUX_NS' -- wrong flux_namespace? Refusing to deploy without verifying CI mode."
           exit 1
         fi
-        running=$(kubectl get kustomizations -n "$FLUX_NS" -o json \
-          | jq -r '.items[] | select(.spec.suspend != true) | .metadata.name')
+        running=$(jq -r '.items[] | select(.spec.suspend != true) | .metadata.name' \
+          <<< "$kustomizations_json")
         if [ -n "$running" ]; then
           echo "::error::Flux Kustomizations not suspended in $FLUX_NS: $running. Cluster is not in CI mode (ADR-020/ADR-032). Run: spi reconcile --suspend (or flux suspend kustomization --all -n $FLUX_NS)"
           exit 1
@@ -124,8 +128,12 @@ runs:
         # HelmRelease's own reconcile loop from drift-correcting our `kubectl set image`
         # back to the chart's pinned image (ADR-020). Assert the HelmReleases are suspended
         # too -- `spi reconcile --suspend` freezes Kustomizations AND HelmReleases.
-        hr=$(kubectl get helmrelease -n "$FLUX_NS" -o json 2>/dev/null \
-          | jq -r '.items[] | select(.spec.suspend != true) | .metadata.name')
+        if ! helmreleases_json=$(kubectl get helmrelease -n "$FLUX_NS" -o json 2>&1); then
+          echo "::error::Cannot list Flux HelmReleases in '$FLUX_NS'. Re-run spi onboard to reconcile Flux read RBAC. kubectl: $helmreleases_json"
+          exit 1
+        fi
+        hr=$(jq -r '.items[] | select(.spec.suspend != true) | .metadata.name' \
+          <<< "$helmreleases_json")
         if [ -n "$hr" ]; then
           echo "::error::Flux HelmReleases not suspended in $FLUX_NS: $hr. Cluster is not in CI mode (ADR-020/ADR-032). Run: spi reconcile --suspend (or flux suspend helmrelease --all -n $FLUX_NS)"
           exit 1
@@ -136,16 +144,11 @@ runs:
     - name: 'Capture previous digest (for restore)'
       id: capture-previous
       shell: bash
-      # Derive the pod selector from the live Deployment rather than assuming a label
-      # convention -- chart-prefixed names vary across services.
       run: |
-        SELECTOR=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NS" \
-          -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
-        # Only sample a Running, non-terminating pod whose target container is Ready, so a
-        # still-draining previous-RS pod (rolling update) can't yield a stale/foreign digest.
-        IMAGE_ID=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
-          | jq -r --arg c "$CONTAINER_NAME" '[.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running") | .status.containerStatuses[]? | select(.name==$c and .ready==true) | .imageID] | .[0] // ""')
-        DIGEST="${IMAGE_ID##*@}"
+        IMAGE=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NS" -o json \
+          | jq -r --arg c "$CONTAINER_NAME" '.spec.template.spec.containers[] | select(.name==$c) | .image')
+        DIGEST="${IMAGE##*@}"
+        if [ "$DIGEST" = "$IMAGE" ]; then DIGEST=""; fi
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
         echo "Previous digest: ${DIGEST:-<none>}"
       env:
@@ -181,21 +184,20 @@ runs:
       run: |
         SELECTOR=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NS" \
           -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}' | sed 's/,$//')
-        # Only sample a Running, non-terminating pod whose target container is Ready, so a
-        # still-draining previous-RS pod (rolling update) can't yield a stale/foreign digest.
-        IMAGE_ID=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
-          | jq -r --arg c "$CONTAINER_NAME" '[.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running") | .status.containerStatuses[]? | select(.name==$c and .ready==true) | .imageID] | .[0] // ""')
-        DIGEST="${IMAGE_ID##*@}"
-        if [ -z "$DIGEST" ]; then
-          echo "::error::Could not read deployed digest for container '$CONTAINER_NAME' in deployment/$DEPLOYMENT_NAME."
+        DIGESTS=$(kubectl get pods -n "$NS" -l "$SELECTOR" -o json \
+          | jq -r --arg c "$CONTAINER_NAME" '.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running") | .status.containerStatuses[]? | select(.name==$c and .ready==true) | .imageID | split("@")[-1]' \
+          | sort -u)
+        if ! grep -Fxq "$EXPECTED" <<< "$DIGESTS"; then
+          echo "::error::No ready, non-terminating pod is running expected digest '$EXPECTED'. Observed: ${DIGESTS:-<none>}."
           exit 1
         fi
-        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-        echo "Deployed digest: ${DIGEST}"
+        echo "digest=${EXPECTED}" >> "$GITHUB_OUTPUT"
+        echo "Deployed digest: ${EXPECTED}"
       env:
         DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
         CONTAINER_NAME: ${{ inputs.container_name }}
         NS: ${{ inputs.namespace }}
+        EXPECTED: ${{ inputs.image_digest }}
 
     - name: 'Collect diagnostics on failure'
       if: failure()
