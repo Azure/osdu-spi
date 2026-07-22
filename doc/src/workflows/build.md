@@ -35,7 +35,9 @@ The workflow produces clear outcomes to help you understand the state of your ch
 
 ### Build Features
 - **Maven dependency caching** - Speeds up builds by caching `.m2/repository`
-- **JaCoCo coverage reporting** - Generates detailed test coverage reports using JaCoCo plugin
+- **JaCoCo coverage reporting** - Generates downloadable reports plus a CSV-derived
+  step-summary table with per-module and aggregate line, branch, instruction, and
+  method coverage
 - **Community repository access** - Authenticates with GitLab Maven repositories for OSDU dependencies
 - **Artifact storage** - Saves test reports and coverage data for 30 days
 
@@ -152,6 +154,9 @@ open target/site/jacoco/index.html
 ### Artifact Handling
 - **Test reports** - Stored for 30 days in GitHub Actions
 - **Coverage reports** - Available as downloadable artifacts
+- **Integration-test summaries** - Report JUnit totals, failures/errors/skips,
+  test duration, retry attempts, deployed digest, no-data profile state, and the
+  downloadable JUnit artifact
 - **Build logs** - Accessible via Actions tab for debugging
 
 ## Related

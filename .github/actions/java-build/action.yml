@@ -78,12 +78,8 @@ runs:
           # alongside coverage — the docker-build job downloads build-artifacts on PR events.
           mvn $MAVEN_CLI_OPTS clean package org.jacoco:jacoco-maven-plugin:0.8.11:report
           
-          # Generate coverage summary
-          echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "## Summary" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          find . -name "index.html" -path "*/target/site/jacoco/*" -exec grep -o '<tfoot>.*</tfoot>' {} \; | sed 's/<[^>]*>//g' >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          python "${{ github.action_path }}/render_coverage_summary.py" \
+            --root . | tee -a "$GITHUB_STEP_SUMMARY"
         else
           # Regular build without coverage
           mvn $MAVEN_CLI_OPTS clean install

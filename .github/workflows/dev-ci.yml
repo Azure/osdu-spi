@@ -75,6 +75,9 @@ jobs:
             echo "Validating $file"
             jq empty "$file" && echo "✅ $file is valid" || echo "❌ $file has errors"
           done
+
+      - name: Test workflow summary helpers
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
           
       - name: Check Documentation Links
         run: |

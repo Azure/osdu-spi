@@ -132,11 +132,8 @@ jobs:
           fi
           
           mvn $MAVEN_CLI_OPTS clean test org.jacoco:jacoco-maven-plugin:0.8.11:report
-          echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "## Summary" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          find . -name "index.html" -path "*/target/site/jacoco/*" -exec grep -o '<tfoot>.*</tfoot>' {} \; | sed 's/<[^>]*>//g' >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          python .github/actions/java-build/render_coverage_summary.py \
+            --root . | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: "Upload Coverage Report"
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0

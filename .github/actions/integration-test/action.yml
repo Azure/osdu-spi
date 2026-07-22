@@ -126,7 +126,22 @@ outputs:
     value: ${{ steps.health.outputs.cluster_state }}
   test_report_url:
     description: 'Link to the uploaded JUnit XML artifact (empty if none produced).'
-    value: ${{ steps.report.outputs.url }}
+    value: ${{ steps.report.outputs.artifact-url }}
+  tests:
+    description: 'Number of tests reported by Surefire/Failsafe XML.'
+    value: ${{ steps.junit.outputs.tests }}
+  failures:
+    description: 'Number of JUnit assertion failures.'
+    value: ${{ steps.junit.outputs.failures }}
+  errors:
+    description: 'Number of JUnit execution errors.'
+    value: ${{ steps.junit.outputs.errors }}
+  skipped:
+    description: 'Number of skipped or disabled tests.'
+    value: ${{ steps.junit.outputs.skipped }}
+  attempts:
+    description: 'Number of retry-wrapper attempts used.'
+    value: ${{ steps.tests.outputs.total_attempts }}
 
 runs:
   using: composite
@@ -377,6 +392,18 @@ runs:
           if [ -n "${{ inputs.maven_profile }}" ]; then PROFILE_ARG="-P ${{ inputs.maven_profile }}"; fi
           GATEWAY_URL="${{ inputs.gateway_url }}" mvn --batch-mode --no-transfer-progress $PROFILE_ARG ${{ inputs.maven_goal }}
 
+    - name: 'Summarize JUnit results'
+      id: junit
+      if: always()
+      shell: bash
+      run: |
+        python "$ACTION_PATH/summarize_junit.py" \
+          --test-dir "$TEST_DIR" \
+          --github-output "$GITHUB_OUTPUT"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        TEST_DIR: ${{ inputs.test_dir }}
+
     - name: 'Upload JUnit results'
       id: report
       if: always()
@@ -394,7 +421,6 @@ runs:
       shell: bash
       # Binary exit on the TEST outcome; cluster_state only annotates (pass-advisory + label).
       run: |
-        echo "url=${ARTIFACT_URL}" >> "$GITHUB_OUTPUT"
         if [ "$TESTS_OUTCOME" = "success" ]; then
           if [ "$CLUSTER_STATE" = "contaminated" ]; then
             RESULT="pass-advisory"
@@ -405,16 +431,51 @@ runs:
           RESULT="fail"
         fi
         echo "test_result=$RESULT" >> "$GITHUB_OUTPUT"
+        case "$RESULT" in
+          pass) RESULT_LABEL="✅ Pass" ;;
+          pass-advisory) RESULT_LABEL="⚠️ Pass (advisory)" ;;
+          *) RESULT_LABEL="❌ Fail" ;;
+        esac
+        if [ -n "$NO_DATA_TOKEN_ENV" ]; then
+          NO_DATA_LABEL="Enabled (\`$NO_DATA_TOKEN_ENV\`)"
+        else
+          NO_DATA_LABEL="Disabled"
+        fi
+        if [ "${REPORT_FILES:-0}" -gt 0 ]; then
+          TEST_LABEL="${TESTS} total · ${FAILURES} failures · ${ERRORS} errors · ${SKIPPED} skipped"
+          DURATION_LABEL="${DURATION_DISPLAY}"
+        else
+          TEST_LABEL="No JUnit XML reports found"
+          DURATION_LABEL="n/a"
+        fi
+        if [ -n "$ARTIFACT_URL" ]; then
+          ARTIFACT_LABEL="[Download JUnit XML]($ARTIFACT_URL)"
+        else
+          ARTIFACT_LABEL="Not available"
+        fi
         {
           echo "### 🧪 Integration Tests"
           echo ""
-          echo "- Service: \`${DEPLOYMENT}\`"
-          echo "- Result: \`${RESULT}\`"
-          echo "- Cluster state at start: \`${CLUSTER_STATE}\`"
+          echo "| Field | Value |"
+          echo "| --- | --- |"
+          echo "| Service | \`${DEPLOYMENT}\` |"
+          echo "| Result | ${RESULT_LABEL} |"
+          echo "| Tests | ${TEST_LABEL} |"
+          echo "| Test duration | ${DURATION_LABEL} |"
+          echo "| Retry attempts | ${ATTEMPTS:-0} |"
+          echo "| Cluster state at start | \`${CLUSTER_STATE:-unavailable}\` |"
+          echo "| Deployed digest | \`${EXPECTED_DIGEST}\` |"
+          echo "| No-data authorization | ${NO_DATA_LABEL} |"
+          echo "| JUnit artifact | ${ARTIFACT_LABEL} |"
           if [ "$RESULT" = "pass-advisory" ]; then
-            echo "- ⚠️ A dependency was unhealthy at probe time; the pass may not be fully authoritative (label \`ci/cluster-was-contaminated\`)."
+            echo ""
+            echo "> A dependency was unhealthy at probe time; the pass may not be fully authoritative."
           fi
-        } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${PARSE_ERRORS:-0}" -gt 0 ]; then
+            echo ""
+            echo "> ⚠️ ${PARSE_ERRORS} JUnit XML report(s) could not be parsed."
+          fi
+        } | tee -a "$GITHUB_STEP_SUMMARY"
         # Re-surface the real test outcome as this action's exit code.
         [ "$TESTS_OUTCOME" = "success" ]
       env:
@@ -422,3 +483,13 @@ runs:
         CLUSTER_STATE: ${{ steps.health.outputs.cluster_state }}
         DEPLOYMENT: ${{ inputs.deployment_name }}
         ARTIFACT_URL: ${{ steps.report.outputs.artifact-url }}
+        EXPECTED_DIGEST: ${{ inputs.expected_digest }}
+        NO_DATA_TOKEN_ENV: ${{ inputs.no_data_access_token_env }}
+        ATTEMPTS: ${{ steps.tests.outputs.total_attempts }}
+        TESTS: ${{ steps.junit.outputs.tests }}
+        FAILURES: ${{ steps.junit.outputs.failures }}
+        ERRORS: ${{ steps.junit.outputs.errors }}
+        SKIPPED: ${{ steps.junit.outputs.skipped }}
+        DURATION_DISPLAY: ${{ steps.junit.outputs.duration_display }}
+        REPORT_FILES: ${{ steps.junit.outputs.report_files }}
+        PARSE_ERRORS: ${{ steps.junit.outputs.parse_errors }}
