@@ -18,7 +18,7 @@ jobs:
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
-    if: github.repository == 'azure/osdu-spi'
+    if: github.event.repository.is_template == true
     permissions:
       contents: read
 

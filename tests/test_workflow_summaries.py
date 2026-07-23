@@ -132,5 +132,48 @@ class JunitSummaryTests(unittest.TestCase):
             self.assertEqual(1, metrics.report_files)
 
 
+class WorkflowContractTests(unittest.TestCase):
+    def test_template_sync_uses_conventional_pull_request_titles(self):
+        workflow = (
+            ROOT / ".github" / "template-workflows" / "sync-template.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'pr-title: "chore: sync template updates ${{ env.CURRENT_DATE }}"',
+            workflow,
+        )
+        self.assertIn(
+            '--title "chore: sync template updates $(date +%Y-%m-%d)"',
+            workflow,
+        )
+        self.assertNotIn('pr-title: "Sync template updates', workflow)
+        self.assertNotIn('--title "🔄 Sync template updates', workflow)
+
+    def test_feature_build_honors_service_maven_profile(self):
+        workflow = (
+            ROOT / ".github" / "template-workflows" / "build.yml"
+        ).read_text(encoding="utf-8")
+        dependabot_workflow = (
+            ROOT / ".github" / "template-workflows" / "dependabot-validation.yml"
+        ).read_text(encoding="utf-8")
+
+        profile_expression = "${{ vars.MAVEN_PROFILE || 'core,azure' }}"
+        self.assertIn(f"maven_profile: {profile_expression}", workflow)
+        self.assertIn(f"MAVEN_PROFILE: {profile_expression}", workflow)
+        self.assertIn(f"maven_profile: {profile_expression}", dependabot_workflow)
+        self.assertIn(
+            'MAVEN_CLI_OPTS="$MAVEN_CLI_OPTS -P $MAVEN_PROFILE"',
+            workflow,
+        )
+
+    def test_template_ci_runs_for_any_template_repository(self):
+        workflow = (ROOT / ".github" / "workflows" / "dev-ci.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("if: github.event.repository.is_template == true", workflow)
+        self.assertNotIn("github.repository == 'azure/osdu-spi'", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()

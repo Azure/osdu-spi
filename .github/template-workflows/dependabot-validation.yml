@@ -83,6 +83,7 @@ jobs:
         with:
           generate_coverage: true
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
+          maven_profile: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
       
       - name: "Post Build Status Comment"
         uses: ./.github/actions/pr-status
