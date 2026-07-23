@@ -126,6 +126,7 @@ jobs:
           MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
           COMMUNITY_MAVEN_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           MAVEN_PROFILE: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
+          SIS_DATA: ${{ github.workspace }}/apachesis_setup/SIS_DATA
         run: |
           # Set up Maven CLI options
           SAFE_REF="${GITHUB_REF_NAME//\//-}"

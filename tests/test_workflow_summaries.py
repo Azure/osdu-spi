@@ -174,6 +174,18 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: github.event.repository.is_template == true", workflow)
         self.assertNotIn("github.repository == 'azure/osdu-spi'", workflow)
 
+    def test_java_build_provides_repository_local_sis_data(self):
+        action = (
+            ROOT / ".github" / "actions" / "java-build" / "action.yml"
+        ).read_text(encoding="utf-8")
+        workflow = (
+            ROOT / ".github" / "template-workflows" / "build.yml"
+        ).read_text(encoding="utf-8")
+        sis_data = "SIS_DATA: ${{ github.workspace }}/apachesis_setup/SIS_DATA"
+
+        self.assertIn(sis_data, action)
+        self.assertIn(sis_data, workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

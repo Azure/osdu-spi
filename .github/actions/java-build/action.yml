@@ -88,6 +88,9 @@ runs:
         MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
         COMMUNITY_MAVEN_TOKEN: ${{ inputs.gitlab_token }}
         MAVEN_PROFILE: ${{ inputs.maven_profile }}
+        # CRS Conversion requires this repository-local Apache SIS database for
+        # its core tests. Other services ignore the unused environment value.
+        SIS_DATA: ${{ github.workspace }}/apachesis_setup/SIS_DATA
 
     - name: "Upload Build Artifacts"
       if: steps.check_pom.outputs.has_pom == 'true'
