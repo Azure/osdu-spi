@@ -105,6 +105,10 @@
         {
           "path": ".github/template-workflows/oidc-smoke-test.yml",
           "description": "Operator-run OIDC federated-credential smoke test (Phase 0 step 4a; branch/tag subjects)"
+        },
+        {
+          "path": ".github/template-workflows/restore-deployment.yml",
+          "description": "Operator break-glass rollback of a service Deployment to a previous-good digest (ADR-032 §8.9)"
         }
       ],
       "template_only": [

@@ -34,8 +34,10 @@ permissions:
 
 concurrency:
   # Per-service group, identical to the deploy job's, so a restore cannot race an in-flight
-  # PR deploy for the same service. cancel-in-progress: false -- never abandon a rollout midway.
-  group: spi-stack-${{ vars.SERVICE_NAME }}
+  # PR deploy for the same service. The fallback must match validate.yml's deploy job
+  # exactly, otherwise an unset SERVICE_NAME yields a different group and the two would
+  # not actually share a lock. cancel-in-progress: false -- never abandon a rollout midway.
+  group: spi-stack-${{ vars.SERVICE_NAME || github.event.repository.name }}
   cancel-in-progress: false
 
 jobs:
@@ -78,6 +80,19 @@ jobs:
         with:
           kubelogin-version: 'v0.1.4'
 
+      - name: "Compute image repository"
+        id: image
+        shell: bash
+        # Reuse the docker-build metadata helper so the restore path derives the GHCR
+        # repository exactly like the build path does. Critically it lowercases: GHCR
+        # rejects uppercase, and github.repository_owner preserves the org's canonical
+        # casing (e.g. "Azure"), so interpolating it raw yields an unpullable
+        # ghcr.io/Azure/<service>.
+        run: ./.github/actions/docker-build/compute-metadata.sh ghcr.io "$OWNER" "$SERVICE_NAME"
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+
       - name: "Restore image (by digest)"
         uses: ./.github/actions/aks-deploy
         with:
@@ -90,7 +105,7 @@ jobs:
           flux_namespace: ${{ vars.FLUX_NAMESPACE }}
           deployment_name: ${{ vars.K8S_DEPLOYMENT_NAME }}
           container_name: ${{ vars.K8S_CONTAINER_NAME }}
-          image_repository: ghcr.io/${{ github.repository_owner }}/${{ vars.SERVICE_NAME }}
+          image_repository: ${{ steps.image.outputs.image_repository }}
           image_digest: ${{ inputs.digest }}
         id: restore
 
