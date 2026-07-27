@@ -8,7 +8,8 @@
 # (operators copy it from that run's logs/summary). The image already exists in GHCR, so this
 # skips docker-build entirely and just re-points the Deployment.
 #
-# Single-service workflow: the target service is read from `vars.SERVICE_NAME`, NOT a dispatch
+# Single-service workflow: the target service is resolved from `vars.SERVICE_NAME`, falling back
+# to this repository's own name (the same derivation validate.yml uses), NOT a dispatch
 # input. Each fork hosts exactly one service; taking `service` as an input would let an operator
 # dispatch `service=storage` in the partition fork and deploy the wrong image into partition's
 # Deployment.
@@ -18,7 +19,7 @@
 
 name: Restore Deployment
 
-run-name: "restore ${{ vars.SERVICE_NAME }} -> ${{ inputs.digest }}"
+run-name: "restore ${{ vars.SERVICE_NAME || github.event.repository.name }} -> ${{ inputs.digest }}"
 
 on:
   workflow_dispatch:
@@ -45,18 +46,23 @@ jobs:
     name: "Restore deployment"
     runs-on: ubuntu-latest
     steps:
-      - name: "Pre-flight: SERVICE_NAME must be set"
+      - name: "Pre-flight: resolve the target service"
         shell: bash
-        # Catches forks where onboarding has not completed -- without SERVICE_NAME the image
-        # reference and concurrency group are wrong.
+        # SERVICE_NAME is optional everywhere else in this template: validate.yml derives the
+        # image name, jar path and concurrency group as `vars.SERVICE_NAME ||
+        # github.event.repository.name`. Hard-requiring it here made restore unusable on a
+        # fully-onboarded fork that relies on that fallback, which is precisely when an
+        # operator needs break-glass. Use the same fallback. It stays safe because the value
+        # is still derived from THIS repository rather than from operator input, so a restore
+        # can never target another fork's Deployment.
         run: |
           if [ -z "$SERVICE_NAME" ]; then
-            echo "::error::vars.SERVICE_NAME is not set on this repo. Set it (gh variable set SERVICE_NAME=<name>) or complete onboarding before restoring."
+            echo "::error::Could not resolve a target service: vars.SERVICE_NAME is unset and the repository name is empty."
             exit 1
           fi
           echo "Target service: $SERVICE_NAME"
         env:
-          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || github.event.repository.name }}
 
       - name: "Validate digest format"
         shell: bash
@@ -91,7 +97,7 @@ jobs:
         run: ./.github/actions/docker-build/compute-metadata.sh ghcr.io "$OWNER" "$SERVICE_NAME"
         env:
           OWNER: ${{ github.repository_owner }}
-          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || github.event.repository.name }}
 
       - name: "Restore image (by digest)"
         uses: ./.github/actions/aks-deploy
@@ -117,14 +123,14 @@ jobs:
             echo "### ♻️ Restore Deployment"
             echo ""
             echo "- Triggered by: \`${{ github.actor }}\`"
-            echo "- Service: \`${SERVICE_NAME}\` (from vars.SERVICE_NAME)"
+            echo "- Service: \`${SERVICE_NAME}\`"
             echo "- Deployment: \`${DEPLOYMENT}\`"
             echo "- Restored to digest: \`${DIGEST}\`"
             echo "- aks-deploy previous_digest: \`${PREV:-<none>}\`"
             echo "- aks-deploy deployed_digest: \`${DEPLOYED:-<none>}\`"
           } >> "$GITHUB_STEP_SUMMARY"
         env:
-          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || github.event.repository.name }}
           DEPLOYMENT: ${{ vars.K8S_DEPLOYMENT_NAME }}
           DIGEST: ${{ inputs.digest }}
           PREV: ${{ steps.restore.outputs.previous_digest }}
