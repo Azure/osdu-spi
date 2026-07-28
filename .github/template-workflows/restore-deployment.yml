@@ -76,7 +76,7 @@ jobs:
           DIGEST: ${{ inputs.digest }}
 
       - name: "Checkout (for the aks-deploy composite action)"
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
 
       - name: "Install kubectl"
         uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0

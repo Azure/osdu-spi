@@ -199,9 +199,19 @@ runs:
       run: |
         STATE=healthy
         if [ -n "$DEPS" ] && [ "$DEPS" != "{}" ]; then
+          # Validate before iterating: `jq -r keys[]` on malformed input prints
+          # nothing and the loop silently becomes a no-op, so a typo in
+          # ACCEPTANCE_TEST_DEPENDENCIES would read as "no dependencies" instead
+          # of a configuration error.
+          if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$DEPS"; then
+            echo "::error::dependencies must be a JSON object of service -> health path (got: $DEPS)"
+            exit 1
+          fi
           for svc in $(jq -r 'keys[]' <<< "$DEPS"); do
             path=$(jq -r --arg s "$svc" '.[$s]' <<< "$DEPS")
-            code=$(curl -s -o /dev/null -w '%{http_code}' "${GW}${path}" || echo "000")
+            # --max-time bounds a hung dependency; without it this advisory probe
+            # can stall the whole lane until the step timeout.
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${GW}${path}" || echo "000")
             if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
               echo "::warning::Dependency '$svc' unhealthy at ${GW}${path} (HTTP $code)"
               STATE=contaminated
@@ -272,11 +282,24 @@ runs:
     - name: 'Load acceptance-test secrets from Key Vault (masked, multiline-safe)'
       shell: bash
       run: |
+        set -euo pipefail
+        if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$MAP"; then
+          echo "::error::secret_map must be a JSON object of env-var-name -> Key Vault secret name (got: $MAP)"
+          exit 1
+        fi
         for env_name in $(jq -r 'keys[]' <<< "$MAP"); do
           secret_name=$(jq -r --arg k "$env_name" '.[$k]' <<< "$MAP")
-          value=$(az keyvault secret show --vault-name "$KV" --name "$secret_name" --query value -o tsv)
-          # Mask BEFORE writing to GITHUB_ENV so it never appears in logs.
-          echo "::add-mask::$value"
+          if ! value=$(az keyvault secret show --vault-name "$KV" --name "$secret_name" --query value -o tsv); then
+            echo "::error::Could not read secret '$secret_name' from Key Vault '$KV' (for $env_name)."
+            exit 1
+          fi
+          # Mask BEFORE writing to GITHUB_ENV so it never appears in logs. Workflow
+          # commands are line-oriented, so a multiline secret must be masked line by
+          # line -- a single ::add-mask:: would register only the first line and emit
+          # the rest as ordinary log output.
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::add-mask::$line"
+          done <<< "$value"
           {
             printf '%s<<__SECRET_EOF__\n' "$env_name"
             printf '%s\n' "$value"
