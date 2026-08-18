@@ -17,7 +17,8 @@
 # Environment:
 #   TEST_EXTRAS, REPORTS_DIR, GENERATE_COVERAGE, COVERAGE_TARGET,
 #   RUN_UNIT_TESTS, UNIT_TEST_PATH,
-#   RUN_SERVICE_IN_PROCESS, RUN_SERVICE_SUBPROCESS, SERVICE_TEST_PATH,
+#   RUN_SERVICE_IN_PROCESS, SERVICE_IN_PROCESS_TEST_PATH,
+#   RUN_SERVICE_SUBPROCESS, SERVICE_SUBPROCESS_TEST_PATH,
 #   SERVICE_IN_PROCESS_FLAG
 
 set -euo pipefail
@@ -99,7 +100,7 @@ if spi_enabled "${RUN_SERVICE_IN_PROCESS:-false}"; then
     "service-inprocess" \
     "service-inprocess-junit.xml" \
     "service-inprocess-coverage.xml" \
-    "${SERVICE_TEST_PATH}" \
+    "${SERVICE_IN_PROCESS_TEST_PATH}" \
     "${SERVICE_IN_PROCESS_FLAG:-}"
 fi
 
@@ -108,7 +109,7 @@ if spi_enabled "${RUN_SERVICE_SUBPROCESS:-false}"; then
     "service-subprocess" \
     "service-subprocess-junit.xml" \
     "none" \
-    "${SERVICE_TEST_PATH}"
+    "${SERVICE_SUBPROCESS_TEST_PATH}"
 fi
 
 if [ "${#FAILED[@]}" -gt 0 ]; then

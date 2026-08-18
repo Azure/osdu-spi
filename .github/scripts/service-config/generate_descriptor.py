@@ -174,14 +174,10 @@ def _requires_python_allows_canonical_runtime(specifier: str) -> bool:
 
 
 def _detect_python_runtime(root: Path) -> str:
-    try:
-        text = (root / "pyproject.toml").read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    project = _read_python_project(root)
+    specifier = project.get("requires-python")
+    if not isinstance(specifier, str) or not specifier:
         return CANONICAL_PYTHON_RUNTIME
-    match = re.search(r"^\s*requires-python\s*=\s*[\"']([^\"']+)[\"']", text, re.MULTILINE)
-    if not match:
-        return CANONICAL_PYTHON_RUNTIME
-    specifier = match.group(1)
     if not _requires_python_allows_canonical_runtime(specifier):
         raise DetectionError(
             f"requires-python '{specifier}' excludes the canonical "
@@ -194,15 +190,45 @@ def _detect_python_runtime(root: Path) -> str:
 
 
 def _detect_python_distribution(root: Path) -> Optional[str]:
+    project = _read_python_project(root)
+    distribution = project.get("name")
+    if not isinstance(distribution, str):
+        return None
+    return distribution if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", distribution) else None
+
+
+def _read_python_project(root: Path) -> dict:
+    """Return the parsed `[project]` table or halt on invalid project metadata."""
+
+    if tomllib is None:  # pragma: no cover - initialization runs on Python 3.11+
+        raise DetectionError(
+            "Python project metadata cannot be read because tomllib is unavailable.",
+            "Run initialization with Python 3.11 or newer.",
+        )
     try:
-        text = (root / "pyproject.toml").read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    match = re.search(r"^\s*name\s*=\s*[\"']([^\"']+)[\"']", text, re.MULTILINE)
-    if not match:
-        return None
-    distribution = match.group(1)
-    return distribution if re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", distribution) else None
+        with (root / "pyproject.toml").open("rb") as stream:
+            document = tomllib.load(stream)
+    except (OSError, ValueError) as error:
+        raise DetectionError(
+            f"pyproject.toml could not be parsed: {error}",
+            "Fix the project metadata before running initialization.",
+        ) from error
+    project = document.get("project", {})
+    return project if isinstance(project, dict) else {}
+
+
+def _detect_python_compatibility_versions(root: Path) -> List[str]:
+    """Return non-runtime Python versions explicitly advertised by classifiers."""
+
+    classifiers = _read_python_project(root).get("classifiers", [])
+    if not isinstance(classifiers, list):
+        return []
+    advertised = {
+        item.rsplit("::", 1)[-1].strip()
+        for item in classifiers
+        if isinstance(item, str) and item.startswith("Programming Language :: Python :: 3.")
+    }
+    return [version for version in ("3.11", "3.13") if version in advertised]
 
 
 def _import_packages(root: Path) -> List[str]:
@@ -279,30 +305,13 @@ def detect_app_module(root: Path) -> Tuple[str, str]:
 def _declared_extras(root: Path) -> List[str]:
     """Return the `[project.optional-dependencies]` names declared by the project."""
 
-    try:
-        text = (root / "pyproject.toml").read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return []
-
-    if tomllib is not None:
-        try:
-            data = tomllib.loads(text)
-        except ValueError:
-            return []
-        optional = data.get("project", {}).get("optional-dependencies", {})
-        if not isinstance(optional, dict):
-            return []
-        return [name for name in optional if re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", name)]
-
-    # Legacy interpreters only: read the extras table headers directly.
-    section = re.search(
-        r"^\[project\.optional-dependencies\]\s*$(.*?)(?=^\[|\Z)", text, re.MULTILINE | re.DOTALL
-    )
-    if not section:
+    optional = _read_python_project(root).get("optional-dependencies", {})
+    if not isinstance(optional, dict):
         return []
     return [
-        match.group(1)
-        for match in re.finditer(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]{0,63})\s*=", section.group(1), re.MULTILINE)
+        name
+        for name in optional
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name)
     ]
 
 
@@ -333,6 +342,10 @@ def render_descriptor(archetype: str, service_name: str, root: Path, app_module:
         lines.extend(["", "build:", "  python:", "    packageManager: uv", "    lockfile: uv.lock"])
         runtime = _detect_python_runtime(root)
         lines.append(f'    runtimeVersion: "{runtime}"')
+        compatibility = _detect_python_compatibility_versions(root)
+        if compatibility:
+            quoted = ", ".join(f'"{version}"' for version in compatibility)
+            lines.append(f"    compatibilityVersions: [{quoted}]")
         distribution = _detect_python_distribution(root)
         if distribution:
             lines.append(f"    distribution: {distribution}")

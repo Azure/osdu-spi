@@ -76,6 +76,10 @@ if [ "$SYNC_FAILED" = "false" ]; then
   run_phase "runtime-extras" "runtime-extras.sh" || true
 fi
 
+# Phase failures are intentionally aggregated above. Everything below creates
+# required provenance/report artifacts and must fail the action immediately.
+set -e
+
 # Build manifest: the Python image is built from source plus lockfile, so the
 # build-artifacts artifact carries provenance metadata instead of a JAR.
 python - <<'PYTHON'
@@ -99,7 +103,7 @@ def listed(name: str) -> list[str]:
 
 manifest = {
     "schemaVersion": 1,
-    "archetype": "python-uv",
+    "archetype": "python-uv-fastapi",
     "repository": os.environ.get("GITHUB_REPOSITORY", ""),
     "commit": os.environ.get("GITHUB_SHA", ""),
     "ref": os.environ.get("GITHUB_REF_NAME", ""),

@@ -240,6 +240,18 @@ class ServiceConfigPreludeTests(unittest.TestCase):
                 self.assertIn(
                     "runtime_extras: ${{ needs.read-service-config.outputs.python_runtime_extras }}", job
                 )
+                self.assertIn(
+                    "unit_test_path: ${{ needs.read-service-config.outputs.python_unit_test_path }}",
+                    job,
+                )
+                self.assertIn(
+                    "service_in_process_test_path: ${{ needs.read-service-config.outputs.python_service_in_process_test_path }}",
+                    job,
+                )
+                self.assertIn(
+                    "service_subprocess_test_path: ${{ needs.read-service-config.outputs.python_service_subprocess_test_path }}",
+                    job,
+                )
                 # The action no longer checks out; the caller must, with full history.
                 self.assertIn("fetch-depth: 0", job)
                 self.assertIn("uses: actions/checkout@", job)
@@ -278,11 +290,27 @@ class ServiceConfigPreludeTests(unittest.TestCase):
         action = _read(ROOT / ".github" / "actions" / "python-build" / "action.yml")
 
         for artifact in ("python-junit-reports", "python-coverage-reports", "build-artifacts"):
-            self.assertIn(f"name: {artifact}", action)
+            self.assertIn(artifact, action)
         for workflow in (VALIDATE, BUILD):
             with self.subTest(workflow=workflow.name):
                 job = _job_block(_read(workflow), "python-build")
                 self.assertNotIn("upload-artifact", job)
+
+    def test_descriptor_compatibility_versions_run_as_a_required_matrix(self):
+        for workflow in (VALIDATE, BUILD):
+            with self.subTest(workflow=workflow.name):
+                text = _read(workflow)
+                job = _job_block(text, "python-compatibility")
+                self.assertIn(
+                    "fromJSON(needs.read-service-config.outputs.python_compatibility_matrix)",
+                    job,
+                )
+                self.assertIn("python_version: ${{ matrix.version }}", job)
+                self.assertIn("artifact_suffix: ${{ matrix.artifact_suffix }}", job)
+
+        required = _job_block(_read(VALIDATE), "docker-build-required")
+        self.assertIn("python-compatibility", required)
+        self.assertIn("Python compatibility build failed", required)
 
     def test_no_obsolete_python_integration_point_remains(self):
         for workflow in (VALIDATE, BUILD):

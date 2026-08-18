@@ -29,6 +29,10 @@ and fails closed on anything unusual.
 ```text
 descriptor_present  schema_version  archetype     service_name  dockerfile_profile
 unit_test_type      has_coverage    build_lane    lane_implemented  fallback
+python_runtime_version  python_compatibility_versions  python_compatibility_matrix
+python_distribution  python_import_package  python_test_extras  python_runtime_extras
+python_unit_test_path  python_service_in_process_test_path
+python_service_subprocess_test_path  app_module
 ```
 
 Job outputs never carry shell commands, credentials or deployment targets.

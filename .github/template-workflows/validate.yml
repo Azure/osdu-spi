@@ -213,10 +213,15 @@ jobs:
       lane_implemented: ${{ steps.config.outputs.lane_implemented }}
       fallback: ${{ steps.config.outputs.fallback }}
       python_runtime_version: ${{ steps.config.outputs.python_runtime_version }}
+      python_compatibility_versions: ${{ steps.config.outputs.python_compatibility_versions }}
+      python_compatibility_matrix: ${{ steps.config.outputs.python_compatibility_matrix }}
       python_distribution: ${{ steps.config.outputs.python_distribution }}
       python_import_package: ${{ steps.config.outputs.python_import_package }}
       python_test_extras: ${{ steps.config.outputs.python_test_extras }}
       python_runtime_extras: ${{ steps.config.outputs.python_runtime_extras }}
+      python_unit_test_path: ${{ steps.config.outputs.python_unit_test_path }}
+      python_service_in_process_test_path: ${{ steps.config.outputs.python_service_in_process_test_path }}
+      python_service_subprocess_test_path: ${{ steps.config.outputs.python_service_subprocess_test_path }}
       app_module: ${{ steps.config.outputs.app_module }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
@@ -469,13 +474,70 @@ jobs:
           distribution_name: ${{ needs.read-service-config.outputs.python_distribution }}
           test_extras: ${{ needs.read-service-config.outputs.python_test_extras }}
           runtime_extras: ${{ needs.read-service-config.outputs.python_runtime_extras }}
+          unit_test_path: ${{ needs.read-service-config.outputs.python_unit_test_path }}
+          service_in_process_test_path: ${{ needs.read-service-config.outputs.python_service_in_process_test_path }}
+          service_subprocess_test_path: ${{ needs.read-service-config.outputs.python_service_subprocess_test_path }}
           generate_coverage: ${{ github.event_name == 'pull_request' && needs.read-service-config.outputs.has_coverage == 'true' }}
+
+  python-compatibility:
+    name: "🐍 Python ${{ matrix.version || 'No-op' }} Compatibility"
+    needs: [check-initialization, check-repo-state, check-paths, read-service-config]
+    if: |
+      needs.check-repo-state.outputs.is_initialized == 'true' &&
+      needs.read-service-config.outputs.build_lane == 'python' &&
+      needs.check-paths.outputs.should_run == 'true' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.read-service-config.outputs.python_compatibility_matrix) }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: "Restore local actions for sync PRs"
+        if: |
+          matrix.version != '' &&
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.base.ref == 'fork_upstream' &&
+          startsWith(github.event.pull_request.head.ref, 'sync/')
+        run: |
+          set -euo pipefail
+          if ! git fetch origin main --depth=1; then
+            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
+            exit 1
+          fi
+          if ! git checkout origin/main -- .github/actions/; then
+            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed."
+            exit 1
+          fi
+
+      - name: "No compatibility versions requested"
+        if: matrix.version == ''
+        run: echo "No descriptor-declared Python compatibility versions."
+
+      - name: "Run Python Compatibility Build"
+        if: matrix.version != ''
+        uses: ./.github/actions/python-build
+        with:
+          python_version: ${{ matrix.version }}
+          package_name: ${{ needs.read-service-config.outputs.python_import_package }}
+          distribution_name: ${{ needs.read-service-config.outputs.python_distribution }}
+          test_extras: ${{ needs.read-service-config.outputs.python_test_extras }}
+          runtime_extras: ${{ needs.read-service-config.outputs.python_runtime_extras }}
+          unit_test_path: ${{ needs.read-service-config.outputs.python_unit_test_path }}
+          service_in_process_test_path: ${{ needs.read-service-config.outputs.python_service_in_process_test_path }}
+          service_subprocess_test_path: ${{ needs.read-service-config.outputs.python_service_subprocess_test_path }}
+          generate_coverage: 'false'
+          artifact_suffix: ${{ matrix.artifact_suffix }}
 
   docker-build:
     # Validate-only worker. NOT the required check — the required "🐳 Docker Build" context is the
     # summary job below (docker-build-required), which reports once even when this job is skipped.
     name: "🐳 Docker Build (validate)"
-    needs: [check-initialization, check-repo-state, read-service-config, java-build, python-build]
+    needs: [check-initialization, check-repo-state, read-service-config, java-build, python-build, python-compatibility]
     # `!cancelled()` is required because exactly one language lane runs and the other is
     # skipped; without it a skipped dependency would skip this job in every repository.
     # The explicit result+output checks keep the Java behaviour identical (a failed or
@@ -484,6 +546,10 @@ jobs:
       !cancelled() && (
         (needs.java-build.result == 'success' && needs.java-build.outputs.build_result == 'success') ||
         (needs.python-build.result == 'success' && needs.python-build.outputs.build_result == 'success')
+      ) &&
+      (
+        needs.read-service-config.outputs.build_lane != 'python' ||
+        needs.python-compatibility.result == 'success'
       )
     runs-on: ubuntu-latest
     permissions:
@@ -535,7 +601,7 @@ jobs:
 
   docker-push:
     name: "🐳 Docker Push"
-    needs: [check-initialization, check-repo-state, read-service-config, java-build, python-build, docker-build]
+    needs: [check-initialization, check-repo-state, read-service-config, java-build, python-build, python-compatibility, docker-build]
     # §5.5 trust boundary (ADR-036): push to GHCR only on trusted events. The force_full_pipeline
     # arm is declared by W13 (#19); until then it evaluates null and is harmless.
     # `!cancelled()` only compensates for the skipped sibling language lane, so the build-success
@@ -546,6 +612,10 @@ jobs:
       (
         (needs.java-build.result == 'success' && needs.java-build.outputs.build_result == 'success') ||
         (needs.python-build.result == 'success' && needs.python-build.outputs.build_result == 'success')
+      ) &&
+      (
+        needs.read-service-config.outputs.build_lane != 'python' ||
+        needs.python-compatibility.result == 'success'
       ) &&
       needs.docker-build.result == 'success' &&
       (
@@ -613,7 +683,7 @@ jobs:
 
   code-validation:
     name: "✅ Code Quality Checks"
-    needs: [check-initialization, check-repo-state, check-paths, read-service-config, java-build, python-build]
+    needs: [check-initialization, check-repo-state, check-paths, read-service-config, java-build, python-build, python-compatibility]
     if: |
       always() &&
       needs.check-initialization.outputs.initialized == 'true'
@@ -757,6 +827,13 @@ jobs:
               else
                 ITEMS=$(echo "$ITEMS" | jq '. + ["❌ Python Build Failed"]')
               fi
+              if [[ -n "${{ needs.read-service-config.outputs.python_compatibility_versions }}" ]]; then
+                if [[ "${{ needs.python-compatibility.result }}" == "success" ]]; then
+                  ITEMS=$(echo "$ITEMS" | jq --arg v "${{ needs.read-service-config.outputs.python_compatibility_versions }}" '. + ["✓ Python Compatibility Successful: \($v)"]')
+                else
+                  ITEMS=$(echo "$ITEMS" | jq --arg v "${{ needs.read-service-config.outputs.python_compatibility_versions }}" '. + ["❌ Python Compatibility Failed: \($v)"]')
+                fi
+              fi
             elif [[ "${{ needs.read-service-config.outputs.build_lane }}" == "none" ]]; then
               ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Non-Java Repository"]')
             else
@@ -784,7 +861,7 @@ jobs:
     # (config-only/no-lane/dependabot/uninitialized all pass) and a real build failure blocks.
     # Suppressed on pull_request_target so the dual trigger reports it once.
     name: "🐳 Docker Build"
-    needs: [check-initialization, check-repo-state, check-paths, read-service-config, java-build, python-build, docker-build]
+    needs: [check-initialization, check-repo-state, check-paths, read-service-config, java-build, python-build, python-compatibility, docker-build]
     if: always() && github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
@@ -829,11 +906,19 @@ jobs:
           if [ "${{ needs.python-build.result }}" = "failure" ] || [ "${{ needs.python-build.result }}" = "cancelled" ]; then
             echo "❌ Python build failed or was cancelled"; exit 1
           fi
+          if [ "${{ needs.python-compatibility.result }}" = "failure" ] || [ "${{ needs.python-compatibility.result }}" = "cancelled" ]; then
+            echo "❌ Python compatibility build failed or was cancelled"; exit 1
+          fi
           # The selected lane must actually have run and produced an image build. A present
           # descriptor may never pass because its lane silently skipped (ADR-039 §6.3).
           if [ "${{ needs.read-service-config.outputs.build_lane }}" = "python" ]; then
             if [ "${{ needs.python-build.result }}" != "success" ]; then
               echo "❌ Python build did not run for a python descriptor (result: ${{ needs.python-build.result }})"; exit 1
+            fi
+            if [ -n "${{ needs.read-service-config.outputs.python_compatibility_versions }}" ] && \
+               [ "${{ needs.python-compatibility.result }}" != "success" ]; then
+              echo "❌ Python compatibility versions did not pass: ${{ needs.read-service-config.outputs.python_compatibility_versions }}"
+              exit 1
             fi
             if [ "${{ needs.docker-build.result }}" != "success" ]; then
               echo "❌ Docker build did not run for the python lane (result: ${{ needs.docker-build.result }})"; exit 1

@@ -127,12 +127,20 @@ class ActionContractTests(unittest.TestCase):
     def test_build_result_output_is_stable_for_callers(self):
         self.assertIn("value: ${{ steps.build.outcome }}", self.action)
         self.assertIn("value: ${{ steps.detect.outputs.has_python_project }}", self.action)
-        self.assertIn("value: build-artifacts", self.action)
+        self.assertIn("format('build-artifacts{0}'", self.action)
 
     def test_reports_are_uploaded_as_distinct_artifacts(self):
-        self.assertIn("name: build-artifacts", self.action)
-        self.assertIn("name: python-junit-reports", self.action)
-        self.assertIn("name: python-coverage-reports", self.action)
+        self.assertIn("format('build-artifacts{0}'", self.action)
+        self.assertIn("format('python-junit-reports{0}'", self.action)
+        self.assertIn("format('python-coverage-reports{0}'", self.action)
+        self.assertIn("artifact_suffix:", self.action)
+
+    def test_required_post_processing_fails_closed_and_uses_the_descriptor_archetype(self):
+        driver = _read(ACTION_DIR / "run-build.sh")
+        post_processing = driver.split("# Build manifest:", 1)[0]
+
+        self.assertRegex(post_processing, r"set -e\s*$")
+        self.assertIn('"archetype": "python-uv-fastapi"', driver)
 
     def test_locked_dependency_installs_are_used(self):
         phases = _read(ACTION_DIR / "phases" / "sync-test-env.sh")
@@ -203,10 +211,13 @@ class ActionContractTests(unittest.TestCase):
             "runtime_extras",
             "unit_test_path",
             "service_test_path",
+            "service_in_process_test_path",
+            "service_subprocess_test_path",
             "service_test_modes",
             "generate_coverage",
             "lock_regeneration_script",
             "index_token",
+            "artifact_suffix",
         ):
             self.assertIn(name, inputs)
             self.assertIn("description", inputs[name])
@@ -398,12 +409,16 @@ class EntrypointBehaviourTests(unittest.TestCase):
         self.assertIn("invalid SPI_APP_MODULE", result.stderr)
 
     def test_invalid_port_and_log_level_are_rejected(self):
-        port = self._run([], env={"SPI_APP_MODULE": "app.main:app", "SPI_APP_PORT": "80a"})
         level = self._run(
             [], env={"SPI_APP_MODULE": "app.main:app", "SPI_UVICORN_LOG_LEVEL": "verbose"}
         )
 
-        self.assertIn("invalid SPI_APP_PORT", port.stderr)
+        for value in ("0", "65536", "99999", "80a"):
+            with self.subTest(port=value):
+                port = self._run(
+                    [], env={"SPI_APP_MODULE": "app.main:app", "SPI_APP_PORT": value}
+                )
+                self.assertIn("invalid SPI_APP_PORT", port.stderr)
         self.assertIn("invalid SPI_UVICORN_LOG_LEVEL", level.stderr)
 
     def test_valid_configuration_passes_validation_and_execs_uvicorn(self):

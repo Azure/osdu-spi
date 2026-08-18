@@ -60,7 +60,15 @@ inputs:
     required: false
     default: ''
   service_test_path:
-    description: 'Service test directory (default: tests/service when present).'
+    description: 'Shared service test directory fallback (default: tests/service when present).'
+    required: false
+    default: ''
+  service_in_process_test_path:
+    description: 'In-process service test directory; falls back to service_test_path.'
+    required: false
+    default: ''
+  service_subprocess_test_path:
+    description: 'Subprocess service test directory; falls back to service_test_path.'
     required: false
     default: ''
   service_test_modes:
@@ -107,6 +115,10 @@ inputs:
     description: 'Token/password for the private uv index. Masked in logs and never passed to a Docker build argument.'
     required: false
     default: ''
+  artifact_suffix:
+    description: 'Optional validated suffix for compatibility-job artifacts (for example -py313).'
+    required: false
+    default: ''
 
 outputs:
   is_python_project:
@@ -117,13 +129,13 @@ outputs:
     value: ${{ steps.build.outcome }}
   artifact_name:
     description: "Name of the uploaded build artifact (kept stable across languages)"
-    value: build-artifacts
+    value: ${{ format('build-artifacts{0}', steps.plan.outputs.artifact_suffix) }}
   junit_artifact_name:
     description: "Name of the uploaded pytest JUnit artifact"
-    value: python-junit-reports
+    value: ${{ format('python-junit-reports{0}', steps.plan.outputs.artifact_suffix) }}
   coverage_artifact_name:
     description: "Name of the uploaded Cobertura coverage artifact"
-    value: python-coverage-reports
+    value: ${{ format('python-coverage-reports{0}', steps.plan.outputs.artifact_suffix) }}
   reports_path:
     description: "Workspace directory holding junit/, coverage/ and build-manifest.json"
     value: ${{ steps.plan.outputs.reports_dir }}
@@ -181,6 +193,8 @@ runs:
         RUNTIME_IMPORT_MODULES: ${{ inputs.runtime_import_modules }}
         UNIT_TEST_PATH: ${{ inputs.unit_test_path }}
         SERVICE_TEST_PATH: ${{ inputs.service_test_path }}
+        SERVICE_IN_PROCESS_TEST_PATH: ${{ inputs.service_in_process_test_path }}
+        SERVICE_SUBPROCESS_TEST_PATH: ${{ inputs.service_subprocess_test_path }}
         SERVICE_TEST_MODES: ${{ inputs.service_test_modes }}
         SERVICE_IN_PROCESS_FLAG: ${{ inputs.service_in_process_flag }}
         GENERATE_COVERAGE: ${{ inputs.generate_coverage }}
@@ -190,6 +204,7 @@ runs:
         LOCK_DRIFT_PATHS: ${{ inputs.lock_drift_paths }}
         PACKAGE_BUILD: ${{ inputs.package_build }}
         INDEX_NAME: ${{ inputs.index_name }}
+        ARTIFACT_SUFFIX: ${{ inputs.artifact_suffix }}
 
     - name: "Build and Test"
       if: steps.detect.outputs.has_python_project == 'true'
@@ -211,7 +226,8 @@ runs:
         RUNTIME_EXTRAS: ${{ steps.plan.outputs.runtime_extras }}
         RUNTIME_IMPORT_MODULES: ${{ steps.plan.outputs.runtime_import_modules }}
         UNIT_TEST_PATH: ${{ steps.plan.outputs.unit_test_path }}
-        SERVICE_TEST_PATH: ${{ steps.plan.outputs.service_test_path }}
+        SERVICE_IN_PROCESS_TEST_PATH: ${{ steps.plan.outputs.service_in_process_test_path }}
+        SERVICE_SUBPROCESS_TEST_PATH: ${{ steps.plan.outputs.service_subprocess_test_path }}
         SERVICE_IN_PROCESS_FLAG: ${{ steps.plan.outputs.service_in_process_flag }}
         RUN_UNIT_TESTS: ${{ steps.plan.outputs.run_unit_tests }}
         RUN_SERVICE_IN_PROCESS: ${{ steps.plan.outputs.run_service_in_process }}
@@ -235,7 +251,7 @@ runs:
         # Name kept stable across languages: the Python image is built from source
         # plus lockfile, so this artifact carries provenance metadata (and any
         # wheel/sdist produced by the packaging validation) rather than a JAR.
-        name: build-artifacts
+        name: ${{ format('build-artifacts{0}', steps.plan.outputs.artifact_suffix) }}
         path: |
           ${{ steps.plan.outputs.reports_dir }}/build-manifest.json
           dist/
@@ -246,7 +262,7 @@ runs:
       if: always() && steps.detect.outputs.has_python_project == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
-        name: python-junit-reports
+        name: ${{ format('python-junit-reports{0}', steps.plan.outputs.artifact_suffix) }}
         path: ${{ steps.plan.outputs.reports_dir }}/junit/
         if-no-files-found: warn
         retention-days: 2
@@ -255,7 +271,7 @@ runs:
       if: always() && steps.detect.outputs.has_python_project == 'true' && inputs.generate_coverage == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
-        name: python-coverage-reports
+        name: ${{ format('python-coverage-reports{0}', steps.plan.outputs.artifact_suffix) }}
         path: ${{ steps.plan.outputs.reports_dir }}/coverage/
         if-no-files-found: warn
         retention-days: 2

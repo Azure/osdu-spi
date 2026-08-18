@@ -72,10 +72,15 @@ jobs:
       lane_implemented: ${{ steps.config.outputs.lane_implemented }}
       fallback: ${{ steps.config.outputs.fallback }}
       python_runtime_version: ${{ steps.config.outputs.python_runtime_version }}
+      python_compatibility_versions: ${{ steps.config.outputs.python_compatibility_versions }}
+      python_compatibility_matrix: ${{ steps.config.outputs.python_compatibility_matrix }}
       python_distribution: ${{ steps.config.outputs.python_distribution }}
       python_import_package: ${{ steps.config.outputs.python_import_package }}
       python_test_extras: ${{ steps.config.outputs.python_test_extras }}
       python_runtime_extras: ${{ steps.config.outputs.python_runtime_extras }}
+      python_unit_test_path: ${{ steps.config.outputs.python_unit_test_path }}
+      python_service_in_process_test_path: ${{ steps.config.outputs.python_service_in_process_test_path }}
+      python_service_subprocess_test_path: ${{ steps.config.outputs.python_service_subprocess_test_path }}
       app_module: ${{ steps.config.outputs.app_module }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
@@ -185,7 +190,42 @@ jobs:
           distribution_name: ${{ needs.read-service-config.outputs.python_distribution }}
           test_extras: ${{ needs.read-service-config.outputs.python_test_extras }}
           runtime_extras: ${{ needs.read-service-config.outputs.python_runtime_extras }}
+          unit_test_path: ${{ needs.read-service-config.outputs.python_unit_test_path }}
+          service_in_process_test_path: ${{ needs.read-service-config.outputs.python_service_in_process_test_path }}
+          service_subprocess_test_path: ${{ needs.read-service-config.outputs.python_service_subprocess_test_path }}
           generate_coverage: ${{ needs.read-service-config.outputs.has_coverage }}
+
+  python-compatibility:
+    name: "🐍 Python ${{ matrix.version || 'No-op' }} Compatibility"
+    needs: [check-repo-state, read-service-config]
+    if: needs.check-repo-state.outputs.initialized == 'true' && needs.read-service-config.outputs.build_lane == 'python'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.read-service-config.outputs.python_compatibility_matrix) }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          fetch-depth: 0
+
+      - name: "No compatibility versions requested"
+        if: matrix.version == ''
+        run: echo "No descriptor-declared Python compatibility versions."
+
+      - name: "Run Python Compatibility Build"
+        if: matrix.version != ''
+        uses: ./.github/actions/python-build
+        with:
+          python_version: ${{ matrix.version }}
+          package_name: ${{ needs.read-service-config.outputs.python_import_package }}
+          distribution_name: ${{ needs.read-service-config.outputs.python_distribution }}
+          test_extras: ${{ needs.read-service-config.outputs.python_test_extras }}
+          runtime_extras: ${{ needs.read-service-config.outputs.python_runtime_extras }}
+          unit_test_path: ${{ needs.read-service-config.outputs.python_unit_test_path }}
+          service_in_process_test_path: ${{ needs.read-service-config.outputs.python_service_in_process_test_path }}
+          service_subprocess_test_path: ${{ needs.read-service-config.outputs.python_service_subprocess_test_path }}
+          generate_coverage: 'false'
+          artifact_suffix: ${{ matrix.artifact_suffix }}
 
   java-build:
     name: "🔨 Java Build"

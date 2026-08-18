@@ -178,12 +178,45 @@ class DescriptorValidationTests(unittest.TestCase):
                 self.assertIn("forbidden-key", _codes(descriptor.validate(document)))
 
     def test_rejects_paths_that_escape_the_repository(self):
-        head = "schemaVersion: 1\nservice:\n  name: demo\n  archetype: java-maven-azure\n"
+        head = (
+            "schemaVersion: 1\nservice:\n  name: demo\n"
+            "  archetype: python-uv-fastapi\n"
+            "container:\n  appModule: demo.app:app\n"
+        )
 
         for value in ("../../etc/passwd", "/etc/passwd", "tests/$(whoami)"):
             with self.subTest(value=value):
                 document = descriptor.parse(head + f"tests:\n  unit:\n    path: {value}\n")
                 self.assertIn("invalid-path", _codes(descriptor.validate(document)))
+
+    def test_rejects_test_configuration_the_lane_does_not_execute(self):
+        unsupported = {
+            "java test path": (
+                "java-maven-azure",
+                "tests:\n  unit:\n    path: tests/unit\n",
+                "archetype-mismatch",
+            ),
+            "pytest arguments": (
+                "python-uv-fastapi",
+                "tests:\n  unit:\n    arguments: [--slow]\n"
+                "container:\n  appModule: demo.app:app\n",
+                "unknown-key",
+            ),
+            "postman suite": (
+                "python-uv-fastapi",
+                "tests:\n  unit:\n    type: postman\n"
+                "container:\n  appModule: demo.app:app\n",
+                "test-type-mismatch",
+            ),
+        }
+
+        for label, (archetype, extra, expected) in unsupported.items():
+            with self.subTest(label=label):
+                document = descriptor.parse(
+                    f"schemaVersion: 1\nservice:\n  name: demo\n  archetype: {archetype}\n"
+                    + extra
+                )
+                self.assertIn(expected, _codes(descriptor.validate(document)))
 
     def test_rejects_cross_archetype_and_mismatched_settings(self):
         cases = {
@@ -222,6 +255,16 @@ class DescriptorValidationTests(unittest.TestCase):
         )
 
         self.assertIn("invalid-value", _codes(descriptor.validate(document)))
+
+    def test_python_compatibility_versions_must_be_unique(self):
+        document = descriptor.parse(
+            PYTHON_DESCRIPTOR.replace(
+                'compatibilityVersions: ["3.13"]',
+                'compatibilityVersions: ["3.13", "3.13"]',
+            )
+        )
+
+        self.assertIn("duplicate-value", _codes(descriptor.validate(document)))
 
     def test_rejects_an_invalid_service_name(self):
         document = descriptor.parse(
@@ -312,10 +355,15 @@ class DescriptorResolutionTests(unittest.TestCase):
                     "lane_implemented": "true",
                     "fallback": "none",
                     "python_runtime_version": "",
+                    "python_compatibility_versions": "",
+                    "python_compatibility_matrix": '{"include":[{"version":"","artifact_suffix":""}]}',
                     "python_distribution": "",
                     "python_import_package": "",
                     "python_test_extras": "",
                     "python_runtime_extras": "",
+                    "python_unit_test_path": "",
+                    "python_service_in_process_test_path": "",
+                    "python_service_subprocess_test_path": "",
                     "app_module": "",
                 },
                 config.outputs(),
@@ -332,10 +380,16 @@ class DescriptorResolutionTests(unittest.TestCase):
             self.assertEqual("true", outputs["lane_implemented"])
             self.assertEqual("python", outputs["dockerfile_profile"])
             self.assertEqual("3.12", outputs["python_runtime_version"])
+            self.assertEqual("3.13", outputs["python_compatibility_versions"])
+            self.assertEqual(
+                '{"include":[{"version":"3.13","artifact_suffix":"-py313"}]}',
+                outputs["python_compatibility_matrix"],
+            )
             self.assertEqual("osdu-wbddms-worker", outputs["python_distribution"])
             self.assertEqual("wdmsworker", outputs["python_import_package"])
             self.assertEqual("dev", outputs["python_test_extras"])
             self.assertEqual("az", outputs["python_runtime_extras"])
+            self.assertEqual("tests/unit", outputs["python_unit_test_path"])
             self.assertEqual("wdmsworker.app:app", outputs["app_module"])
             self.assertEqual([], config.warnings)
 

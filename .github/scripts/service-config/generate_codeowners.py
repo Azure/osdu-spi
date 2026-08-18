@@ -24,6 +24,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -33,22 +34,48 @@ BEGIN_MARKER = "# BEGIN spi-service-descriptor (managed by SPI initialization â€
 END_MARKER = "# END spi-service-descriptor"
 OWNERS_VARIABLE = "SPI_ENGINEERING_OWNERS"
 
-_OWNER_RE = re.compile(r"^@[A-Za-z0-9][A-Za-z0-9-]{0,38}(/[A-Za-z0-9._-]{1,100})?$")
-_ACTIVE_RULE_RE = re.compile(r"^\s*/\.spi/\s+@[A-Za-z0-9]", re.MULTILINE)
+_OWNER_TOKEN_RE = re.compile(r"^@([^/]+)(?:/([^/]+))?$")
 _BLOCK_RE = re.compile(
     re.escape(BEGIN_MARKER) + r".*?" + re.escape(END_MARKER) + r"\n?",
     re.DOTALL,
 )
 
 
+def _valid_slug(value: str, max_length: int) -> bool:
+    return (
+        1 <= len(value) <= max_length
+        and re.fullmatch(r"[A-Za-z0-9-]+", value) is not None
+        and value[0] != "-"
+        and value[-1] != "-"
+        and "--" not in value
+    )
+
+
+def _valid_owner(token: str) -> bool:
+    match = _OWNER_TOKEN_RE.fullmatch(token)
+    if not match:
+        return False
+    login, team = match.groups()
+    return _valid_slug(login, 39) and (team is None or _valid_slug(team, 100))
+
+
 def valid_owners(raw: str) -> List[str]:
     """Return the owners that are syntactically valid GitHub users/teams."""
 
-    return [token for token in raw.replace(",", " ").split() if _OWNER_RE.match(token)]
+    tokens = raw.replace(",", " ").split()
+    return tokens if tokens and all(_valid_owner(token) for token in tokens) else []
 
 
 def has_active_rule(text: str) -> bool:
-    return bool(_ACTIVE_RULE_RE.search(text))
+    for line in text.splitlines():
+        content = line.split("#", 1)[0].strip()
+        if not content:
+            continue
+        tokens = content.split()
+        if tokens[0] == "/.spi/" and len(tokens) > 1:
+            if all(_valid_owner(owner) for owner in tokens[1:]):
+                return True
+    return False
 
 
 def render_block(owners: List[str]) -> str:
@@ -67,9 +94,14 @@ def render_block(owners: List[str]) -> str:
     else:
         lines += [
             "#",
-            f"# TODO(spi): set the repository variable {OWNERS_VARIABLE} to a GitHub team or",
-            '# user that has access to this repository (for example "@my-org/engineering-system")',
-            '# and re-run the "Settings Apply" workflow, or uncomment and edit the rule below.',
+            f"# TODO(spi): choose a GitHub team/user that has access to this repository",
+            '# (for example "@my-org/engineering-system"), run:',
+            "#",
+            "# python3 .github/scripts/service-config/generate_codeowners.py \\",
+            '#   --path CODEOWNERS --owners "@my-org/engineering-system"',
+            "#",
+            f"# Commit CODEOWNERS and set {OWNERS_VARIABLE} to the same value for future",
+            "# initialization. Settings Apply is read-only and only reports this condition.",
             "#",
             "# The rule stays commented out until a valid owner is configured: an unknown owner",
             "# makes the ruleset's require_code_owner_review silently ineffective.",
@@ -95,7 +127,11 @@ def apply_block(existing: str, owners: List[str]) -> str:
 def _parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--path", default="CODEOWNERS", help="CODEOWNERS file to seed or inspect")
-    parser.add_argument("--owners", default="", help=f"Owners from the {OWNERS_VARIABLE} variable")
+    parser.add_argument(
+        "--owners",
+        default=os.environ.get(OWNERS_VARIABLE, ""),
+        help=f"Owners (defaults to the {OWNERS_VARIABLE} environment variable)",
+    )
     parser.add_argument("--check", action="store_true", help="Report whether an active rule exists")
     return parser.parse_args(argv)
 

@@ -76,6 +76,8 @@ class DescriptorGenerationTests(unittest.TestCase):
             {
                 "pyproject.toml": (
                     '[project]\nname = "osdu-wbddms-worker"\nrequires-python = ">=3.12,<3.14"\n\n'
+                    'classifiers = ["Programming Language :: Python :: 3.12", '
+                    '"Programming Language :: Python :: 3.13"]\n\n'
                     '[project.optional-dependencies]\ndev = ["pytest"]\naz = ["azure-identity"]\n'
                 ),
                 "uv.lock": "version = 1\n",
@@ -94,6 +96,7 @@ class DescriptorGenerationTests(unittest.TestCase):
             self.assertIn("packageManager: uv", generated)
             self.assertIn("lockfile: uv.lock", generated)
             self.assertIn('runtimeVersion: "3.12"', generated)
+            self.assertIn('compatibilityVersions: ["3.13"]', generated)
             self.assertIn("distribution: osdu-wbddms-worker", generated)
             self.assertIn("importPackage: wdmsworker", generated)
             self.assertIn("testExtras: [dev]", generated)
@@ -104,6 +107,29 @@ class DescriptorGenerationTests(unittest.TestCase):
             self.assertTrue(config.valid, [error.render() for error in config.errors])
             self.assertEqual("python", config.outputs()["build_lane"])
             self.assertEqual("wdmsworker.app:app", config.outputs()["app_module"])
+            self.assertEqual("3.13", config.outputs()["python_compatibility_versions"])
+
+    def test_python_metadata_is_read_only_from_the_project_table(self):
+        directory, root = _repository(
+            {
+                "pyproject.toml": (
+                    '[tool.unrelated]\nname = "wrong-distribution"\n'
+                    'requires-python = ">=3.13"\n\n'
+                    '[project]\nname = "correct-distribution"\n'
+                    'requires-python = ">=3.12,<4"\n'
+                ),
+                "uv.lock": "version = 1\n",
+                "src/demo/__init__.py": "",
+                "src/demo/app.py": "app = object()\n",
+            }
+        )
+        with directory:
+            result = _run("generate_descriptor.py", "--root", str(root))
+
+            self.assertEqual(0, result.returncode, result.stdout)
+            generated = (root / ".spi" / "service.yaml").read_text(encoding="utf-8")
+            self.assertIn("distribution: correct-distribution", generated)
+            self.assertNotIn("wrong-distribution", generated)
 
     def test_python_generation_selects_the_canonical_runtime_when_compatible(self):
         directory, root = _repository(
@@ -327,6 +353,33 @@ class CodeownersSeedingTests(unittest.TestCase):
             self.assertFalse(codeowners.has_active_rule(path.read_text(encoding="utf-8")))
             self.assertIn("::warning::", result.stdout)
 
+    def test_malformed_hand_written_owner_rules_are_not_treated_as_active(self):
+        malformed = (
+            "/.spi/ @valid @team;invalid\n",
+            "/.spi/ @valid not-an-owner\n",
+            "/.spi/ @owner-\n",
+            "/.spi/ @owner--name\n",
+            "/.spi/\n",
+        )
+
+        for rule in malformed:
+            with self.subTest(rule=rule):
+                self.assertFalse(codeowners.has_active_rule(rule))
+
+    def test_later_valid_owner_rule_is_not_masked_by_an_earlier_malformed_rule(self):
+        content = "/.spi/ @owner-\n/.spi/ @my-org/engineering-system\n"
+
+        self.assertTrue(codeowners.has_active_rule(content))
+
+    def test_placeholder_remediation_matches_the_read_only_settings_workflow(self):
+        content = codeowners.render_block([])
+
+        self.assertIn("generate_codeowners.py", content)
+        self.assertIn('--owners "@my-org/engineering-system"', content)
+        self.assertIn("Commit CODEOWNERS", content)
+        self.assertIn("Settings Apply is read-only", content)
+        self.assertNotIn('re-run the "Settings Apply" workflow', content)
+
     def test_existing_ownership_is_preserved_and_seeding_is_idempotent(self):
         directory, root = _repository({"CODEOWNERS": "* @service-team\n"})
         with directory:
@@ -355,6 +408,9 @@ class CodeownersSeedingTests(unittest.TestCase):
         self.assertEqual(["@a/b", "@c"], codeowners.valid_owners("@a/b, @c"))
         self.assertEqual([], codeowners.valid_owners("org/team"))
         self.assertEqual([], codeowners.valid_owners("@org/team; rm -rf /"))
+        self.assertEqual([], codeowners.valid_owners("@valid invalid"))
+        self.assertEqual([], codeowners.valid_owners("@owner-"))
+        self.assertEqual([], codeowners.valid_owners("@owner--name"))
 
 
 if __name__ == "__main__":

@@ -35,8 +35,9 @@ repository without `pom.xml`.
 - **3.13 is a compatibility leg only.** MCR does not publish an
   `azurelinux/base/python:3.13` tag, so 3.13 must never be treated as the runtime.
 
-The action takes a single `python_version`; a caller runs a compatibility matrix by
-invoking it a second time with `python_version: '3.13'`.
+The descriptor's `build.python.compatibilityVersions` drives a separate required job matrix.
+Each leg invokes the same action with its declared version and a unique artifact suffix. The
+canonical 3.12 leg remains the only image-producing runtime.
 
 ## Build phases
 
@@ -77,6 +78,9 @@ Three artifacts are uploaded:
 - `python-junit-reports`
 - `python-coverage-reports`
 
+Compatibility legs append a validated suffix such as `-py313`, preventing artifact-name
+collisions with the canonical runtime.
+
 The job summary shows the resolved build plan, per-phase results, a per-suite test table,
 and per-suite coverage.
 
@@ -106,7 +110,9 @@ Optional inputs share one convention:
 | `runtime_extras` | `""` | `az` when declared |
 | `runtime_import_modules` | `""` | Defaults to the import package |
 | `unit_test_path` | `""` | `tests/unit` when present |
-| `service_test_path` | `""` | `tests/service` when present |
+| `service_test_path` | `""` | Shared fallback: `tests/service` when present |
+| `service_in_process_test_path` | `""` | In-process override; falls back to `service_test_path` |
+| `service_subprocess_test_path` | `""` | Subprocess override; falls back to `service_test_path` |
 | `service_test_modes` | `in-process,subprocess` | Enum list, or `none` |
 | `service_in_process_flag` | `--no-subprocess` | A single flag token; values and spaces are rejected |
 | `generate_coverage` | `false` | Cobertura for unit and in-process service suites |
@@ -115,6 +121,7 @@ Optional inputs share one convention:
 | `lock_drift_paths` | `""` | Defaults to `uv.lock` plus committed requirements files |
 | `package_build` | `false` | Runs `uv build` |
 | `index_name` / `index_username` / `index_token` | `""` | Credentials for a private uv index; masked, never a build argument |
+| `artifact_suffix` | `""` | Validated compatibility-artifact suffix, e.g. `-py313` |
 
 Extras are validated against `[project.optional-dependencies]`, so a typo fails with the
 list of extras the project actually declares instead of a late resolver error.

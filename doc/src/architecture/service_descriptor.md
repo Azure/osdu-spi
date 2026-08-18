@@ -28,6 +28,7 @@ service:
 build:
   python:
     runtimeVersion: "3.12"
+    compatibilityVersions: ["3.13"]
     packageManager: uv
     lockfile: uv.lock
     distribution: osdu-wbddms-worker
@@ -40,6 +41,12 @@ tests:
     type: pytest
     path: tests/unit
     coverage: true
+  serviceInProcess:
+    type: pytest
+    path: tests/service
+  serviceSubprocess:
+    type: pytest
+    path: tests/service
 
 container:
   appModule: wdmsworker.app:app
@@ -82,7 +89,9 @@ rejected by the validator. Those values stay in repository/environment variables
 descriptor_present  schema_version  archetype     service_name  dockerfile_profile
 unit_test_type      has_coverage    build_lane    lane_implemented  fallback
 python_runtime_version  python_distribution  python_import_package
-python_test_extras      python_runtime_extras  app_module
+python_compatibility_versions  python_compatibility_matrix
+python_test_extras  python_runtime_extras  python_unit_test_path
+python_service_in_process_test_path  python_service_subprocess_test_path  app_module
 ```
 
 `build_lane` selects the statically declared language job (`🔨 Java Build` or `🐍 Python Build`)
@@ -90,6 +99,8 @@ and the image profile: the Java lane keeps artifact mode with `build/Dockerfile`
 builds `build/python/Dockerfile` from source plus `uv.lock` with `app_module` and
 `python_runtime_extras` as build arguments. The Python outputs are also the python-build action's
 inputs, so a fork parameterises its build by editing the descriptor, never the workflow.
+Descriptor-declared compatibility versions run as a separate required matrix with uniquely named
+artifacts; the canonical 3.12 runtime still owns the image build.
 
 The required check keeps its exact context name, `🐳 Docker Build`, and fails closed when the
 descriptor is invalid, when it declares an archetype whose lane is not installed in the fork's

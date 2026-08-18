@@ -88,6 +88,8 @@ class ConventionDetectionTests(unittest.TestCase):
             self.assertTrue(plan.run_unit_tests)
             self.assertTrue(plan.run_service_in_process)
             self.assertTrue(plan.run_service_subprocess)
+            self.assertEqual("tests/service", plan.service_in_process_test_path)
+            self.assertEqual("tests/service", plan.service_subprocess_test_path)
             self.assertEqual("--no-subprocess", plan.service_in_process_flag)
             self.assertEqual("wdmsworker", plan.coverage_target)
             self.assertFalse(plan.run_lock_export_drift)
@@ -218,6 +220,25 @@ class DisabledAndExplicitInputTests(unittest.TestCase):
                 ("wdmsworker", "wdmsworker.provider.azure"), plan.runtime_import_modules
             )
 
+    def test_distinct_service_suite_paths_are_honoured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = _write_repo(Path(directory), service_tests=False)
+            (root / "tests" / "in-process").mkdir(parents=True)
+            (root / "tests" / "subprocess").mkdir(parents=True)
+
+            plan = plan_module.resolve_plan(
+                {
+                    "SERVICE_IN_PROCESS_TEST_PATH": "tests/in-process",
+                    "SERVICE_SUBPROCESS_TEST_PATH": "tests/subprocess",
+                },
+                root,
+            )
+
+            self.assertEqual("tests/in-process", plan.service_in_process_test_path)
+            self.assertEqual("tests/subprocess", plan.service_subprocess_test_path)
+            self.assertTrue(plan.run_service_in_process)
+            self.assertTrue(plan.run_service_subprocess)
+
 
 class InputValidationTests(unittest.TestCase):
     def _expect_error(self, inputs: dict[str, str], fragment: str) -> None:
@@ -266,6 +287,9 @@ class InputValidationTests(unittest.TestCase):
 
     def test_rejects_non_boolean_coverage_flag(self):
         self._expect_error({"GENERATE_COVERAGE": "sometimes"}, "generate_coverage")
+
+    def test_rejects_invalid_artifact_suffix(self):
+        self._expect_error({"ARTIFACT_SUFFIX": "\nname=collision"}, "artifact_suffix")
 
     def test_rejects_module_name_that_is_not_an_identifier(self):
         self._expect_error({"RUNTIME_IMPORT_MODULES": "os;import shutil"}, "runtime_import")
@@ -322,12 +346,26 @@ class PlanOutputTests(unittest.TestCase):
                 "run_lock_export_drift",
                 "reports_dir",
                 "coverage_target",
+                "service_in_process_test_path",
+                "service_subprocess_test_path",
+                "artifact_suffix",
             ):
                 self.assertIn(key, outputs)
 
             self.assertEqual(".spi-build-reports", outputs["reports_dir"])
             self.assertEqual("true", outputs["generate_coverage"])
             self.assertEqual("dev", outputs["test_extras"])
+
+    def test_output_writer_rejects_newline_injection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "github-output"
+
+            with self.assertRaises(plan_module.PlanError):
+                plan_module.write_outputs(
+                    [("package_name", "safe\nruntime_extras=attacker")], output
+                )
+
+            self.assertEqual("", output.read_text(encoding="utf-8"))
 
     def test_output_values_never_contain_newlines(self):
         with tempfile.TemporaryDirectory() as directory:

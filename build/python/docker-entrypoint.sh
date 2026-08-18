@@ -26,6 +26,12 @@ matches() {
   printf '%s' "$1" | grep -Eq "$2"
 }
 
+valid_port() {
+  matches "$1" "$PORT_PATTERN" &&
+    [ "$1" -ge 1 ] 2>/dev/null &&
+    [ "$1" -le 65535 ] 2>/dev/null
+}
+
 MODULE_PATTERN='^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$'
 PATH_PATTERN='^/[A-Za-z0-9._~/-]*$'
 PORT_PATTERN='^[0-9]{1,5}$'
@@ -40,7 +46,7 @@ run_healthcheck() {
     exit 0
   fi
   matches "$health_path" "$PATH_PATTERN" || fail "invalid SPI_HEALTH_PATH '$health_path'"
-  matches "${SPI_APP_PORT:-8080}" "$PORT_PATTERN" || fail "invalid SPI_APP_PORT '${SPI_APP_PORT:-}'"
+  valid_port "${SPI_APP_PORT:-8080}" || fail "invalid SPI_APP_PORT '${SPI_APP_PORT:-}' (expected 1-65535)"
 
   # The URL is assembled inside Python from the environment, never by string
   # interpolation in the shell.
@@ -83,7 +89,7 @@ ROOT_PATH="${SPI_UVICORN_ROOT_PATH:-}"
 [ -n "$APP_MODULE" ] || fail "SPI_APP_MODULE is not set. Build the image with --build-arg APP_MODULE=<package.module:app>."
 matches "$APP_MODULE" "$MODULE_PATTERN" || fail "invalid SPI_APP_MODULE '$APP_MODULE' (expected package.module:attribute)"
 matches "$APP_HOST" "$HOST_PATTERN" || fail "invalid SPI_APP_HOST '$APP_HOST'"
-matches "$APP_PORT" "$PORT_PATTERN" || fail "invalid SPI_APP_PORT '$APP_PORT'"
+valid_port "$APP_PORT" || fail "invalid SPI_APP_PORT '$APP_PORT' (expected 1-65535)"
 matches "$WORKERS" "$WORKERS_PATTERN" || fail "invalid SPI_UVICORN_WORKERS '$WORKERS'"
 matches "$LOG_LEVEL" "$LOG_LEVEL_PATTERN" || fail "invalid SPI_UVICORN_LOG_LEVEL '$LOG_LEVEL'"
 

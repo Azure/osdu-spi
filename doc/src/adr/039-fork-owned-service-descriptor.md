@@ -159,7 +159,9 @@ sync exclusion now describe complementary behaviour rather than deleting ownersh
    `docker-build` with a `source` build mode; flip `laneImplemented` for `python-uv-fastapi`
    (done, issue #42). Python deployment and integration testing remain out of scope: the lane
    ends at a published GHCR image and the deploy jobs are explicitly gated on
-   `build_lane == 'java'`.
+   `build_lane == 'java'`. Descriptor-declared compatibility versions run as a separate required
+   matrix; test paths are passed explicitly to the action, and unsupported test arguments/types
+   fail schema validation rather than being silently ignored.
 5. Pilot descriptors: Partition, then Entitlements, then the Python pilot.
 6. Once the fleet has descriptors, remove the remaining per-workflow language inference in
    `cascade.yml` and `dependabot-validation.yml`, keeping a documented compatibility window.

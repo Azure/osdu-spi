@@ -47,6 +47,7 @@ DISTRIBUTION_PATTERN = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$")
 PATH_PATTERN = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._/-]*$")
 PYTEST_FLAG_PATTERN = re.compile(r"^--[A-Za-z0-9][A-Za-z0-9-]*$")
 INDEX_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+ARTIFACT_SUFFIX_PATTERN = re.compile(r"^(-[A-Za-z0-9][A-Za-z0-9._-]{0,39})?$")
 
 BOOLEAN_TRUE = ("true", "1", "yes", "on")
 BOOLEAN_FALSE = ("false", "0", "no", "off", "")
@@ -69,7 +70,8 @@ class BuildPlan:
     runtime_extras: tuple[str, ...]
     runtime_import_modules: tuple[str, ...]
     unit_test_path: str
-    service_test_path: str
+    service_in_process_test_path: str
+    service_subprocess_test_path: str
     service_in_process_flag: str
     run_unit_tests: bool
     run_service_in_process: bool
@@ -81,6 +83,7 @@ class BuildPlan:
     lock_drift_paths: tuple[str, ...]
     package_build: bool
     index_name: str
+    artifact_suffix: str
     reports_dir: str = REPORTS_DIR
     warnings: tuple[str, ...] = field(default=())
 
@@ -229,7 +232,11 @@ def _detect_package_name(root: Path, source_paths: Sequence[str], distribution: 
         if not base.is_dir():
             continue
         for child in sorted(base.iterdir()):
-            if child.is_dir() and (child / "__init__.py").is_file():
+            if (
+                child.is_dir()
+                and (child / "__init__.py").is_file()
+                and MODULE_PATTERN.fullmatch(child.name)
+            ):
                 candidates.append(child.name)
     unique = sorted(set(candidates))
     if len(unique) == 1:
@@ -371,9 +378,16 @@ def resolve_plan(inputs: Mapping[str, str], root: Path) -> BuildPlan:
         DEFAULT_UNIT_TEST_PATH,
         root,
     )
-    service_test_path, service_present = _resolve_test_path(
-        "service_test_path",
-        _clean(inputs.get("SERVICE_TEST_PATH")),
+    shared_service_path = _clean(inputs.get("SERVICE_TEST_PATH"))
+    service_in_process_test_path, in_process_present = _resolve_test_path(
+        "service_in_process_test_path",
+        _clean(inputs.get("SERVICE_IN_PROCESS_TEST_PATH")) or shared_service_path,
+        DEFAULT_SERVICE_TEST_PATH,
+        root,
+    )
+    service_subprocess_test_path, subprocess_present = _resolve_test_path(
+        "service_subprocess_test_path",
+        _clean(inputs.get("SERVICE_SUBPROCESS_TEST_PATH")) or shared_service_path,
         DEFAULT_SERVICE_TEST_PATH,
         root,
     )
@@ -436,9 +450,21 @@ def resolve_plan(inputs: Mapping[str, str], root: Path) -> BuildPlan:
             "expected the uv index name declared in pyproject.toml or uv.toml",
         )
 
-    if not service_present and (wants_in_process or wants_subprocess):
+    artifact_suffix = _clean(inputs.get("ARTIFACT_SUFFIX"))
+    _validate_token(
+        "artifact_suffix",
+        artifact_suffix,
+        ARTIFACT_SUFFIX_PATTERN,
+        "expected empty or '-name' using A-Z a-z 0-9 . _ -",
+    )
+
+    if not in_process_present and wants_in_process:
         warnings.append(
-            "service tests were requested but no service test path exists; skipping them"
+            "in-process service tests were requested but no test path exists; skipping them"
+        )
+    if not subprocess_present and wants_subprocess:
+        warnings.append(
+            "subprocess service tests were requested but no test path exists; skipping them"
         )
 
     return BuildPlan(
@@ -453,11 +479,12 @@ def resolve_plan(inputs: Mapping[str, str], root: Path) -> BuildPlan:
         runtime_extras=runtime_extras,
         runtime_import_modules=runtime_import_modules,
         unit_test_path=unit_test_path,
-        service_test_path=service_test_path,
+        service_in_process_test_path=service_in_process_test_path,
+        service_subprocess_test_path=service_subprocess_test_path,
         service_in_process_flag=service_in_process_flag,
         run_unit_tests=run_unit_tests,
-        run_service_in_process=service_present and wants_in_process,
-        run_service_subprocess=service_present and wants_subprocess,
+        run_service_in_process=in_process_present and wants_in_process,
+        run_service_subprocess=subprocess_present and wants_subprocess,
         generate_coverage=generate_coverage,
         lint_mode=lint_mode,
         typecheck_mode=typecheck_mode,
@@ -465,6 +492,7 @@ def resolve_plan(inputs: Mapping[str, str], root: Path) -> BuildPlan:
         lock_drift_paths=lock_drift_paths,
         package_build=_as_bool("package_build", _clean(inputs.get("PACKAGE_BUILD"))),
         index_name=index_name,
+        artifact_suffix=artifact_suffix,
         warnings=tuple(warnings),
     )
 
@@ -488,7 +516,8 @@ def plan_outputs(plan: BuildPlan) -> list[tuple[str, str]]:
         ("runtime_extras", ",".join(plan.runtime_extras)),
         ("runtime_import_modules", ",".join(plan.runtime_import_modules)),
         ("unit_test_path", plan.unit_test_path),
-        ("service_test_path", plan.service_test_path),
+        ("service_in_process_test_path", plan.service_in_process_test_path),
+        ("service_subprocess_test_path", plan.service_subprocess_test_path),
         ("service_in_process_flag", plan.service_in_process_flag),
         ("run_unit_tests", _bool_text(plan.run_unit_tests)),
         ("run_service_in_process", _bool_text(plan.run_service_in_process)),
@@ -501,6 +530,7 @@ def plan_outputs(plan: BuildPlan) -> list[tuple[str, str]]:
         ("lock_drift_paths", ",".join(plan.lock_drift_paths)),
         ("package_build", _bool_text(plan.package_build)),
         ("index_name", plan.index_name),
+        ("artifact_suffix", plan.artifact_suffix),
         ("reports_dir", plan.reports_dir),
     ]
 
@@ -512,11 +542,13 @@ def render_plan_summary(plan: BuildPlan) -> str:
         return f"{'✅' if enabled else '⏭️'} {detail}"
 
     in_process_detail = (
-        f"{plan.service_test_path} {plan.service_in_process_flag}".strip()
+        f"{plan.service_in_process_test_path} {plan.service_in_process_flag}".strip()
         if plan.run_service_in_process
         else "skipped"
     )
-    subprocess_detail = plan.service_test_path if plan.run_service_subprocess else "skipped"
+    subprocess_detail = (
+        plan.service_subprocess_test_path if plan.run_service_subprocess else "skipped"
+    )
     drift_detail = plan.lock_regeneration_script or "no regeneration script"
 
     lines = [
@@ -546,6 +578,8 @@ def render_plan_summary(plan: BuildPlan) -> str:
 def write_outputs(pairs: Iterable[tuple[str, str]], destination: Path) -> None:
     with destination.open("a", encoding="utf-8") as stream:
         for key, value in pairs:
+            if "\r" in value or "\n" in value:
+                raise PlanError(f"Resolved output '{key}' contains a newline")
             stream.write(f"{key}={value}\n")
 
 
@@ -555,16 +589,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         plan = resolve_plan(os.environ, root)
+        pairs = plan_outputs(plan)
+        output_file = os.environ.get("GITHUB_OUTPUT")
+        if output_file:
+            write_outputs(pairs, Path(output_file))
     except PlanError as error:
         print(f"::error::{error}")
         return 1
 
     for warning in plan.warnings:
         print(f"::warning::{warning}")
-
-    output_file = os.environ.get("GITHUB_OUTPUT")
-    if output_file:
-        write_outputs(plan_outputs(plan), Path(output_file))
 
     summary = render_plan_summary(plan)
     print(summary)

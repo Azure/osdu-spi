@@ -88,10 +88,14 @@ class ResolvedConfig:
     # name, dotted module or extras list), so a workflow may pass them straight to
     # the python-build action and the canonical Python image build arguments.
     python_runtime_version: str = ""
+    python_compatibility_versions: str = ""
     python_distribution: str = ""
     python_import_package: str = ""
     python_test_extras: str = ""
     python_runtime_extras: str = ""
+    python_unit_test_path: str = ""
+    python_service_in_process_test_path: str = ""
+    python_service_subprocess_test_path: str = ""
     app_module: str = ""
     errors: List[ValidationError] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -99,6 +103,19 @@ class ResolvedConfig:
     def outputs(self) -> Dict[str, str]:
         """The fixed workflow output contract (never arbitrary shell)."""
 
+        compatibility_versions = [
+            version for version in self.python_compatibility_versions.split(",") if version
+        ]
+        compatibility_matrix = {
+            "include": [
+                {
+                    "version": version,
+                    "artifact_suffix": f"-py{version.replace('.', '')}",
+                }
+                for version in compatibility_versions
+            ]
+            or [{"version": "", "artifact_suffix": ""}]
+        }
         return {
             "descriptor_present": "true" if self.descriptor_present else "false",
             "schema_version": self.schema_version,
@@ -111,10 +128,17 @@ class ResolvedConfig:
             "lane_implemented": self.lane_implemented,
             "fallback": self.fallback,
             "python_runtime_version": self.python_runtime_version,
+            "python_compatibility_versions": self.python_compatibility_versions,
+            "python_compatibility_matrix": json.dumps(
+                compatibility_matrix, separators=(",", ":")
+            ),
             "python_distribution": self.python_distribution,
             "python_import_package": self.python_import_package,
             "python_test_extras": self.python_test_extras,
             "python_runtime_extras": self.python_runtime_extras,
+            "python_unit_test_path": self.python_unit_test_path,
+            "python_service_in_process_test_path": self.python_service_in_process_test_path,
+            "python_service_subprocess_test_path": self.python_service_subprocess_test_path,
             "app_module": self.app_module,
         }
 
@@ -570,7 +594,19 @@ def _validate_consistency(
                 )
             )
 
-    allowed_test_types = {defaults["unitTestType"], "postman"}
+    compatibility_versions = _lookup(document, "build.python.compatibilityVersions")
+    if isinstance(compatibility_versions, list) and len(compatibility_versions) != len(
+        set(compatibility_versions)
+    ):
+        errors.append(
+            ValidationError(
+                "build.python.compatibilityVersions",
+                "duplicate-value",
+                "compatibility versions must be unique",
+            )
+        )
+
+    allowed_test_types = {defaults["unitTestType"]}
     for suite, definition in document.get("tests", {}).items():
         suite_type = definition.get("type") if isinstance(definition, dict) else None
         if suite_type and suite_type not in allowed_test_types:
@@ -675,12 +711,23 @@ def resolve(
         config.python_runtime_version = python.get(
             "runtimeVersion", defaults.get("runtimeVersion", "")
         )
+        config.python_compatibility_versions = ",".join(
+            python.get("compatibilityVersions", [])
+        )
         config.python_distribution = python.get("distribution", "")
         config.python_import_package = python.get("importPackage", "")
         # Lists are joined with commas: the python-build action and the canonical image
         # both take comma-separated extras, and every entry is pattern-validated above.
         config.python_test_extras = ",".join(python.get("testExtras", []))
         config.python_runtime_extras = ",".join(python.get("runtimeExtras", []))
+        tests = document.get("tests", {})
+        config.python_unit_test_path = tests.get("unit", {}).get("path", "")
+        config.python_service_in_process_test_path = tests.get(
+            "serviceInProcess", {}
+        ).get("path", "")
+        config.python_service_subprocess_test_path = tests.get(
+            "serviceSubprocess", {}
+        ).get("path", "")
         config.app_module = document.get("container", {}).get("appModule", "")
 
     if document["schemaVersion"] in schema.get("deprecatedSchemaVersions", []):

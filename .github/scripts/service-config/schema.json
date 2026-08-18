@@ -120,7 +120,7 @@
               "type": "list",
               "items": {
                 "type": "string",
-                "enum": ["3.11", "3.12", "3.13"]
+                "enum": ["3.11", "3.13"]
               }
             },
             "packageManager": {
@@ -164,9 +164,15 @@
     "tests": {
       "type": "mapping",
       "properties": {
-        "unit": { "$ref": "testSuite" },
-        "serviceInProcess": { "$ref": "testSuite" },
-        "serviceSubprocess": { "$ref": "testSuite" }
+        "unit": { "$ref": "unitTestSuite" },
+        "serviceInProcess": {
+          "$ref": "serviceTestSuite",
+          "archetypes": ["python-uv-fastapi"]
+        },
+        "serviceSubprocess": {
+          "$ref": "serviceTestSuite",
+          "archetypes": ["python-uv-fastapi"]
+        }
       }
     },
     "container": {
@@ -187,7 +193,7 @@
     }
   },
   "definitions": {
-    "testSuite": {
+    "unitTestSuite": {
       "type": "mapping",
       "properties": {
         "type": {
@@ -196,17 +202,24 @@
         },
         "path": {
           "type": "path",
+          "archetypes": ["python-uv-fastapi"],
           "maxLength": 120
         },
         "coverage": {
           "type": "coverage"
+        }
+      }
+    },
+    "serviceTestSuite": {
+      "type": "mapping",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["pytest"]
         },
-        "arguments": {
-          "type": "list",
-          "items": {
-            "type": "string",
-            "pattern": "^-{0,2}[A-Za-z0-9][A-Za-z0-9._=-]{0,63}$"
-          }
+        "path": {
+          "type": "path",
+          "maxLength": 120
         }
       }
     }
