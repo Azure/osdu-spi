@@ -117,6 +117,7 @@ nav:
       - Overview: architecture/overview.md
       - Three-Branch Strategy: architecture/three_branch_strategy.md
       - Workflow System: architecture/workflow_system.md
+      - Service Descriptor: architecture/service_descriptor.md
       - AI Integration: architecture/ai_integration.md
   - Workflows:
       - Initialization: workflows/initialization.md
@@ -124,6 +125,7 @@ nav:
       - Cascade: workflows/cascade.md
       - Validation: workflows/validation.md
       - Build: workflows/build.md
+      - Python Build Profile: workflows/python-build.md
       - Release: workflows/release.md
   - Decisions:
       - Index: adr/index.md

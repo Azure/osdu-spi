@@ -96,6 +96,11 @@ fi
 - **Gradle**: `build.gradle` file present  
 - **Source Structure**: `src/main/java` directory exists
 
+!!! note "Superseded by the service descriptor (ADR-039)"
+    Lane selection is now driven by the `read-service-config` prelude, which resolves the
+    fork-owned `.spi/service.yaml` descriptor into a `build_lane` output. The inference described
+    above remains only as the fallback for forks that do not yet carry a descriptor.
+
 ### Repository State Output
 ```yaml
 outputs:

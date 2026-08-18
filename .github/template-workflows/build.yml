@@ -7,6 +7,9 @@ on:
       - '!main'     # Exclude main branch
       - '!fork_integration'  # Exclude fork_integration as it's covered by validate
       - '!fork_upstream'     # Exclude fork_upstream as it's covered by validate
+    # `.spi/**` is deliberately absent from every paths-ignore list: the fork-owned
+    # service descriptor selects the build lane itself (ADR-039), so a descriptor-only
+    # change must build. Keep it out of any future dotfile/config exclusion.
     paths-ignore:
       - '.github/workflows/**'
       - '.github/template-workflows/**'
@@ -28,6 +31,7 @@ on:
       - main
       - fork_integration
       - fork_upstream
+    # See the push trigger: `.spi/**` must stay build-relevant here too.
     paths-ignore:
       - '.github/workflows/**'
       - '.github/template-workflows/**'
@@ -50,19 +54,88 @@ permissions:
   pull-requests: write
 
 jobs:
+  read-service-config:
+    # ADR-039 prelude: same fixed output contract as validate.yml. Feature-branch pushes are
+    # already trusted-by-branch, so the descriptor is read from the pushed tree.
+    name: "🧭 Read Service Config"
+    runs-on: ubuntu-latest
+    outputs:
+      descriptor_present: ${{ steps.config.outputs.descriptor_present }}
+      schema_version: ${{ steps.config.outputs.schema_version }}
+      archetype: ${{ steps.config.outputs.archetype }}
+      service_name: ${{ steps.config.outputs.service_name }}
+      dockerfile_profile: ${{ steps.config.outputs.dockerfile_profile }}
+      unit_test_type: ${{ steps.config.outputs.unit_test_type }}
+      has_coverage: ${{ steps.config.outputs.has_coverage }}
+      # Language-neutral selection output consumed by the build lanes below.
+      build_lane: ${{ steps.config.outputs.build_lane }}
+      lane_implemented: ${{ steps.config.outputs.lane_implemented }}
+      fallback: ${{ steps.config.outputs.fallback }}
+      python_runtime_version: ${{ steps.config.outputs.python_runtime_version }}
+      python_distribution: ${{ steps.config.outputs.python_distribution }}
+      python_import_package: ${{ steps.config.outputs.python_import_package }}
+      python_test_extras: ${{ steps.config.outputs.python_test_extras }}
+      python_runtime_extras: ${{ steps.config.outputs.python_runtime_extras }}
+      app_module: ${{ steps.config.outputs.app_module }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+
+      - name: "Resolve Service Configuration"
+        id: config
+        env:
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          READER=".github/scripts/service-config/read_service_config.py"
+          if [ ! -f "$READER" ]; then
+            # Fork predating ADR-039 (template-sync not yet applied): preserve current behaviour.
+            echo "::warning::$READER not found; using legacy Java inference"
+            if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
+              LANE=java
+            else
+              LANE=none
+            fi
+            {
+              echo "descriptor_present=false"
+              echo "schema_version="
+              echo "archetype="
+              echo "service_name=${SERVICE_NAME}"
+              echo "dockerfile_profile=$([ "$LANE" = "java" ] && echo java || echo '')"
+              echo "unit_test_type=$([ "$LANE" = "java" ] && echo maven || echo '')"
+              echo "has_coverage=$([ "$LANE" = "java" ] && echo true || echo false)"
+              echo "build_lane=${LANE}"
+              echo "lane_implemented=$([ "$LANE" = "java" ] && echo true || echo false)"
+              echo "fallback=$([ "$LANE" = "java" ] && echo java-inference || echo none)"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 "$READER" \
+            --root . \
+            --service-name "${SERVICE_NAME}" \
+            --format github \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
   check-repo-state:
     name: "🔍 Check Repository State"
     runs-on: ubuntu-latest
     outputs:
       initialized: ${{ steps.check_init.outputs.initialized }}
       is_java_project: ${{ steps.check_java.outputs.is_java }}
+      is_python_project: ${{ steps.check_python.outputs.is_python }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         
       - name: "Check Repository Initialization"
         id: check_init
         run: |
-          if [ -f "pom.xml" ] || [ -d "src" ]; then
+          # A service is initialized when it declares itself (the fork-owned descriptor,
+          # ADR-039) or carries a supported build marker. Descriptor *presence* is enough:
+          # its validity is enforced by read-service-config, which fails closed. Without
+          # the Python markers a uv service with no top-level src/ would look
+          # uninitialized and skip its build entirely.
+          if [ -f ".spi/service.yaml" ] || [ -f "pom.xml" ] || \
+             { [ -f "pyproject.toml" ] && [ -f "uv.lock" ]; } || [ -d "src" ]; then
             echo "initialized=true" >> $GITHUB_OUTPUT
           else
             echo "initialized=false" >> $GITHUB_OUTPUT
@@ -77,10 +150,48 @@ jobs:
             echo "is_java=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: "Check if Python Project"
+        id: check_python
+        run: |
+          if [ -f "pyproject.toml" ] && [ -f "uv.lock" ]; then
+            echo "is_python=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_python=false" >> $GITHUB_OUTPUT
+          fi
+
+  python-build:
+    name: "🐍 Python Build"
+    needs: [check-repo-state, read-service-config]
+    # Statically declared lane (expressions are not allowed in `uses:`), selected by the
+    # descriptor's language-neutral `build_lane` output (ADR-039).
+    if: needs.check-repo-state.outputs.initialized == 'true' && needs.read-service-config.outputs.build_lane == 'python'
+    runs-on: ubuntu-latest
+    outputs:
+      is_python_project: ${{ steps.build.outputs.is_python_project }}
+      build_result: ${{ steps.build.outputs.build_result }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          # The action's lock/export drift gate diffs the working tree against the commit.
+          fetch-depth: 0
+
+      - name: "Run Python Build"
+        id: build
+        uses: ./.github/actions/python-build
+        with:
+          # Descriptor-provided values; safe defaults keep a minimal descriptor working.
+          python_version: ${{ needs.read-service-config.outputs.python_runtime_version || '3.12' }}
+          package_name: ${{ needs.read-service-config.outputs.python_import_package }}
+          distribution_name: ${{ needs.read-service-config.outputs.python_distribution }}
+          test_extras: ${{ needs.read-service-config.outputs.python_test_extras }}
+          runtime_extras: ${{ needs.read-service-config.outputs.python_runtime_extras }}
+          generate_coverage: ${{ needs.read-service-config.outputs.has_coverage }}
+
   java-build:
     name: "🔨 Java Build"
-    needs: check-repo-state
-    if: needs.check-repo-state.outputs.initialized == 'true' && needs.check-repo-state.outputs.is_java_project == 'true'
+    needs: [check-repo-state, read-service-config]
+    # Lane selection is descriptor-driven (ADR-039); absent descriptor keeps Java inference.
+    if: needs.check-repo-state.outputs.initialized == 'true' && needs.read-service-config.outputs.build_lane == 'java'
     runs-on: ubuntu-latest
     outputs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
@@ -99,8 +210,8 @@ jobs:
 
   code-coverage:
     name: "📊 Code Coverage"
-    needs: [check-repo-state, java-build]
-    if: needs.check-repo-state.outputs.is_java_project == 'true'
+    needs: [check-repo-state, read-service-config, java-build]
+    if: needs.read-service-config.outputs.build_lane == 'java' && needs.read-service-config.outputs.has_coverage == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5

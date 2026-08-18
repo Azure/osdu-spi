@@ -268,10 +268,45 @@ jobs:
           issue_number: ${{ github.event.issue.number }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git merge operations and posting comments
 
+      - name: Generate Service Descriptor
+        id: service_descriptor
+        env:
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          # ADR-039: upstream code is now merged into main, so the service shape can be detected
+          # once and persisted as the fork-owned `.spi/service.yaml`. Ambiguous or unsupported
+          # shapes halt initialization with an actionable error instead of guessing a build lane.
+          python3 .github/scripts/service-config/generate_descriptor.py \
+            --root . \
+            --service-name "${SERVICE_NAME}"
+          git add .spi/service.yaml
+
+      - name: Report Service Descriptor Failure
+        if: failure() && steps.service_descriptor.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+        run: |
+          {
+            echo "## ⚠️ Service descriptor could not be generated"
+            echo ""
+            echo "Initialization halted because this repository's build shape is ambiguous or not"
+            echo "yet supported (expected \`pom.xml\`, or \`pyproject.toml\` with \`uv.lock\`)."
+            echo ""
+            echo "**Next step:** commit a hand-written \`.spi/service.yaml\` declaring a supported"
+            echo "archetype (see \`.github/scripts/service-config/schema.json\`), then re-run"
+            echo "initialization."
+          } > descriptor-failure.md
+          gh issue comment "${{ github.event.issue.number }}" --body-file descriptor-failure.md || true
+          rm -f descriptor-failure.md
+
       - name: Finalize Initialization
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GitHub App token required for workflows)
           GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Pushing workflow files needs 'workflows' permission + setting variables needs admin
+          # ADR-039: optional per-organization owner for the seeded `/.spi/` CODEOWNERS rule.
+          # Unset leaves a documented placeholder rather than an invalid team reference.
+          SPI_ENGINEERING_OWNERS: ${{ vars.SPI_ENGINEERING_OWNERS }}
         run: |
           # Copy workflows from template-workflows before deploy-fork-resources deletes the directory
           echo "Deploying production workflows from template..."

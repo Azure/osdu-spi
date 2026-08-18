@@ -27,6 +27,11 @@
         "path": ".github/scripts/settings-apply",
         "sync_all": true,
         "description": "Durable settings-reconciliation helpers called by settings-apply.yml"
+      },
+      {
+        "path": ".github/scripts/service-config",
+        "sync_all": true,
+        "description": "Service-descriptor schema, parser and generators owned by the engineering system (ADR-039)"
       }
     ],
     "files": [
@@ -147,8 +152,22 @@
   "exclusions": [
     ".github/copilot-instructions.md",
     ".github/local-actions",
-    "CODEOWNERS"
+    "CODEOWNERS",
+    ".spi"
   ],
+  "service_owned": {
+    "description": "Fork-owned paths that template-sync must never create, overwrite or delete (ADR-039)",
+    "paths": [
+      {
+        "path": ".spi/service.yaml",
+        "reason": "Service descriptor: build archetype and non-privileged build/test metadata owned by the service repository"
+      },
+      {
+        "path": "CODEOWNERS",
+        "reason": "Fork-owned ownership rules, seeded during initialization so /.spi/ requires an engineering-system reviewer"
+      }
+    ]
+  },
   "cleanup_rules": {
     "description": "Files and directories to remove during repository initialization",
     "directories": [
@@ -184,7 +203,7 @@
       },
       {
         "path": "CODEOWNERS",
-        "reason": "Template-specific code owners - fork instances define their own ownership"
+        "reason": "Template-specific code owners removed, then re-seeded with a fork-owned /.spi/ ownership rule during initialization (ADR-039)"
       },
       {
         "path": ".github/ISSUE_TEMPLATE/branch-protection-reminder.md",

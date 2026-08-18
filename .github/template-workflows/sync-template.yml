@@ -381,9 +381,22 @@ jobs:
               git add ".github/copilot-firewall-config.json"
             fi
 
-            # Process dependabot configuration
-            if git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" >/dev/null 2>&1; then
-              echo "Updating dependabot configuration from fork-resources..."
+            # Process dependabot configuration (language-aware: Java/Maven or Python/uv).
+            # The selector is template-owned; the fork's own tree only supplies the
+            # language markers it inspects.
+            DEPENDABOT_SOURCE=".github/fork-resources/dependabot.yml"
+            DEPENDABOT_SELECTOR="${RUNNER_TEMP}/select-dependabot-config.sh"
+            if git show refs/remotes/template/main:".github/fork-resources/select-dependabot-config.sh" > "$DEPENDABOT_SELECTOR" 2>/dev/null; then
+              DEPENDABOT_SOURCE=$(bash "$DEPENDABOT_SELECTOR" --print-source || echo ".github/fork-resources/dependabot.yml")
+            fi
+            rm -f "$DEPENDABOT_SELECTOR"
+
+            if git show refs/remotes/template/main:"$DEPENDABOT_SOURCE" >/dev/null 2>&1; then
+              echo "Updating dependabot configuration from fork-resources ($DEPENDABOT_SOURCE)..."
+              git show refs/remotes/template/main:"$DEPENDABOT_SOURCE" > ".github/dependabot.yml"
+              git add ".github/dependabot.yml"
+            elif git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" >/dev/null 2>&1; then
+              echo "Updating dependabot configuration from fork-resources (default)..."
               git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
               git add ".github/dependabot.yml"
             fi

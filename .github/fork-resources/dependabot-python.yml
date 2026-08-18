@@ -1,0 +1,55 @@
+version: 2
+updates:
+  # Python (uv) Dependencies - Application Code
+  # Workflow and GitHub Actions updates are managed via template synchronization
+  #
+  # Strategy (mirrors the Java/Maven fork policy):
+  # - PATCHES ONLY: Major and minor updates are ignored for stability
+  # - GROUPED: Azure SDK, FastAPI/Starlette/Pydantic, and OpenTelemetry patches are grouped
+  # - INDIVIDUAL: All other patches get individual PRs
+  # - EXCLUDED: Lint/type/test tooling is ignored entirely (owned by the service, not Dependabot)
+  #
+  # Dependabot resolves the same uv.lock the build and the canonical image install, so a
+  # merged PR updates CI and the container image together.
+  #
+  # Private OSDU package index: if the service index requires authentication, an
+  # organization or repository Dependabot secret must be added and referenced here as a
+  # `registries:` entry (python-index). Do not add the entry before the secret exists —
+  # an unresolvable registry reference invalidates the whole configuration file.
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+    target-branch: "main"
+    labels:
+      - "dependencies"
+    ignore:
+      # Only allow patch updates for stability
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      # Ignore build/lint/type/test tooling entirely
+      - dependency-name: "ruff"
+      - dependency-name: "mypy"
+      - dependency-name: "pytest"
+      - dependency-name: "pytest-*"
+      - dependency-name: "coverage"
+      - dependency-name: "setuptools"
+      - dependency-name: "uv"
+    groups:
+      azure:
+        patterns:
+          - "azure-*"
+          - "msal*"
+      fastapi:
+        patterns:
+          - "fastapi*"
+          - "starlette*"
+          - "pydantic*"
+          - "uvicorn*"
+      opentelemetry:
+        patterns:
+          - "opentelemetry-*"

@@ -243,3 +243,8 @@ These Architecture Decision Records document the key design choices made in the 
 - No Dockerfile or `docker-build` action change is required for the immediate 10 core service onboarding wave
 - ADME `OPTIONAL_FILES` usage was found only in reference services (`crs-catalog`, `crs-conversion`, `unit`), not Partition, Entitlements, or the 10 core service set
 - Extra-file image support should be deferred until reference-service onboarding and implemented with validated paths, not a raw Docker build-arg passthrough
+
+**Fork-Owned Service Descriptor (ADR-039)**
+- Each fork owns `.spi/service.yaml`: a schema-validated, closed-enum declaration of build archetype and non-privileged build/test metadata; template-sync never overwrites `.spi/**`
+- Copied workflows gain a `read-service-config` prelude whose `build_lane` output selects statically declared language lanes, keeping the exact `🐳 Docker Build` required context; an invalid or unimplemented archetype fails closed
+- `.spi/**` is explicitly build-relevant in validate/CodeQL path filtering; absent descriptors keep the legacy Java inference, and privileged deployment configuration stays in repository/environment variables

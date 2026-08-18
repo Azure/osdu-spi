@@ -3,8 +3,10 @@ name: Settings Apply
 # Reconciles per-fork repository settings that init.yml can only set once:
 #   - branch-protection rulesets (idempotent create/update, per-fork required-check filter)
 #   - deploy-onboarding readiness (opens/updates/closes a human-required issue)
+#   - service-descriptor validity and `/.spi/` code ownership (ADR-039), reported through
+#     that same deduplicated issue
 #   - GHCR package visibility (public, per ADR-033)
-# Runs on a schedule, on demand, and whenever the synced ruleset/helper sources change.
+# Runs on a schedule, on demand, and whenever the synced ruleset/helper/descriptor sources change.
 
 on:
   workflow_dispatch:
@@ -21,6 +23,8 @@ on:
     paths:
       - '.github/rulesets/**'
       - '.github/scripts/settings-apply/**'
+      - '.github/scripts/service-config/**'
+      - '.spi/**'
 
 permissions:
   contents: read

@@ -71,10 +71,44 @@ jobs:
       - name: Validate JSON Configuration
         run: |
           echo "Validating JSON configuration files..."
-          for file in .github/*.json; do
+          validation_failed=false
+          for file in .github/*.json .github/scripts/service-config/schema.json; do
             echo "Validating $file"
-            jq empty "$file" && echo "✅ $file is valid" || echo "❌ $file has errors"
+            if jq empty "$file"; then
+              echo "✅ $file is valid"
+            else
+              echo "❌ $file has errors"
+              validation_failed=true
+            fi
           done
+          if [ "$validation_failed" = "true" ]; then
+            echo "❌ JSON validation failed"
+            exit 1
+          fi
+
+      - name: Validate Shell Scripts
+        run: |
+          echo "Checking shell syntax..."
+          validation_failed=false
+          while IFS= read -r script; do
+            if bash -n "$script"; then
+              echo "✅ $script"
+            else
+              echo "❌ $script has syntax errors"
+              validation_failed=true
+            fi
+          done < <(find .github/scripts .github/local-actions .github/actions build -name '*.sh' -type f)
+          if [ "$validation_failed" = "true" ]; then
+            echo "❌ Shell validation failed"
+            exit 1
+          fi
+
+      - name: Validate Service Descriptor Tooling
+        run: |
+          echo "Compiling service-config helpers..."
+          python -m compileall -q .github/scripts/service-config
+          echo "Round-tripping the example descriptors through the parser..."
+          python .github/scripts/service-config/read_service_config.py --root . --format json
 
       - name: Test workflow summary helpers
         run: python -m unittest discover -s tests -p 'test_*.py' -v
@@ -106,6 +140,17 @@ jobs:
             ".github/workflows/init-complete.yml"
             ".github/template-workflows/sync.yml"
             ".github/template-workflows/validate.yml"
+            ".github/scripts/service-config/schema.json"
+            ".github/scripts/service-config/descriptor.py"
+            ".github/scripts/service-config/read_service_config.py"
+            ".github/scripts/service-config/generate_descriptor.py"
+            ".github/scripts/service-config/generate_codeowners.py"
+            ".github/actions/java-build/action.yml"
+            ".github/actions/python-build/action.yml"
+            ".github/actions/docker-build/action.yml"
+            ".github/actions/docker-build/prepare-build-args.sh"
+            "build/Dockerfile"
+            "build/python/Dockerfile"
           )
           
           for file in "${required_files[@]}"; do

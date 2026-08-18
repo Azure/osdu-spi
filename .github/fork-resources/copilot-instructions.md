@@ -78,7 +78,7 @@ chore/update-dependencies
 | Workflow              | Purpose                                      |
 | --------------------- | -------------------------------------------- |
 | `sync.yml`            | Sync from upstream; auto-create PRs          |
-| `build.yml`           | Build/test Java Maven projects               |
+| `build.yml`           | Build/test the service (Java/Maven or Python/uv) |
 | `validate.yml`        | Commit message validation and conflict check |
 | `release.yml`         | Automate semantic version releases           |
 | `sync-template.yml`   | Update from fork templates                   |
@@ -94,10 +94,23 @@ chore/update-dependencies
 
 **Local Test Commands:**
 
+Java/Maven services (`pom.xml`):
+
 ```bash
 mvn clean install
 mvn test
 mvn versions:display-dependency-updates
+```
+
+Python/uv services (`pyproject.toml` + `uv.lock`):
+
+```bash
+uv sync --locked --extra dev     # never re-resolve: the lockfile is the contract
+uv run ruff check src
+uv run mypy src
+uv run pytest tests/unit
+uv run pytest tests/service --no-subprocess
+uv lock --locked                 # fails when uv.lock and pyproject.toml disagree
 ```
 
 ---

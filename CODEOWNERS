@@ -1,2 +1,7 @@
 # Default owner for everything
 * @danielscholl @Azure/azure-global-energy
+
+# Service-descriptor schema, parser and generators are engineering-system owned (ADR-039).
+# Fork repositories receive this directory through template-sync and own only `.spi/**`,
+# whose ownership rule is seeded into each fork's CODEOWNERS during initialization.
+/.github/scripts/service-config/ @danielscholl @Azure/azure-global-energy

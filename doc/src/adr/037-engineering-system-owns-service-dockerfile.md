@@ -38,6 +38,27 @@
 
 - **Service-owned Dockerfile (the original default)** — rejected: partition's is stale and wrong, not every service has one, and the model produces per-fork drift and silent build failures.
 - **Pull the prebuilt service JAR from OSDU's Maven registry** — rejected: the build lane must build and ship our own JAR for provenance; OSDU's own pipeline also builds the JAR itself and uses the registry only for dependencies.
+
+## Amendment — one canonical Dockerfile *per archetype* (2026-08-17, issue #42)
+
+The decision above is unchanged for Java; ADR-039 makes it language-aware. The engineering system
+now owns one canonical Dockerfile per archetype, selected by the descriptor's `dockerfile_profile`:
+
+| Profile | Dockerfile | `docker-build` mode | Image content |
+| --- | --- | --- | --- |
+| `java` | `build/Dockerfile` | `java-artifact` (default) | Prebuilt JAR downloaded from `build-artifacts` and resolved into `JAR_FILE` |
+| `python` | `build/python/Dockerfile` | `source` | Checked-out source plus the committed `uv.lock`; no artifact download and no JAR resolution |
+
+A Python distribution has no equivalent of a self-contained Spring Boot JAR, so the image is built
+from source with a locked, non-editable install instead. Source mode therefore skips the artifact
+download and JAR resolution entirely and passes the descriptor's `container.appModule` and
+`build.python.runtimeExtras` — re-validated in `prepare-build-args.sh` — plus OCI revision/version
+build arguments. Credentials are never build arguments: a private index uses the Dockerfile's
+optional BuildKit `netrc` secret mount, which the pilot does not need.
+
+The Python image compiles dependencies during the build, so its first push is `linux/amd64` only
+rather than the Java multi-arch default; the `platforms` input carries that choice and QEMU is set
+up only for a non-amd64 leg. Outputs, tag strategy and the GHCR visibility flip are unchanged.
 - **Build-from-source inside the Dockerfile (multi-stage `mvn package`)** — rejected: duplicates the `java-build` job, loses the shared Maven cache and the coverage path, and slows every image build.
 
 ---

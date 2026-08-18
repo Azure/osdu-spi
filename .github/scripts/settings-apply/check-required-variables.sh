@@ -3,9 +3,10 @@
 # Check the deploy-onboarding readiness manifest and surface what's missing.
 #
 # Verifies presence (never values) of the secrets/variables a fork needs before
-# the deploy + integration-test required checks can be enabled. Opens/updates a
-# single `human-required` tracking issue listing what's missing and who owns it;
-# closes that issue when everything is present.
+# the deploy + integration-test required checks can be enabled, and validates the
+# fork-owned service descriptor (ADR-039). Opens/updates a single `human-required`
+# tracking issue listing what's missing and who owns it; closes that issue when
+# everything is present.
 #
 # SERVICE_NAME / MAVEN_PROFILE / SERVICE_TARGET_JAR are NOT listed: they default
 # at runtime (ADR-035/037), so they never block onboarding — only overrides.
@@ -18,6 +19,8 @@
 #   GH_TOKEN      Token with repo admin (read secret/variable names) + issues:write
 #
 # AZURE_CLIENT_ID is checked present-only; its value is never read or logged.
+# Descriptor findings are reported as field paths + stable error codes only, so no
+# descriptor or secret value ever reaches the issue body.
 
 set -euo pipefail
 
@@ -55,6 +58,36 @@ for v in ACCEPTANCE_TEST_DIR ACCEPTANCE_TEST_SECRET_MAP ACCEPTANCE_TEST_DEPENDEN
   have_var "$v" || missing+=("variable \`$v\` — set by the operator")
 done
 
+# --- Service descriptor + descriptor ownership (ADR-039) ---------------------
+# Reported through this same deduplicated issue rather than a competing tracker.
+READ_SERVICE_CONFIG=".github/scripts/service-config/read_service_config.py"
+if [[ -f "$READ_SERVICE_CONFIG" ]]; then
+  config_json="$(python3 "$READ_SERVICE_CONFIG" --root . --format json --redact 2>/dev/null || true)"
+  if [[ -z "$config_json" ]] || ! jq empty <<< "$config_json" 2>/dev/null; then
+    missing+=("service descriptor could not be evaluated — run \`python3 $READ_SERVICE_CONFIG --root . --format json\` locally")
+  else
+    descriptor_present="$(jq -r '.descriptor_present' <<< "$config_json")"
+    descriptor_valid="$(jq -r '.valid' <<< "$config_json")"
+    lane_implemented="$(jq -r '.lane_implemented' <<< "$config_json")"
+    archetype="$(jq -r '.archetype' <<< "$config_json")"
+    if [[ "$descriptor_present" != "true" ]]; then
+      missing+=("service descriptor \`.spi/service.yaml\` — generate with \`python3 .github/scripts/service-config/generate_descriptor.py --root .\` (legacy Java inference is in use)")
+    elif [[ "$descriptor_valid" != "true" ]]; then
+      codes="$(jq -r '[.errors[]] | join("; ")' <<< "$config_json")"
+      missing+=("service descriptor \`.spi/service.yaml\` is invalid — $codes")
+    elif [[ "$lane_implemented" != "true" ]]; then
+      missing+=("archetype \`$archetype\` has no build lane in this template version — apply the latest template-sync PR before enabling required checks")
+    fi
+  fi
+fi
+
+GENERATE_CODEOWNERS=".github/scripts/service-config/generate_codeowners.py"
+if [[ -f "$GENERATE_CODEOWNERS" ]]; then
+  if ! python3 "$GENERATE_CODEOWNERS" --path CODEOWNERS --check >/dev/null 2>&1; then
+    missing+=("CODEOWNERS rule for \`/.spi/\` — set variable \`SPI_ENGINEERING_OWNERS\`, then run \`python3 .github/scripts/service-config/generate_codeowners.py --path CODEOWNERS --owners \"@org/team\"\` and commit the result")
+  fi
+fi
+
 existing_issue="$(gh issue list --repo "$REPO" --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")"
 
 if [[ ${#missing[@]} -eq 0 ]]; then
@@ -72,7 +105,7 @@ fi
 echo "⚠️ Missing ${#missing[@]} required item(s) for deploy onboarding:"
 printf '   - %s\n' "${missing[@]}"
 
-body="$(printf 'The deploy and integration-test required checks stay disabled until the following are set on this repository:\n\n'; printf -- '- [ ] %s\n' "${missing[@]}"; printf '\nBuild-side identity (`SERVICE_NAME`, `MAVEN_PROFILE`, `SERVICE_TARGET_JAR`) defaults at runtime and is not required.\n\n_Maintained automatically by `settings-apply.yml`._\n')"
+body="$(printf 'The deploy and integration-test required checks stay disabled until the following are set on this repository:\n\n'; printf -- '- [ ] %s\n' "${missing[@]}"; printf '\nBuild-side identity (`SERVICE_NAME`, `MAVEN_PROFILE`, `SERVICE_TARGET_JAR`) defaults at runtime and is not required.\nService-descriptor findings list field paths and error codes only; no descriptor, secret or variable value is reproduced here.\n\n_Maintained automatically by `settings-apply.yml`._\n')"
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "DRY-RUN would $( [[ -n "$existing_issue" ]] && echo "update issue #$existing_issue" || echo "open a human-required issue" )"

@@ -55,4 +55,4 @@ If SPI later onboards reference services that need extra runtime files, introduc
 
 ---
 
-[← ADR-037](037-engineering-system-owns-service-dockerfile.md) | :material-arrow-up: [Catalog](index.md)
+[← ADR-037](037-engineering-system-owns-service-dockerfile.md) | :material-arrow-up: [Catalog](index.md) | [ADR-039 →](039-fork-owned-service-descriptor.md)

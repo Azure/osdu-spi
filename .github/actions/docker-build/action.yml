@@ -1,12 +1,16 @@
 name: 'Docker Build'
-description: 'Build a service container image from Maven JAR artifacts and optionally push it to GHCR with SHA/branch tags and a public-visibility flip'
+description: 'Build a service container image (Maven JAR artifact or source + lockfile) and optionally push it to GHCR with SHA/branch tags and a public-visibility flip'
 
 inputs:
   image_name:
     description: 'Short service name (e.g. partition); set from vars.SERVICE_NAME. Required.'
     required: true
+  build_mode:
+    description: "How the image is built: 'java-artifact' (default) downloads the build-artifacts JAR artifact and resolves JAR_FILE; 'source' builds the checked-out source tree with the canonical Python Dockerfile and skips the artifact download and JAR resolution entirely."
+    required: false
+    default: 'java-artifact'
   dockerfile_path:
-    description: 'Path to the Dockerfile relative to the repo root. Defaults to the canonical Dockerfile the engineering system syncs to every fork (ADR-037).'
+    description: 'Path to the Dockerfile relative to the repo root. Defaults to the canonical Dockerfile the engineering system syncs to every fork (ADR-037). In source mode the default resolves to build/python/Dockerfile.'
     required: false
     default: 'build/Dockerfile'
   build_context:
@@ -28,8 +32,20 @@ inputs:
     description: 'Optional --build-arg values (newline-separated KEY=VALUE). Never pass GITHUB_TOKEN here.'
     required: false
   jar_file:
-    description: 'Conventional path/glob of the service Spring Boot JAR (default provider/<service>-azure/target/*-spring-boot.jar, from SERVICE_TARGET_JAR or SERVICE_NAME). If it matches no file the action auto-discovers the Azure JAR; SERVICE_TARGET_JAR is only needed to disambiguate a service that builds more than one.'
+    description: 'Conventional path/glob of the service Spring Boot JAR (default provider/<service>-azure/target/*-spring-boot.jar, from SERVICE_TARGET_JAR or SERVICE_NAME). If it matches no file the action auto-discovers the Azure JAR; SERVICE_TARGET_JAR is only needed to disambiguate a service that builds more than one. Ignored in source mode.'
     required: false
+  app_module:
+    description: 'Source mode only: the ASGI target baked into the canonical Python image (e.g. wdmsworker.app:app), taken from the descriptor container.appModule. Required in source mode and re-validated before it becomes a build argument.'
+    required: false
+    default: ''
+  runtime_extras:
+    description: 'Source mode only: comma-separated optional-dependency extras installed into the runtime image (e.g. az), taken from the descriptor build.python.runtimeExtras.'
+    required: false
+    default: ''
+  platforms:
+    description: 'Optional explicit platform list (e.g. linux/amd64). Empty keeps the existing behaviour: linux/amd64 for validate-only builds and linux/amd64,linux/arm64 on the push path.'
+    required: false
+    default: ''
   push:
     description: 'When true, log in to GHCR, push the image, compute branch (snapshot) tags, and flip package visibility. When false, build only (no registry auth). The caller must set this explicitly per job.'
     required: false
@@ -77,6 +93,9 @@ runs:
         IMAGE_NAME: ${{ inputs.image_name }}
 
     - name: "Download build artifacts"
+      # Java lane only: the source-mode image is built from the checked-out tree plus
+      # the committed lockfile, so there is no upstream build artifact to download.
+      if: ${{ inputs.build_mode != 'source' }}
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
         name: ${{ inputs.jar_artifact_name }}
@@ -85,6 +104,7 @@ runs:
 
     - name: "Resolve service JAR path"
       id: jar
+      if: ${{ inputs.build_mode != 'source' }}
       shell: bash
       # Honours the conventional/override path, else discovers the Azure JAR so a deviant-module
       # fork (e.g. entitlements-v2-azure) builds with no manual variable (ADR-037).
@@ -93,6 +113,25 @@ runs:
         REQUESTED_JAR: ${{ inputs.jar_file }}
         IMAGE_NAME: ${{ inputs.image_name }}
         BUILD_CONTEXT: ${{ inputs.build_context }}
+
+    - name: "Prepare build arguments"
+      id: args
+      shell: bash
+      # Inputs are passed via env (never interpolated into the script body) and every
+      # source-mode value is re-validated before it becomes a --build-arg.
+      run: "$GITHUB_ACTION_PATH/prepare-build-args.sh"
+      env:
+        BUILD_MODE: ${{ inputs.build_mode }}
+        DOCKERFILE_PATH: ${{ inputs.dockerfile_path }}
+        BUILD_CONTEXT: ${{ inputs.build_context }}
+        JAR_FILE: ${{ steps.jar.outputs.jar_file }}
+        APP_MODULE: ${{ inputs.app_module }}
+        RUNTIME_EXTRAS: ${{ inputs.runtime_extras }}
+        PLATFORMS: ${{ inputs.platforms }}
+        PUSH: ${{ inputs.push }}
+        IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+        IMAGE_REVISION: ${{ github.sha }}
+        IMAGE_VERSION: ${{ steps.meta.outputs.short_sha }}
 
     - name: "Compute image tags"
       id: tags
@@ -106,8 +145,8 @@ runs:
         PUSH: ${{ inputs.push }}
 
     - name: "Set up QEMU"
-      # Only needed for the emulated linux/arm64 leg, which runs on the push path (multi-arch).
-      if: ${{ inputs.push == 'true' }}
+      # Only needed for an emulated non-amd64 leg (the Java multi-arch push path).
+      if: ${{ steps.args.outputs.needs_qemu == 'true' }}
       uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
 
     - name: "Set up Docker Buildx"
@@ -126,17 +165,22 @@ runs:
       uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
       with:
         context: ${{ inputs.build_context }}
-        file: ${{ inputs.dockerfile_path }}
+        file: ${{ steps.args.outputs.dockerfile }}
         push: ${{ inputs.push == 'true' }}
         # Multi-arch only on the push path (release images). The validate-only build (push:false) stays
-        # amd64-only to avoid QEMU emulation cost on every PR; the Dockerfile is arch-agnostic (no RUN),
-        # so the push build still validates arm64 before release. provenance:false keeps the pushed index
-        # to the two real platforms — the unknown/unknown attestation manifest makes a bare `docker pull` miss on arm64.
-        platforms: ${{ inputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+        # amd64-only to avoid QEMU emulation cost on every PR; the Java Dockerfile is arch-agnostic (no RUN),
+        # so the push build still validates arm64 before release. A caller may pin the list explicitly —
+        # the source-mode Python image compiles dependencies, so its first push stays amd64-only.
+        # provenance:false keeps the pushed index to the real platforms — the unknown/unknown attestation
+        # manifest makes a bare `docker pull` miss on arm64.
+        platforms: ${{ steps.args.outputs.platforms }}
         provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}
+        # java-artifact mode passes exactly JAR_FILE; source mode passes the validated
+        # APP_MODULE/RUNTIME_EXTRAS and the OCI provenance arguments. Credentials are
+        # never build arguments — they are recorded in image history.
         build-args: |
-          JAR_FILE=${{ steps.jar.outputs.jar_file }}
+          ${{ steps.args.outputs.build_args }}
           ${{ inputs.build_args }}
         # Links the package to its repo in the GHCR UI (source link). Visibility is governed
         # by the org default, not this label — repo-linkage inherits permissions, not visibility.

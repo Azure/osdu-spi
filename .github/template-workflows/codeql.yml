@@ -61,6 +61,9 @@ jobs:
           # Check if any changed files are NOT in the ignore list
           SHOULD_RUN=false
           while IFS= read -r file; do
+            # .spi/ is the service descriptor: it selects the build archetype (and therefore the
+            # analyzed language set), so a descriptor-only change is never config-only (ADR-039).
+            case "$file" in .spi/*) SHOULD_RUN=true; break ;; esac
             # Skip if file matches ignore patterns
             if echo "$file" | grep -qE '^(\.github/|\.mvn/|devops/|docs/|\..*|.*\.md)$'; then
               continue
@@ -75,7 +78,7 @@ jobs:
             echo "Running CodeQL: Code changes detected"
           else
             echo "should-run=false" >> $GITHUB_OUTPUT
-            echo "Skipping CodeQL: Only ignored paths changed (.github/, .mvn/, devops/, docs/, dotfiles, *.md)"
+            echo "Skipping CodeQL: Only ignored paths changed (.github/, .mvn/, devops/, docs/, dotfiles, *.md; .spi/ always runs)"
           fi
 
   detect-languages:

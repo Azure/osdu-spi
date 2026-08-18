@@ -16,6 +16,21 @@ The validation workflow activates automatically across multiple scenarios to mai
 
 The workflow performs comprehensive validation across three key areas to ensure both code quality and process compliance:
 
+### Service Configuration Resolution
+Before any build work starts, a `read-service-config` prelude resolves the fork-owned
+[`.spi/service.yaml`](../architecture/service_descriptor.md) descriptor and publishes a small set
+of outputs (archetype, build lane, Dockerfile profile, test type, coverage flag, and the Python
+runtime/package/extras/application module). The build lane selects the statically declared language
+job — `🔨 Java Build` or `🐍 Python Build` — and the same output drives the image build: the Java
+lane keeps artifact mode with `build/Dockerfile`, the Python lane builds `build/python/Dockerfile`
+from source plus `uv.lock`. A repository without a descriptor keeps the previous Java inference and
+logs a warning. An invalid descriptor, or one declaring an archetype whose lane is not installed in
+this template version, fails the required `🐳 Docker Build` check closed. Changes under `.spi/**`
+are always treated as build-relevant, so a descriptor-only pull request runs the full lane.
+
+Deployment and integration testing remain Java-only and are gated on `build_lane == 'java'`; a
+Python service stops at a validated and published container image.
+
 ### Code Quality Validation
 The system verifies that your code is functional and maintainable by running build verification to ensure code compiles and all dependencies resolve correctly, executing the full test suite and generating coverage reports, and performing lint checks to enforce consistent code style and formatting standards.
 
@@ -97,13 +112,16 @@ git commit -m "resolve: merge conflicts with main"
 
 ## Validation Jobs
 
-The workflow runs four distinct validation jobs:
+The workflow runs these validation jobs:
 
 | Job | Purpose | What It Checks |
 |-----|---------|----------------|
-| **Initialization Check** | Verifies repository setup | Ensures workflows are properly deployed |
-| **Repository State** | Detects project type | Identifies Java projects via `pom.xml` |
+| **Initialization Check** | Verifies repository setup | Branches plus a service shape: descriptor, `pom.xml`, or `pyproject.toml` + `uv.lock` |
+| **Read Service Config** | Resolves the descriptor | Archetype, build lane, image profile, Python runtime/extras/app module |
+| **Repository State** | Detects project type | Identifies Java (`pom.xml`) and Python (`pyproject.toml` + `uv.lock`) repositories |
 | **Java Build** | Compiles and tests | Maven build, unit tests, dependency resolution |
+| **Python Build** | Syncs, lints and tests | Locked `uv sync`, ruff/mypy, pytest suites, runtime import smoke |
+| **Docker Build** | Validates the image | Canonical Java or Python image; the required summary aggregates the selected lane |
 | **Code Validation** | Process compliance | Conventional commits, merge conflicts, branch status |
 
 ## Branch-Specific Rules
@@ -132,7 +150,8 @@ All protected branches use the same validation rules, with exemptions for specif
 
 ### Required Checks
 - `check-initialization` - Repository setup verification
-- `java-build` - Maven compilation, dependency resolution, unit tests
+- `java-build` / `python-build` - The language lane selected by the service descriptor
+- `🐳 Docker Build` - Always-reporting summary of the selected build lane and the validate-only image build
 - `code-validation` - Conventional commits, merge conflicts, branch status
 
 ### Check Exemptions

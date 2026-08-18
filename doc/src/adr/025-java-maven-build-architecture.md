@@ -3,6 +3,11 @@
 ## Status
 **Accepted** - 2025-10-01
 
+**Amended** - 2026-08-17 by [ADR-039](039-fork-owned-service-descriptor.md): Java/Maven remains the
+default archetype, but the "multi-language support rejected" position below is superseded. A
+repository's build archetype is now selected by the fork-owned `.spi/service.yaml` descriptor; the
+Java settings recorded here are the defaults of the `java-maven-azure` archetype.
+
 ## Context
 
 The OSDU (Open Subsurface Data Universe) ecosystem is predominantly built using Java with Maven as the build system. Fork repositories created from this template need consistent, reliable build automation that:
@@ -49,7 +54,9 @@ Implement **Java/Maven as the primary build architecture** with:
 
 - **Pros**: Broader applicability, flexibility for different project types
 - **Cons**: Complexity, maintenance overhead, diluted focus
-- **Decision**: Rejected - OSDU is Java-centric, focus provides better experience
+- **Decision**: Rejected in 2025 - OSDU is Java-centric, focus provides better experience.
+  *Superseded by [ADR-039](039-fork-owned-service-descriptor.md)*: additional archetypes are now
+  opt-in per fork through the service descriptor, without diluting the Java default.
 
 ### 2. Gradle Build System
 
@@ -177,6 +184,7 @@ For existing repositories adopting this architecture:
 - [ADR-002: GitHub Actions-Based Automation Architecture](002-github-actions-automation.md) - Foundation for build automation
 - [ADR-013: Reusable GitHub Actions Pattern](013-reusable-github-actions-pattern.md) - Reusable build actions
 - [ADR-003: Template Repository Pattern](003-template-repository-pattern.md) - Template distribution of build configuration
+- [ADR-039: Fork-Owned Service Descriptor](039-fork-owned-service-descriptor.md) - Selects the build archetype; supersedes the Java-only scope of this decision
 
 ## References
 

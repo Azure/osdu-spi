@@ -1,0 +1,261 @@
+name: 'Python Build'
+description: 'Reusable Python (uv) build action: locked sync, lint, types, pytest suites, runtime import smoke, and report upload'
+
+# Every input is a closed enum, a version, a PEP 508 name, a dotted module name,
+# or a repository-relative path. There is no command/argument passthrough: the
+# action never evaluates a caller-supplied shell string (ADR-036 trust model).
+#
+# The caller owns the checkout, exactly as it does for java-build: workflows that
+# run under `pull_request_target` must check out the reviewed ref and restore the
+# trusted actions themselves before this action runs. Check out with
+# `fetch-depth: 0` — the lock/export drift gate diffs the working tree against the
+# commit.
+#
+# Optional inputs share one convention:
+#   ""     -> convention-based auto-detection (skips when nothing is found)
+#   "none" -> explicitly disabled
+#   value  -> used strictly; a missing path is an error, not a silent skip
+inputs:
+  python_version:
+    description: 'Python runtime version for deployment parity (MAJOR.MINOR or MAJOR.MINOR.PATCH). Callers drive a compatibility matrix by passing a second version (e.g. 3.13).'
+    required: false
+    default: '3.12'
+  uv_version:
+    description: 'uv version (X.Y.Z, latest, latest-known). Defaults to the version verified with the canonical Python image (build/python/Dockerfile). An explicitly empty value makes setup-uv honour the required-version pinned in the repository uv.toml/pyproject.toml.'
+    required: false
+    # Keep in step with the `ghcr.io/astral-sh/uv:<version>` stage in
+    # build/python/Dockerfile: CI must resolve the lockfile with the same uv the
+    # image installs it with, and a floating default would silently drift.
+    default: '0.12.5'
+  source_paths:
+    description: 'Comma-separated import roots linted and type checked (default: src when present, else the repository root).'
+    required: false
+    default: ''
+  format_check_paths:
+    description: 'Comma-separated paths passed to "ruff format --check" (default: repository root).'
+    required: false
+    default: ''
+  package_name:
+    description: 'Dotted import package used for coverage and the runtime import smoke (default: detected from the source root).'
+    required: false
+    default: ''
+  distribution_name:
+    description: 'PEP 508 distribution name used for the installed-metadata smoke (default: [project].name from pyproject.toml).'
+    required: false
+    default: ''
+  test_extras:
+    description: 'Comma-separated extras installed for the test environment (default: dev when declared).'
+    required: false
+    default: ''
+  runtime_extras:
+    description: 'Comma-separated extras installed for the runtime/provider verification (default: az when declared).'
+    required: false
+    default: ''
+  runtime_import_modules:
+    description: 'Comma-separated dotted modules imported after the runtime sync (default: the import package).'
+    required: false
+    default: ''
+  unit_test_path:
+    description: 'Unit test directory (default: tests/unit when present).'
+    required: false
+    default: ''
+  service_test_path:
+    description: 'Service test directory (default: tests/service when present).'
+    required: false
+    default: ''
+  service_test_modes:
+    description: 'Comma-separated service test modes: in-process, subprocess, or none.'
+    required: false
+    default: 'in-process,subprocess'
+  service_in_process_flag:
+    description: 'Single pytest flag (no value, no spaces) that switches the service suite to in-process mode.'
+    required: false
+    default: '--no-subprocess'
+  generate_coverage:
+    description: 'Whether to collect Cobertura coverage for the unit and in-process service suites.'
+    required: false
+    default: 'false'
+  lint_mode:
+    description: 'ruff mode: auto (run when installed), required (fail when missing), off.'
+    required: false
+    default: 'auto'
+  typecheck_mode:
+    description: 'mypy mode: auto (run when installed), required (fail when missing), off.'
+    required: false
+    default: 'auto'
+  lock_regeneration_script:
+    description: 'Repository-supplied .sh script that regenerates exported requirements. The export drift gate only runs when this is set.'
+    required: false
+    default: ''
+  lock_drift_paths:
+    description: 'Comma-separated paths compared after regeneration (default: uv.lock plus any committed requirements files).'
+    required: false
+    default: ''
+  package_build:
+    description: 'Whether to run "uv build" as a packaging validation.'
+    required: false
+    default: 'false'
+  index_name:
+    description: 'Name of the private uv index declared in uv.toml/pyproject.toml that needs credentials.'
+    required: false
+    default: ''
+  index_username:
+    description: 'Username for the private uv index (defaults to __token__ when only a token is supplied).'
+    required: false
+    default: ''
+  index_token:
+    description: 'Token/password for the private uv index. Masked in logs and never passed to a Docker build argument.'
+    required: false
+    default: ''
+
+outputs:
+  is_python_project:
+    description: "Whether this is a uv-managed Python project"
+    value: ${{ steps.detect.outputs.has_python_project }}
+  build_result:
+    description: "Result of the build process"
+    value: ${{ steps.build.outcome }}
+  artifact_name:
+    description: "Name of the uploaded build artifact (kept stable across languages)"
+    value: build-artifacts
+  junit_artifact_name:
+    description: "Name of the uploaded pytest JUnit artifact"
+    value: python-junit-reports
+  coverage_artifact_name:
+    description: "Name of the uploaded Cobertura coverage artifact"
+    value: python-coverage-reports
+  reports_path:
+    description: "Workspace directory holding junit/, coverage/ and build-manifest.json"
+    value: ${{ steps.plan.outputs.reports_dir }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Detect Python project"
+      id: detect
+      shell: bash
+      run: "$GITHUB_ACTION_PATH/detect-project.sh"
+
+    - name: "Validate toolchain inputs"
+      if: steps.detect.outputs.has_python_project == 'true'
+      id: toolchain
+      shell: bash
+      run: "$GITHUB_ACTION_PATH/validate-runtime-inputs.sh"
+      env:
+        PYTHON_VERSION: ${{ inputs.python_version }}
+        UV_VERSION: ${{ inputs.uv_version }}
+
+    - name: "Setup Python"
+      if: steps.detect.outputs.has_python_project == 'true'
+      id: setup_python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ steps.toolchain.outputs.python_version }}
+
+    - name: "Setup uv"
+      if: steps.detect.outputs.has_python_project == 'true'
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+      with:
+        version: ${{ steps.toolchain.outputs.uv_version }}
+        enable-cache: 'auto'
+        cache-dependency-glob: |
+          **/uv.lock
+          **/pyproject.toml
+
+    - name: "Resolve build plan"
+      if: steps.detect.outputs.has_python_project == 'true'
+      id: plan
+      shell: bash
+      # Inputs are passed through env (never interpolated into the script body) so a
+      # value containing $(...) or backticks cannot be shell-evaluated.
+      run: python "$GITHUB_ACTION_PATH/resolve_build_plan.py" "$GITHUB_WORKSPACE"
+      env:
+        PYTHON_VERSION: ${{ steps.toolchain.outputs.python_version }}
+        UV_VERSION: ${{ steps.toolchain.outputs.uv_version }}
+        SOURCE_PATHS: ${{ inputs.source_paths }}
+        FORMAT_CHECK_PATHS: ${{ inputs.format_check_paths }}
+        PACKAGE_NAME: ${{ inputs.package_name }}
+        DISTRIBUTION_NAME: ${{ inputs.distribution_name }}
+        TEST_EXTRAS: ${{ inputs.test_extras }}
+        RUNTIME_EXTRAS: ${{ inputs.runtime_extras }}
+        RUNTIME_IMPORT_MODULES: ${{ inputs.runtime_import_modules }}
+        UNIT_TEST_PATH: ${{ inputs.unit_test_path }}
+        SERVICE_TEST_PATH: ${{ inputs.service_test_path }}
+        SERVICE_TEST_MODES: ${{ inputs.service_test_modes }}
+        SERVICE_IN_PROCESS_FLAG: ${{ inputs.service_in_process_flag }}
+        GENERATE_COVERAGE: ${{ inputs.generate_coverage }}
+        LINT_MODE: ${{ inputs.lint_mode }}
+        TYPECHECK_MODE: ${{ inputs.typecheck_mode }}
+        LOCK_REGENERATION_SCRIPT: ${{ inputs.lock_regeneration_script }}
+        LOCK_DRIFT_PATHS: ${{ inputs.lock_drift_paths }}
+        PACKAGE_BUILD: ${{ inputs.package_build }}
+        INDEX_NAME: ${{ inputs.index_name }}
+
+    - name: "Build and Test"
+      if: steps.detect.outputs.has_python_project == 'true'
+      id: build
+      shell: bash
+      run: "$GITHUB_ACTION_PATH/run-build.sh"
+      env:
+        # Pin uv to the interpreter installed by setup-python instead of letting it
+        # download a second, unrelated managed interpreter.
+        UV_PYTHON: ${{ steps.setup_python.outputs.python-path }}
+        PYTHON_VERSION: ${{ steps.plan.outputs.python_version }}
+        UV_VERSION: ${{ steps.plan.outputs.uv_version }}
+        SOURCE_PATHS: ${{ steps.plan.outputs.source_paths }}
+        FORMAT_CHECK_PATHS: ${{ steps.plan.outputs.format_check_paths }}
+        PACKAGE_NAME: ${{ steps.plan.outputs.package_name }}
+        DISTRIBUTION_NAME: ${{ steps.plan.outputs.distribution_name }}
+        COVERAGE_TARGET: ${{ steps.plan.outputs.coverage_target }}
+        TEST_EXTRAS: ${{ steps.plan.outputs.test_extras }}
+        RUNTIME_EXTRAS: ${{ steps.plan.outputs.runtime_extras }}
+        RUNTIME_IMPORT_MODULES: ${{ steps.plan.outputs.runtime_import_modules }}
+        UNIT_TEST_PATH: ${{ steps.plan.outputs.unit_test_path }}
+        SERVICE_TEST_PATH: ${{ steps.plan.outputs.service_test_path }}
+        SERVICE_IN_PROCESS_FLAG: ${{ steps.plan.outputs.service_in_process_flag }}
+        RUN_UNIT_TESTS: ${{ steps.plan.outputs.run_unit_tests }}
+        RUN_SERVICE_IN_PROCESS: ${{ steps.plan.outputs.run_service_in_process }}
+        RUN_SERVICE_SUBPROCESS: ${{ steps.plan.outputs.run_service_subprocess }}
+        GENERATE_COVERAGE: ${{ steps.plan.outputs.generate_coverage }}
+        LINT_MODE: ${{ steps.plan.outputs.lint_mode }}
+        TYPECHECK_MODE: ${{ steps.plan.outputs.typecheck_mode }}
+        RUN_LOCK_EXPORT_DRIFT: ${{ steps.plan.outputs.run_lock_export_drift }}
+        LOCK_REGENERATION_SCRIPT: ${{ steps.plan.outputs.lock_regeneration_script }}
+        LOCK_DRIFT_PATHS: ${{ steps.plan.outputs.lock_drift_paths }}
+        PACKAGE_BUILD: ${{ steps.plan.outputs.package_build }}
+        REPORTS_DIR: ${{ steps.plan.outputs.reports_dir }}
+        INDEX_NAME: ${{ steps.plan.outputs.index_name }}
+        INDEX_USERNAME: ${{ inputs.index_username }}
+        INDEX_TOKEN: ${{ inputs.index_token }}
+
+    - name: "Upload Build Artifacts"
+      if: always() && steps.detect.outputs.has_python_project == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        # Name kept stable across languages: the Python image is built from source
+        # plus lockfile, so this artifact carries provenance metadata (and any
+        # wheel/sdist produced by the packaging validation) rather than a JAR.
+        name: build-artifacts
+        path: |
+          ${{ steps.plan.outputs.reports_dir }}/build-manifest.json
+          dist/
+        if-no-files-found: warn
+        retention-days: 2
+
+    - name: "Upload JUnit Reports"
+      if: always() && steps.detect.outputs.has_python_project == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: python-junit-reports
+        path: ${{ steps.plan.outputs.reports_dir }}/junit/
+        if-no-files-found: warn
+        retention-days: 2
+
+    - name: "Upload Coverage Reports"
+      if: always() && steps.detect.outputs.has_python_project == 'true' && inputs.generate_coverage == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: python-coverage-reports
+        path: ${{ steps.plan.outputs.reports_dir }}/coverage/
+        if-no-files-found: warn
+        retention-days: 2

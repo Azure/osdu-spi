@@ -22,13 +22,32 @@ jobs:
       # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
       contents: read
 
+    # One workflow serves both Java/Maven and Python/uv forks. Every language step is
+    # guarded by a marker check, so a Java fork never installs a Python toolchain and a
+    # Python fork never waits on Maven dependency resolution.
     # You can define any steps you want, and they will run before the agent starts.
     # If you do not check out your code, Copilot will do this for you.
     steps:
       - name: Checkout code
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
 
+      - name: Detect project type
+        id: detect
+        run: |
+          if [ -f "pom.xml" ]; then
+            echo "has_maven=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_maven=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -f "pyproject.toml" ] && [ -f "uv.lock" ]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Azul Zulu JDK 17
+        if: steps.detect.outputs.has_maven == 'true'
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
         with:
           distribution: 'zulu'
@@ -36,6 +55,7 @@ jobs:
           cache: 'maven'
 
       - name: Install Maven dependencies
+        if: steps.detect.outputs.has_maven == 'true'
         continue-on-error: true
         env:
           # Fix for Maven 3.9+ network issues with Azure/GitHub Actions
@@ -66,6 +86,36 @@ jobs:
             fi
           done
 
+      - name: Set up Python 3.12
+        if: steps.detect.outputs.has_python == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          # 3.12 matches the Azure Linux container runtime; 3.13 stays a CI matrix leg
+          python-version: '3.12'
+
+      - name: Set up uv
+        if: steps.detect.outputs.has_python == 'true'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          # Empty version honours the required-version pinned in uv.toml/pyproject.toml
+          version: ''
+          enable-cache: 'auto'
+          cache-dependency-glob: |
+            **/uv.lock
+            **/pyproject.toml
+
+      - name: Install Python dependencies
+        if: steps.detect.outputs.has_python == 'true'
+        continue-on-error: true
+        run: |
+          # Locked install only: the agent environment never re-resolves dependencies.
+          if uv sync --locked --extra dev; then
+            echo "✅ Locked Python environment created with the dev extra"
+          else
+            echo "⚠️ 'dev' extra unavailable; syncing the base locked environment"
+            uv sync --locked
+          fi
+
       - name: Install Trivy security scanner
         continue-on-error: true
         run: |
@@ -76,9 +126,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install trivy
 
-      - name: Verify Java installation
+      - name: Verify toolchain installation
         continue-on-error: true
         run: |
-          java -version
-          mvn -version
+          if [ "${{ steps.detect.outputs.has_maven }}" = "true" ]; then
+            java -version
+            mvn -version
+          fi
+
+          if [ "${{ steps.detect.outputs.has_python }}" = "true" ]; then
+            python --version
+            uv --version
+          fi
+
           trivy version || echo "⚠️ Trivy not available (installation may have failed)"

@@ -1,0 +1,215 @@
+{
+  "$comment": "Template-owned schema for the fork-owned service descriptor at .spi/service.yaml (ADR-039). Consumed by descriptor.py; it is a restricted, closed dialect (no additional keys anywhere) rather than full JSON Schema.",
+  "schemaVersion": 1,
+  "supportedSchemaVersions": [1],
+  "deprecatedSchemaVersions": [],
+  "archetypes": {
+    "java-maven-azure": {
+      "description": "Conventional OSDU Java service built with Maven and the Azure provider profile set.",
+      "lane": "java",
+      "laneImplemented": true,
+      "defaults": {
+        "dockerfileProfile": "java",
+        "unitTestType": "maven",
+        "coverage": "jacoco"
+      }
+    },
+    "python-uv-fastapi": {
+      "description": "Python service managed with uv and a committed uv.lock, served by FastAPI/uvicorn.",
+      "lane": "python",
+      "laneImplemented": true,
+      "requiredKeys": ["container.appModule"],
+      "defaults": {
+        "dockerfileProfile": "python",
+        "unitTestType": "pytest",
+        "coverage": "pytest-cov",
+        "runtimeVersion": "3.12"
+      }
+    }
+  },
+  "forbiddenKeys": [
+    "action",
+    "actions",
+    "aks",
+    "azure",
+    "azureClientId",
+    "cluster",
+    "command",
+    "containerName",
+    "credentials",
+    "deployment",
+    "deploymentName",
+    "entrypoint",
+    "env",
+    "environment",
+    "identity",
+    "image",
+    "kubernetes",
+    "namespace",
+    "password",
+    "permissions",
+    "registry",
+    "run",
+    "runsOn",
+    "script",
+    "secret",
+    "secrets",
+    "shell",
+    "subscription",
+    "tenant",
+    "token",
+    "uses",
+    "with",
+    "workflow"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "required": true
+    },
+    "service": {
+      "type": "mapping",
+      "required": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+        },
+        "archetype": {
+          "type": "string",
+          "required": true,
+          "enum": ["java-maven-azure", "python-uv-fastapi"]
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "build": {
+      "type": "mapping",
+      "properties": {
+        "mavenProfiles": {
+          "type": "list",
+          "archetypes": ["java-maven-azure"],
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          }
+        },
+        "artifact": {
+          "type": "mapping",
+          "archetypes": ["java-maven-azure"],
+          "properties": {
+            "discovery": {
+              "type": "string",
+              "enum": ["spring-boot-azure"]
+            }
+          }
+        },
+        "python": {
+          "type": "mapping",
+          "archetypes": ["python-uv-fastapi"],
+          "properties": {
+            "runtimeVersion": {
+              "type": "string",
+              "enum": ["3.12"]
+            },
+            "compatibilityVersions": {
+              "type": "list",
+              "items": {
+                "type": "string",
+                "enum": ["3.11", "3.12", "3.13"]
+              }
+            },
+            "packageManager": {
+              "type": "string",
+              "enum": ["uv"]
+            },
+            "buildBackend": {
+              "type": "string",
+              "enum": ["setuptools", "hatchling", "poetry-core", "flit-core"]
+            },
+            "lockfile": {
+              "type": "path",
+              "maxLength": 120
+            },
+            "distribution": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+            },
+            "importPackage": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+            },
+            "testExtras": {
+              "type": "list",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+              }
+            },
+            "runtimeExtras": {
+              "type": "list",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "mapping",
+      "properties": {
+        "unit": { "$ref": "testSuite" },
+        "serviceInProcess": { "$ref": "testSuite" },
+        "serviceSubprocess": { "$ref": "testSuite" }
+      }
+    },
+    "container": {
+      "type": "mapping",
+      "properties": {
+        "dockerfileProfile": {
+          "type": "string",
+          "enum": ["java", "python"]
+        },
+        "appModule": {
+          "$comment": "ASGI target baked into the canonical Python image (uvicorn <module>:<attribute>). Deliberately stricter than a free-form string: dotted import path, a single colon, and a plain attribute name only, so the value can never carry shell metacharacters, spaces or options into a build argument.",
+          "type": "string",
+          "archetypes": ["python-uv-fastapi"],
+          "maxLength": 120,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "testSuite": {
+      "type": "mapping",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["maven", "pytest", "postman"]
+        },
+        "path": {
+          "type": "path",
+          "maxLength": 120
+        },
+        "coverage": {
+          "type": "coverage"
+        },
+        "arguments": {
+          "type": "list",
+          "items": {
+            "type": "string",
+            "pattern": "^-{0,2}[A-Za-z0-9][A-Za-z0-9._=-]{0,63}$"
+          }
+        }
+      }
+    }
+  },
+  "coverageValues": ["jacoco", "cobertura", "pytest-cov", "none"]
+}

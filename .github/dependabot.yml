@@ -36,13 +36,16 @@ updates:
           - "patch"
     open-pull-requests-limit: 5
 
-  # Docker base image - Canonical service Dockerfile (Engineering System, ADR-037)
-  # Template-only: bumps the digest pinned in build/Dockerfile; template-sync then propagates the
-  # updated Dockerfile to every fork. Forks carry no docker ecosystem, so they never author their
-  # own base-image bump. The App Insights agent (ADD --checksum) is not a FROM ref, so Dependabot
-  # does not track it — agent version bumps stay manual.
+  # Docker base images - Canonical service Dockerfiles (Engineering System, ADR-037)
+  # Template-only: bumps the digests pinned in build/Dockerfile (Java) and
+  # build/python/Dockerfile (Python/uv); template-sync then propagates the updated
+  # Dockerfiles to every fork. Forks carry no docker ecosystem, so they never author their
+  # own base-image bump. The App Insights agent (ADD --checksum) is not a FROM ref, so
+  # Dependabot does not track it — agent version bumps stay manual.
   - package-ecosystem: "docker"
-    directory: "/build"
+    directories:
+      - "/build"
+      - "/build/python"
     schedule:
       interval: "daily"
       time: "08:30"
