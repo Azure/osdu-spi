@@ -49,6 +49,9 @@ when an earlier one fails, so a single CI run reports every problem:
    The exported-requirements comparison runs **only** when the repository supplies its
    own regeneration script (`lock_regeneration_script`).
 3. **quality** — `ruff check`, `ruff format --check`, `mypy`.
+   By default the format check targets detected service roots (`src`, top-level
+   packages, `tests`, and `scripts`) rather than repository root, so injected
+   `.github/**` tooling never enters service-owned Ruff policy.
 4. **tests** — unit, service in-process, and service subprocess pytest suites.
 5. **package** — optional `uv build` packaging validation.
 6. **runtime-extras** — `uv sync --locked --no-dev` plus the runtime extras, then an
@@ -103,7 +106,7 @@ Optional inputs share one convention:
 | `python_version` | `3.12` | `MAJOR.MINOR` or `MAJOR.MINOR.PATCH` |
 | `uv_version` | `0.12.5` | Pinned to the uv release the canonical image installs with; an explicitly empty value honours the repository `required-version` |
 | `source_paths` | `""` | `src` when present, else the repository root |
-| `format_check_paths` | `""` | Repository root |
+| `format_check_paths` | `""` | Detected service roots (`src`/flat packages, `tests`, `scripts`) |
 | `package_name` | `""` | Detected from the source root; used for coverage and import smoke |
 | `distribution_name` | `""` | `[project].name`; used for the installed-metadata check |
 | `test_extras` | `""` | `dev` when declared in `[project.optional-dependencies]` |

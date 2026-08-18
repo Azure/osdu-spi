@@ -80,6 +80,7 @@ class ConventionDetectionTests(unittest.TestCase):
             self.assertEqual("3.12", plan.python_version)
             self.assertEqual("", plan.uv_version)
             self.assertEqual(("src",), plan.source_paths)
+            self.assertEqual(("src", "tests"), plan.format_check_paths)
             self.assertEqual("wdmsworker", plan.package_name)
             self.assertEqual("osdu-wbddms-worker", plan.distribution_name)
             self.assertEqual(("dev",), plan.test_extras)
@@ -143,6 +144,21 @@ version = "1.0.0"
 
             self.assertEqual((".",), plan.source_paths)
             self.assertEqual(".", plan.coverage_target)
+
+    def test_flat_package_formatting_does_not_include_injected_github_tooling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = _write_repo(Path(directory), package="")
+            package = root / "worker"
+            package.mkdir()
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            injected = root / ".github" / "actions"
+            injected.mkdir(parents=True)
+            (injected / "helper.py").write_text("x=  1\n", encoding="utf-8")
+
+            plan = plan_module.resolve_plan({}, root)
+
+            self.assertEqual(("worker", "tests"), plan.format_check_paths)
+            self.assertNotIn(".github", plan.format_check_paths)
 
     def test_lockfile_is_mandatory(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -169,6 +169,12 @@ class ActionContractTests(unittest.TestCase):
         ):
             self.assertIn(report, tests_phase)
 
+    def test_service_formatting_uses_the_resolved_service_paths(self):
+        quality = _read(ACTION_DIR / "phases" / "quality.sh")
+
+        self.assertIn('ruff format --check "${FORMAT_ARGS[@]}"', quality)
+        self.assertNotIn("--exclude", quality)
+
     def test_action_scripts_never_evaluate_caller_input(self):
         for script in sorted(ACTION_DIR.rglob("*.sh")):
             code = [

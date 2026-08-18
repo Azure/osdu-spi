@@ -35,7 +35,6 @@ DEFAULT_RUNTIME_EXTRA = "az"
 DEFAULT_UNIT_TEST_PATH = "tests/unit"
 DEFAULT_SERVICE_TEST_PATH = "tests/service"
 DEFAULT_SOURCE_PATH = "src"
-DEFAULT_FORMAT_PATH = "."
 SERVICE_MODES = ("in-process", "subprocess")
 TOOL_MODES = ("auto", "required", "off")
 
@@ -214,6 +213,26 @@ def _resolve_paths(
     )
 
 
+def _default_format_paths(root: Path) -> tuple[str, ...]:
+    """Select service-owned roots without sweeping injected `.github/**` tooling."""
+
+    candidates: list[str] = []
+    if (root / DEFAULT_SOURCE_PATH).is_dir():
+        candidates.append(DEFAULT_SOURCE_PATH)
+    else:
+        candidates.extend(
+            child.name
+            for child in sorted(root.iterdir())
+            if child.is_dir()
+            and (child / "__init__.py").is_file()
+            and MODULE_PATTERN.fullmatch(child.name)
+        )
+    candidates.extend(
+        path for path in ("tests", "scripts") if (root / path).is_dir()
+    )
+    return tuple(dict.fromkeys(candidates)) or (".",)
+
+
 def _resolve_test_path(name: str, raw: str, default: str, root: Path) -> tuple[str, bool]:
     if _is_disabled(raw):
         return "", False
@@ -305,13 +324,18 @@ def resolve_plan(inputs: Mapping[str, str], root: Path) -> BuildPlan:
         root,
         fallback=".",
     )
-    format_check_paths = _resolve_paths(
-        "format_check_paths",
-        _clean(inputs.get("FORMAT_CHECK_PATHS")),
-        DEFAULT_FORMAT_PATH,
-        root,
-        fallback=".",
-    )
+    raw_format_paths = _clean(inputs.get("FORMAT_CHECK_PATHS"))
+    if _is_disabled(raw_format_paths):
+        format_check_paths: tuple[str, ...] = ()
+    elif raw_format_paths:
+        format_check_paths = tuple(
+            _validate_relative_path(
+                "format_check_paths", path, root, must_exist=True
+            )
+            for path in _split_list(raw_format_paths)
+        )
+    else:
+        format_check_paths = _default_format_paths(root)
 
     distribution_name = _clean(inputs.get("DISTRIBUTION_NAME")) or _project_name(pyproject)
     if distribution_name:

@@ -206,6 +206,34 @@
         "reason": "Template-specific code owners removed, then re-seeded with a fork-owned /.spi/ ownership rule during initialization (ADR-039)"
       },
       {
+        "path": "tests/test_docker_build_modes.py",
+        "reason": "Template-development test; fork instances retain only upstream service tests"
+      },
+      {
+        "path": "tests/test_python_build_contracts.py",
+        "reason": "Template-development test; fork instances retain only upstream service tests"
+      },
+      {
+        "path": "tests/test_python_build_plan.py",
+        "reason": "Template-development test; fork instances retain only upstream service tests"
+      },
+      {
+        "path": "tests/test_service_config_workflows.py",
+        "reason": "Template-development test; fork instances retain only upstream service tests"
+      },
+      {
+        "path": "tests/test_service_descriptor.py",
+        "reason": "Template-development test; fork instances retain only upstream service tests"
+      },
+      {
+        "path": "tests/test_service_descriptor_init.py",
+        "reason": "Template-development test; fork instances retain only upstream service tests"
+      },
+      {
+        "path": "tests/test_workflow_summaries.py",
+        "reason": "Template-development test; fork instances retain only upstream service tests"
+      },
+      {
         "path": ".github/ISSUE_TEMPLATE/branch-protection-reminder.md",
         "reason": "Template initialization issue template"
       },

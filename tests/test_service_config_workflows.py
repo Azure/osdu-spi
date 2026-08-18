@@ -488,6 +488,18 @@ class InitializationDetectionTests(unittest.TestCase):
 
 
 class SettingsAndOwnershipTests(unittest.TestCase):
+    def test_initialization_removes_template_tests_without_removing_upstream_suites(self):
+        config = json.loads(_read(SYNC_CONFIG))
+        cleanup = {
+            item["path"] for item in config["cleanup_rules"]["files"]
+        }
+
+        self.assertIn("tests/test_python_build_contracts.py", cleanup)
+        self.assertIn("tests/test_service_descriptor.py", cleanup)
+        self.assertNotIn("tests", cleanup)
+        self.assertNotIn("tests/unit", cleanup)
+        self.assertNotIn("tests/service", cleanup)
+
     def test_settings_apply_validates_the_descriptor_through_the_existing_issue(self):
         script = _read(CHECK_VARIABLES)
 
