@@ -49,7 +49,11 @@ REPORT="$WORKDIR/upstream-filter-report.json"
 rm -rf "$GEN" "$SCRATCH"
 mkdir -p "$GEN"
 
-git archive "$UPSTREAM_SHA" | tar -x -C "$GEN"
+# git archive would honor export-ignore/export-subst attributes from the
+# upstream tree; read-tree + checkout-index materializes every tracked file
+# byte for byte.
+GIT_INDEX_FILE="$SCRATCH" git read-tree "$UPSTREAM_SHA"
+GIT_INDEX_FILE="$SCRATCH" git checkout-index -a -f --prefix="$GEN/"
 
 python3 "$HERE/upstream_filter.py" \
   --mode generate --config "$CONFIG" --checkout "$GEN" --report "$REPORT"

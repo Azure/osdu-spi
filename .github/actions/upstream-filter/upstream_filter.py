@@ -533,6 +533,11 @@ def _fork_poms(checkout, tree):
     return sorted(poms)
 
 
+def _version_site(value):
+    # Element text may carry whitespace padding that ElementTree strips away.
+    return re.compile(">(\\s*)" + re.escape(value) + "(\\s*)<")
+
+
 def stamp(checkout, cfg, report):
     svc = cfg["service"]
     root_version = _reference_version(checkout, "pom.xml")
@@ -585,8 +590,9 @@ def stamp(checkout, cfg, report):
             text = read_text(pom)
             updated = text
             for old, new in sorted(mapping.items()):
-                if f">{old}<" in updated:
-                    updated = updated.replace(f">{old}<", f">{new}<")
+                updated, count = _version_site(old).subn(
+                    lambda m: f">{m.group(1)}{new}{m.group(2)}<", updated)
+                if count:
                     rewrites.append({"pom": os.path.relpath(pom, checkout), "from": old, "to": new})
             if updated != text:
                 write_text(pom, updated)
@@ -595,7 +601,7 @@ def stamp(checkout, cfg, report):
         for pom in poms:
             text = read_text(pom)
             for old in mapping:
-                if f">{old}<" in text:
+                if _version_site(old).search(text):
                     survivors.append(f"{os.path.relpath(pom, checkout)} still carries {old}")
 
     if total_poms == 0:
@@ -630,8 +636,17 @@ def seed(checkout, cfg, seed_source, report):
 # ---------------------------------------------------------------------------
 # Entry point
 
+class _ArgumentParser(argparse.ArgumentParser):
+    """Exit 1 on a bad invocation; exit 2 is reserved for halts."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"error: {message}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Upstream filter engine")
+    parser = _ArgumentParser(description="Upstream filter engine")
     parser.add_argument("--mode", required=True, choices=["generate", "verify", "stamp", "seed"])
     parser.add_argument("--config", required=True)
     parser.add_argument("--checkout", required=True)

@@ -5,6 +5,8 @@ service: demo
 top_level:
   pom.xml: keep
   NOTICE: keep
+  .gitattributes: keep
+  archive-metadata.txt: keep
   .fossa.yml: keep
   .gitlab-ci.yml: strip
   .gitignore: keep

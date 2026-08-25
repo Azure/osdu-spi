@@ -51,14 +51,15 @@ Fork ownership needs no new machinery. It is how `.github/` and `build/` already
 A permanently reduced tree cannot be maintained by repeatedly merging the complete upstream tree into it (see Context). Each sync instead builds the desired tree directly. The same generated-branch pattern is already proven in production on core-only forks of these same upstream services, and this ADR adapts it to preserve fork-owned Azure implementations. The sync extracts the verbatim upstream tip to a scratch directory, runs the filter over it, and serializes the result through a scratch index into a commit on `fork_upstream`. The workflow's own checkout never leaves `main`, where the engine and the per-service config live, and the branch is written by ref update:
 
 ```
-git archive upstream/$DEFAULT_BRANCH | tar -x -C $GEN
+GIT_INDEX_FILE=$SCRATCH git read-tree upstream/$DEFAULT_BRANCH
+GIT_INDEX_FILE=$SCRATCH git checkout-index -a -f --prefix=$GEN/
 upstream-filter --config .github/upstream-filter.yml --checkout $GEN   # exit 2 = halt
-GIT_INDEX_FILE=$SCRATCH git -C $GEN --git-dir=$REPO/.git add -A
+GIT_INDEX_FILE=$SCRATCH git -C $GEN --git-dir=$REPO/.git add -A --force
 TREE=$(GIT_INDEX_FILE=$SCRATCH git write-tree)
 git commit-tree $TREE -p fork_upstream -p $UPSTREAM_SHA
 ```
 
-Nothing is textually merged, so modify/delete conflicts cannot occur. The scratch index starts empty and never contains the previous branch state, so the tree that `write-tree` serializes is exactly the filtered directory, deletions included. No merge is ever in progress, which is what makes staging everything safe; the hazard described in Context is `git add -A` during a conflicted merge.
+`checkout-index` materializes every tracked file byte for byte, where `git archive` would honor upstream `export-ignore` and `export-subst` attributes and could silently drop or rewrite tracked files before the filter sees them. Nothing is textually merged, so modify/delete conflicts cannot occur. The scratch index never contains the previous branch state: it begins as the upstream tip's own tree, and `add -A` reconciles it to exactly the filtered directory, deletions included. No merge is ever in progress, which is what makes staging everything safe; the hazard described in Context is `git add -A` during a conflicted merge.
 
 The commit is merge-shaped, with the previous `fork_upstream` tip as its first parent and the upstream tip as its second. That is an implementation detail, but it is what preserves upstream history. `git log`, `git blame`, contributor attribution, the changelog, and the AIPR meta commit (ADR-023) all work unchanged. Every generated commit records `Upstream-Sha` and `Filter-Rev` trailers, where `Filter-Rev` identifies both the filter engine version and the effective per-service configuration, so any generated tree can be reproduced exactly from its inputs.
 

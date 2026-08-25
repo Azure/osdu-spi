@@ -310,6 +310,26 @@ grep -q "0.40.0-SNAPSHOT" "$PMD/testing/demo-test-azure/pom.xml" || die "testing
 ! grep -q "0.31.0-SNAPSHOT" "$PMD/testing/demo-test-azure/pom.xml" || die "pre-bump survives in the testing pom"
 ok "each tree stamped to its own reference"
 
+note "stamp: whitespace-padded version elements are rewritten"
+PMW="$TMP/post-merge-padded"
+rm -rf "$PMW"
+cp -R "$GEN1" "$PMW"
+engine --mode seed --config "$CONFIG" --checkout "$PMW" --seed-source "$FIXTURE" > /dev/null
+for pom in pom.xml testing/pom.xml testing/demo-test-core/pom.xml; do
+  replace_in_file "$PMW/$pom" "0.31.0-SNAPSHOT" "0.32.0-SNAPSHOT"
+done
+replace_in_file "$PMW/provider/demo-azure/pom.xml" ">0.31.0-SNAPSHOT<" "> 0.31.0-SNAPSHOT <"
+engine --mode stamp --config "$CONFIG" --checkout "$PMW" > /dev/null
+! grep -q "0.31.0-SNAPSHOT" "$PMW/provider/demo-azure/pom.xml" || die "padded pre-bump version survives"
+grep -q "0.32.0-SNAPSHOT" "$PMW/provider/demo-azure/pom.xml" || die "padded version was not rewritten"
+ok "padded version rewritten, padding preserved"
+
+note "cli: a malformed invocation exits 1, not the halt code"
+rc=0
+engine --mode bogus --config "$CONFIG" --checkout "$GEN1" > /dev/null 2>&1 || rc=$?
+[ "$rc" -eq 1 ] || die "bad --mode: expected exit 1, got $rc"
+ok "invocation errors exit 1"
+
 note "halt: stamp without fork-owned poms"
 expect_halt "stamp needs the merged fork trees" STAMP_NO_FORK_POMS "$TMP/h9.json" \
   engine --mode stamp --config "$CONFIG" --checkout "$GEN1" --report "$TMP/h9.json"
@@ -346,6 +366,8 @@ git -C "$PLUMB" cat-file -p "$commit" | grep -q "Filter-Rev: $filter_rev" || die
 TREE_FILES=$(git -C "$PLUMB" ls-tree -r --name-only "$commit" | wc -l | tr -d ' ')
 [ "$TREE_FILES" = "$KEPT_ACTUAL" ] || die "commit tree has $TREE_FILES files, expected $KEPT_ACTUAL"
 git -C "$PLUMB" ls-tree -r --name-only "$commit" | grep -q "maven-wrapper.jar" || die "ignored-but-tracked upstream file missing from the generated tree"
+git -C "$PLUMB" ls-tree -r --name-only "$commit" | grep -qx "NOTICE" || die "export-ignore file missing from the generated tree"
+[ "$(git -C "$PLUMB" rev-parse "$commit:archive-metadata.txt")" = "$(git -C "$PLUMB" rev-parse "$UP_SHA:archive-metadata.txt")" ] || die "export-subst placeholder was expanded during materialization"
 if [ -n "$(git -C "$PLUMB" status --porcelain)" ]; then
   die "plumbing dirtied the calling checkout"
 fi
