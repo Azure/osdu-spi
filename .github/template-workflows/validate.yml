@@ -65,11 +65,12 @@ jobs:
     name: "🔍 Check Initialization Status"
     # Skip automatic runs during initialization - only run on manual trigger or PR
     if: |
-      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'workflow_dispatch' ||
       github.event_name == 'pull_request' ||
       (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
-       (github.actor == 'app/github-actions' || github.actor == 'github-actions[bot]' || github.actor == 'dependabot[bot]')) ||
+       (github.actor == 'github-actions[bot]' || github.actor == 'dependabot[bot]' ||
+        startsWith(github.event.pull_request.head.ref, 'sync/'))) ||
       (github.event_name == 'push' && 
        !contains(github.event.head_commit.message, 'chore: complete repository initialization') &&
        !contains(github.event.head_commit.message, 'chore: clean up template files after initialization'))
@@ -287,16 +288,23 @@ jobs:
         with:
           generate_coverage: ${{ github.event_name == 'pull_request' }}
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
-          # Default core,azure (ADR-035); core is activeByDefault, so a bare profile would drop it.
-          # MAVEN_PROFILE overrides for services that deviate (e.g. indexer-queue).
-          maven_profile: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
+          # core is activeByDefault, so a bare profile flag would drop it; MAVEN_PROFILE
+          # overrides for services that deviate (e.g. indexer-queue). fork_upstream builds
+          # core only: it is a provider-less tree whose azure profile points at fork-owned
+          # directories that exist only after the cascade merge.
+          maven_profile: ${{ (github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
 
   docker-build:
     # Validate-only worker. NOT the required check — the required "🐳 Docker Build" context is the
     # summary job below (docker-build-required), which reports once even when this job is skipped.
+    # Skipped for fork_upstream targets: that branch builds core only, so the Azure JAR the
+    # Dockerfile packages does not exist there.
     name: "🐳 Docker Build (validate)"
     needs: [check-initialization, check-repo-state, java-build]
-    if: needs.java-build.outputs.build_result == 'success'
+    if: |
+      needs.java-build.outputs.build_result == 'success' &&
+      github.base_ref != 'fork_upstream' &&
+      github.ref_name != 'fork_upstream'
     runs-on: ubuntu-latest
     permissions:
       contents: read          # no packages: write — runs untrusted Dockerfile content
@@ -348,6 +356,7 @@ jobs:
         github.actor != 'dependabot[bot]' &&
         github.event_name != 'pull_request_target' &&
         github.event_name != 'workflow_dispatch' &&
+        github.ref_name != 'fork_upstream' &&
         (github.event_name != 'pull_request' ||
          github.event.pull_request.head.repo.full_name == github.repository)
       ) || (

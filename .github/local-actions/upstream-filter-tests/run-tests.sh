@@ -9,6 +9,7 @@
 # Usage:
 #   ./run-tests.sh
 
+# shellcheck disable=SC2154  # has_changes/commit/tree/filter_rev are sourced from generate-branch.sh output
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -221,5 +222,39 @@ cp -R "$PM" "$H10"
 rm "$H10/testing/demo-test-core/pom.xml"
 expect_halt "missing reference pom halts" STAMP_REF_MISSING "$TMP/h10.json" \
   engine --mode stamp --config "$CONFIG" --checkout "$H10" --report "$TMP/h10.json"
+
+note "plumbing: generate-branch.sh writes a merge-shaped filtered commit"
+PLUMB="$TMP/plumb"
+rm -rf "$PLUMB"
+git init -q "$PLUMB"
+git -C "$PLUMB" config user.name harness
+git -C "$PLUMB" config user.email harness@local
+git -C "$PLUMB" commit -qm "previous fork_upstream tip" --allow-empty
+BASE_SHA=$(git -C "$PLUMB" rev-parse HEAD)
+cp -R "$FIXTURE/." "$PLUMB/"
+git -C "$PLUMB" add -A
+git -C "$PLUMB" commit -qm "upstream tip"
+UP_SHA=$(git -C "$PLUMB" rev-parse HEAD)
+GEN_OUT="$TMP/generate.env"
+(cd "$PLUMB" && bash "$(dirname "$ENGINE")/generate-branch.sh" "$BASE_SHA" "$UP_SHA" "$CONFIG" "$GEN_OUT")
+# shellcheck disable=SC1090
+. "$GEN_OUT"
+[ "${has_changes:-}" = "true" ] || die "plumbing reported no changes"
+PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$commit" | wc -w | tr -d ' ')
+[ "$PARENTS" = "3" ] || die "generated commit is not merge-shaped"
+git -C "$PLUMB" cat-file -p "$commit" | grep -q "Upstream-Sha: $UP_SHA" || die "Upstream-Sha trailer missing"
+git -C "$PLUMB" cat-file -p "$commit" | grep -q "Filter-Rev: $filter_rev" || die "Filter-Rev trailer missing"
+TREE_FILES=$(git -C "$PLUMB" ls-tree -r --name-only "$commit" | wc -l | tr -d ' ')
+[ "$TREE_FILES" = "$KEPT_ACTUAL" ] || die "commit tree has $TREE_FILES files, expected $KEPT_ACTUAL"
+if [ -n "$(git -C "$PLUMB" status --porcelain)" ]; then
+  die "plumbing dirtied the calling checkout"
+fi
+TREE1="$tree"
+GEN_OUT2="$TMP/generate2.env"
+(cd "$PLUMB" && bash "$(dirname "$ENGINE")/generate-branch.sh" "$BASE_SHA" "$UP_SHA" "$CONFIG" "$GEN_OUT2")
+# shellcheck disable=SC1090
+. "$GEN_OUT2"
+[ "$tree" = "$TREE1" ] || die "two plumbing runs produced different trees"
+ok "merge-shaped commit with trailers, clean checkout, deterministic tree"
 
 printf '\nAll upstream-filter harness checks passed.\n'
