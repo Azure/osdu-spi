@@ -82,7 +82,15 @@ jobs:
               INTEGRATION_PRS=$(gh pr list --base main --head fork_integration --json number 2>/dev/null || echo "[]")
               INTEGRATION_PR_COUNT=$(echo "$INTEGRATION_PRS" | jq length)
 
-              if [ "$INTEGRATION_PR_COUNT" -eq 0 ]; then
+              # Guard: never reset away real work. git cherry marks '+' for any
+              # non-merge commit on fork_integration with no patch-equivalent on
+              # main (e.g. a manual restore commit); stale divergence has none.
+              UNMATCHED_COMMITS=$(git cherry origin/main origin/fork_integration | grep -c '^+' || true)
+              if [ "$UNMATCHED_COMMITS" -gt 0 ]; then
+                echo "::notice::fork_integration carries $UNMATCHED_COMMITS commits with no equivalent on main - not a stale divergence, skipping auto-reset"
+              fi
+
+              if [ "$INTEGRATION_PR_COUNT" -eq 0 ] && [ "$UNMATCHED_COMMITS" -eq 0 ]; then
                 echo "::notice::No active integration PRs found - this is a stale divergence. Auto-resetting fork_integration to main."
                 git checkout -b fork_integration --track origin/fork_integration 2>/dev/null || git checkout fork_integration
                 OLD_SHA=$(git rev-parse HEAD)
@@ -254,8 +262,10 @@ jobs:
           if git merge origin/fork_upstream --no-edit; then
             echo "✅ Clean merge of upstream changes achieved"
           else
-            # Check if there are unresolved conflicts
-            if git status --porcelain | grep -q "^UU\|^AA\|^DD"; then
+            # Check if there are unresolved conflicts.
+            # ls-files -u lists every unmerged path, including the modify/delete
+            # (UD/DU) states that a UU/AA/DD status grep misses.
+            if [ -n "$(git ls-files -u)" ]; then
               echo "::warning::Merge conflicts detected"
               CONFLICTS_FOUND=true
               
@@ -308,6 +318,57 @@ jobs:
           
           echo "conflicts=false" >> $GITHUB_OUTPUT
 
+      - name: Check for filter config
+        id: filter-config
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        run: |
+          # The assertion and stamp steps below are inert until the fork carries a config.
+          if [ -f ".github/upstream-filter.yml" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No .github/upstream-filter.yml - skipping fork-owned path assertion and stamp"
+          fi
+
+      - name: Assert fork-owned paths survived the merge
+        if: steps.filter-config.outputs.exists == 'true'
+        run: |
+          # The config's service key names the module prefix, which can differ from
+          # the repository name (e.g. repo entitlements, modules entitlements-v2-*).
+          SERVICE_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml | head -1)
+          if [ -z "$SERVICE_SLUG" ]; then
+            echo "::error::Could not read the service key from .github/upstream-filter.yml"
+            exit 1
+          fi
+          # Index-based on purpose: a filesystem glob still passes over an unmerged file.
+          for path in "provider/${SERVICE_SLUG}-azure" "testing/${SERVICE_SLUG}-test-azure"; do
+            if ! git ls-files -- "$path" | grep -q .; then
+              echo "::error::Fork-owned path $path is missing from the index after the merge"
+              exit 1
+            fi
+          done
+          echo "✅ Fork-owned Azure paths survived the merge"
+
+      - name: Stamp fork-owned pom versions
+        if: steps.filter-config.outputs.exists == 'true'
+        # The engine halts (exit 2) if any pre-bump version survives, failing the cascade.
+        uses: ./.github/actions/upstream-filter
+        with:
+          mode: stamp
+          config: .github/upstream-filter.yml
+          checkout: .
+
+      - name: Commit stamped versions
+        if: steps.filter-config.outputs.exists == 'true'
+        run: |
+          if ! git diff --quiet; then
+            git add -A
+            git commit -m "chore: stamp fork-owned pom versions"
+            echo "✅ Stamped fork-owned pom versions"
+          else
+            echo "✅ Versions already agree - stamp was a no-op"
+          fi
+
       - name: Push integration changes
         if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
         run: |
@@ -350,6 +411,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMUNITY_MAVEN_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          # core is activeByDefault, so a bare profile flag would drop it; MAVEN_PROFILE
+          # overrides for services that deviate.
+          MAVEN_PROFILE: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
+          UPSTREAM_REPO_URL: ${{ vars.UPSTREAM_REPO_URL }}
         run: |
           echo "🔍 Running comprehensive validation checks on integration branch..."
           
@@ -401,16 +466,43 @@ jobs:
             VALIDATION_DETAILS="${VALIDATION_DETAILS}✓ Java environment configured\n✓ Maven settings configured\n"
             
             # Run Maven build and test
-            echo "🔨 Running Maven build and tests..."
-            if BUILD_OUTPUT=$(mvn -B clean install 2>&1); then
+            if ! [[ "$MAVEN_PROFILE" =~ ^[A-Za-z0-9][A-Za-z0-9,._-]*$ ]]; then
+              echo "::error::MAVEN_PROFILE '$MAVEN_PROFILE' is not a valid profile list"
+              exit 1
+            fi
+            echo "🔨 Running Maven build and tests (-P $MAVEN_PROFILE)..."
+            if BUILD_OUTPUT=$(mvn -B clean install -P "$MAVEN_PROFILE" 2>&1); then
               echo "✅ Maven build and tests passed"
-              VALIDATION_DETAILS="${VALIDATION_DETAILS}✅ Maven build successful\n✅ Unit tests passed\n"
+              VALIDATION_DETAILS="${VALIDATION_DETAILS}✅ Maven build successful (-P $MAVEN_PROFILE)\n✅ Unit tests passed\n"
             else
               echo "❌ Maven build or tests failed"
               VALIDATION_SUCCESS=false
               VALIDATION_DETAILS="${VALIDATION_DETAILS}❌ Maven build failed\n❌ Unit tests failed\n"
               echo "Build output:"
               echo "$BUILD_OUTPUT"
+            fi
+
+            # The testing/ tree is a separate reactor the root build never enters.
+            # Compile-only: its tests are integration tests that need a live environment.
+            SERVICE_SLUG=$(basename "${UPSTREAM_REPO_URL%.git}")
+            if [ -f ".github/upstream-filter.yml" ]; then
+              CONFIG_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml | head -1)
+              [ -n "$CONFIG_SLUG" ] && SERVICE_SLUG="$CONFIG_SLUG"
+            fi
+            if [ "$VALIDATION_SUCCESS" = "true" ] && [ -n "$SERVICE_SLUG" ] && [ -f "testing/pom.xml" ] && \
+               [ -d "testing/${SERVICE_SLUG}-test-core" ] && [ -d "testing/${SERVICE_SLUG}-test-azure" ]; then
+              echo "🔨 Building the testing reactor (${SERVICE_SLUG}-test-core, ${SERVICE_SLUG}-test-azure)..."
+              if TESTING_OUTPUT=$(mvn -B clean install -DskipTests -f testing/pom.xml -pl "${SERVICE_SLUG}-test-core,${SERVICE_SLUG}-test-azure" 2>&1); then
+                echo "✅ Testing reactor build passed"
+                VALIDATION_DETAILS="${VALIDATION_DETAILS}✅ Testing reactor build successful\n"
+              else
+                echo "❌ Testing reactor build failed"
+                VALIDATION_SUCCESS=false
+                VALIDATION_DETAILS="${VALIDATION_DETAILS}❌ Testing reactor build failed\n"
+                BUILD_OUTPUT="${BUILD_OUTPUT}"$'\n\n'"=== testing reactor ==="$'\n'"${TESTING_OUTPUT}"
+                echo "Build output:"
+                echo "$TESTING_OUTPUT"
+              fi
             fi
           else
             echo "📋 Non-Java project detected - running basic validation"

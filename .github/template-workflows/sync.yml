@@ -28,20 +28,6 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
-        with:
-          node-version: '18'
-          
-      - name: Install Security Tools
-        run: |
-          # Install Trivy
-          echo "Installing Trivy..."
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.69.3/contrib/install.sh | sh -s -- -b /usr/local/bin v0.69.3
-          
-          # Install dependencies if needed
-          echo "Dependencies installed"
-
       - name: Setup Python and PR Generator
         run: |
           python -m pip install --upgrade pip
@@ -148,7 +134,7 @@ jobs:
         run: |
           # Generate branch names with timestamp for uniqueness or use existing branch
           DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
-          
+
           if [ "${{ steps.sync-state.outputs.should_update_branch }}" = "true" ]; then
             # Use existing branch name
             SYNC_BRANCH="${{ steps.sync-state.outputs.existing_branch_name }}"
@@ -158,38 +144,37 @@ jobs:
             SYNC_BRANCH="sync/upstream-${DATE_SUFFIX}"
             echo "🆕 Creating new sync branch: $SYNC_BRANCH"
           fi
-          
-          # Fetch and checkout fork_upstream branch
-          git fetch origin fork_upstream
-          git checkout -b fork_upstream origin/fork_upstream
 
-          # Create or checkout the sync branch
-          if [ "${{ steps.sync-state.outputs.should_update_branch }}" = "true" ]; then
-            # Fetch and checkout existing branch
-            git fetch origin $SYNC_BRANCH
-            git checkout -b $SYNC_BRANCH origin/$SYNC_BRANCH
-            # Reset to fork_upstream to get clean merge
-            git reset --hard fork_upstream
-          else
-            # Create new branch for the sync
-            git checkout -b $SYNC_BRANCH
-          fi
-          
-          # Capture state before sync for meta commit analysis
-          BEFORE_SHA=$(git rev-parse fork_upstream)
+          # The checkout never leaves main: the filter engine and the per-service
+          # config live there, and fork_upstream carries no .github/ at all. The
+          # generated tree is serialized through a scratch index and pushed by ref.
+          git fetch origin fork_upstream
+          BEFORE_SHA=$(git rev-parse origin/fork_upstream)
+          UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
           echo "Captured pre-sync state: $BEFORE_SHA"
-          
-          # Try to merge upstream changes, automatically preferring upstream versions on conflict
-          git merge upstream/$DEFAULT_BRANCH -X theirs --no-edit
-          
-          # Check if there are any changes to commit
-          if git diff --quiet fork_upstream; then
+
+          GEN_OUT="$RUNNER_TEMP/generate-branch.env"
+          bash .github/actions/upstream-filter/generate-branch.sh \
+            "$BEFORE_SHA" "$UPSTREAM_SHA" ".github/upstream-filter.yml" "$GEN_OUT"
+          . "$GEN_OUT"
+
+          if [ "$has_changes" = "false" ]; then
             echo "No changes to sync from upstream"
             echo "has_changes=false" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
-          # Generate conventional commit message using AIPR 1.4.0 with comprehensive error handling
+
+          # Upstream version for the commit message and PR description (SHA when untagged)
+          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
+
+          # Disposable worktree: aipr needs a checked-out tree for its diff context,
+          # and the primary working tree stays on main.
+          SYNC_WORKTREE="$RUNNER_TEMP/sync-worktree"
+          rm -rf "$SYNC_WORKTREE"
+          git worktree add --detach "$SYNC_WORKTREE" "$commit"
+          echo "SYNC_WORKTREE=$SYNC_WORKTREE" >> $GITHUB_ENV
+
+          # Generate conventional commit message using AIPR with comprehensive error handling
           META_COMMIT_MSG=""
           AIPR_SUCCESS=false
 
@@ -205,10 +190,8 @@ jobs:
           echo "Using Azure model: azure/$AZURE_MODEL"
 
           echo "Attempting to generate AI-powered conventional commit message..."
+          META_COMMIT_MSG=$(cd "$SYNC_WORKTREE" && timeout 60s aipr commit --from "$BEFORE_SHA" --context "upstream sync" -m "azure/$AZURE_MODEL" 2>/dev/null || echo "")
 
-          # Try AIPR with timeout and validation (single call for efficiency)
-          META_COMMIT_MSG=$(timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync" -m "azure/$AZURE_MODEL" 2>/dev/null || echo "")
-          
           if [[ -n "$META_COMMIT_MSG" ]]; then
             # Extract first line for validation, but use full message for commit
             FIRST_LINE=$(echo "$META_COMMIT_MSG" | head -n1)
@@ -217,54 +200,54 @@ jobs:
             if [[ -n "$FIRST_LINE" ]] && [[ "$FIRST_LINE" =~ $CONVENTIONAL_REGEX ]]; then
               AIPR_SUCCESS=true
               echo "✅ Generated AI commit message (first line): $FIRST_LINE"
-              if [[ $(echo "$META_COMMIT_MSG" | wc -l) -gt 1 ]]; then
-                echo "   📝 Multi-line commit with additional details"
-              fi
             else
               echo "⚠️ AIPR returned invalid format (first line): $FIRST_LINE"
             fi
           else
             echo "⚠️ AIPR command failed or timed out"
           fi
-          
+
           # Fallback to conservative feat: message if AIPR failed
           if [ "$AIPR_SUCCESS" = false ]; then
             META_COMMIT_MSG="feat: sync upstream changes from $UPSTREAM_VERSION"
             echo "⚠️ Using fallback commit message: $META_COMMIT_MSG"
           fi
-          
-          # Add meta commit for Release Please to use for versioning
-          git commit --allow-empty -m "$META_COMMIT_MSG"
-          echo "✅ Added meta commit for Release Please integration"
-          
-          echo "has_changes=true" >> $GITHUB_OUTPUT
-          
-          # Push changes with force flag to handle branch updates
-          if [ "${{ steps.sync-state.outputs.should_update_branch }}" = "true" ]; then
-            git push -f origin $SYNC_BRANCH
-            echo "🔄 Force-pushed updates to existing branch"
-          else
-            git push -f origin $SYNC_BRANCH
-            echo "🆕 Pushed new sync branch"
-          fi
 
-          # Get upstream version for PR description (use SHA instead of vague "latest")
-          UPSTREAM_SHA=$(git rev-parse upstream/$DEFAULT_BRANCH)
-          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 upstream/$DEFAULT_BRANCH 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
-          
+          # Empty meta commit for Release Please, carrying the generated tree unchanged
+          META=$(git commit-tree "${commit}^{tree}" -p "$commit" -m "$META_COMMIT_MSG")
+          echo "✅ Added meta commit for Release Please integration"
+
+          # Local refs keep the diff/log expressions below and in later steps
+          # working without ever checking either branch out.
+          git branch -f "$SYNC_BRANCH" "$META"
+          git branch -f fork_upstream "$BEFORE_SHA"
+
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
+          git push -f origin "$META:refs/heads/$SYNC_BRANCH"
+          echo "Pushed generated sync branch $SYNC_BRANCH"
+
           # Get the changes for the PR description
-          CHANGES=$(git log --pretty=format:"* %s" fork_upstream..$SYNC_BRANCH)
-          
+          CHANGES=$(git log --pretty=format:"* %s" "fork_upstream..$SYNC_BRANCH")
+
           # Prepare fallback description for PR
           FALLBACK_DESCRIPTION="Automated PR to sync with upstream repository changes."$'\n\n'"### Changes from upstream:"$'\n'"${CHANGES}"
-          
+
           # Set environment variables for subsequent steps
           echo "SYNC_BRANCH=$SYNC_BRANCH" >> $GITHUB_ENV
           echo "UPSTREAM_VERSION=$UPSTREAM_VERSION" >> $GITHUB_ENV
           echo "FALLBACK_DESCRIPTION<<EOF" >> $GITHUB_ENV
           echo "$FALLBACK_DESCRIPTION" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-          
+
+      - name: Detect LLM provider
+        id: llm-detect
+        if: steps.sync-changes.outputs.has_changes == 'true'
+        uses: ./.github/actions/llm-provider-detect
+        env:
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+
       - name: Create enhanced sync PR
         if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_create_pr == 'true'
         id: create-pr
@@ -280,21 +263,9 @@ jobs:
           # substitution which breaks when values contain quotes or special characters
           # (e.g. commit messages with double quotes cause shell parsing errors).
 
-          # Detect available LLM provider
-          # Note: LLM detection is duplicated inline instead of using .github/actions/llm-provider-detect
-          # Reason: sync.yml runs from fork_upstream branch where actions don't exist (ADR-028 §7.1)
-          # This is an accepted architectural tradeoff for the sync workflow
-          USE_LLM=false
-          LLM_MODEL=""
-
-          # Check for Azure Foundry API key
-          if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
-            USE_LLM=true
-            LLM_MODEL="azure"
-            echo "Using Azure Foundry for PR description generation"
-          else
-            echo "No Azure Foundry API keys found. Using fallback PR description."
-          fi
+          # The checkout stays on main, so the shared detection action is usable here
+          USE_LLM="${{ steps.llm-detect.outputs.use_llm }}"
+          LLM_MODEL="${{ steps.llm-detect.outputs.llm_model }}"
 
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
@@ -311,7 +282,7 @@ jobs:
 
           # Calculate diff size to avoid generating prompts that exceed model limits
           MAX_DIFF_LINES=20000
-          DIFF_LINES=$(git diff fork_upstream | wc -l | tr -d ' ')
+          DIFF_LINES=$(git diff "fork_upstream..$SYNC_BRANCH" | wc -l | tr -d ' ')
           # Ensure DIFF_LINES is a valid numeric value
           if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
             DIFF_LINES=0
@@ -328,7 +299,7 @@ jobs:
 
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
             echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
+            PR_DESCRIPTION=$(cd "$SYNC_WORKTREE" && timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
 
             # Debug what we got back and handle all failure cases
             # Check for errors FIRST before length validation
@@ -400,21 +371,9 @@ jobs:
           # IMPORTANT: Do NOT use ${{ env.X }} for these - it performs literal string
           # substitution which breaks when values contain quotes or special characters.
 
-          # Detect available LLM provider
-          # Note: LLM detection is duplicated inline instead of using .github/actions/llm-provider-detect
-          # Reason: sync.yml runs from fork_upstream branch where actions don't exist (ADR-028 §7.1)
-          # This is an accepted architectural tradeoff for the sync workflow
-          USE_LLM=false
-          LLM_MODEL=""
-
-          # Check for Azure Foundry API key
-          if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
-            USE_LLM=true
-            LLM_MODEL="azure"
-            echo "Using Azure Foundry for PR description regeneration"
-          else
-            echo "No Azure Foundry API keys found. Using fallback PR description."
-          fi
+          # The checkout stays on main, so the shared detection action is usable here
+          USE_LLM="${{ steps.llm-detect.outputs.use_llm }}"
+          LLM_MODEL="${{ steps.llm-detect.outputs.llm_model }}"
 
           # Map LLM_MODEL to full model identifier for aipr
           if [[ "$LLM_MODEL" == "azure" ]]; then
@@ -431,7 +390,7 @@ jobs:
 
           # Calculate diff size to avoid generating prompts that exceed model limits
           MAX_DIFF_LINES=20000
-          DIFF_LINES=$(git diff fork_upstream | wc -l | tr -d ' ')
+          DIFF_LINES=$(git diff "fork_upstream..$SYNC_BRANCH" | wc -l | tr -d ' ')
           # Ensure DIFF_LINES is a valid numeric value
           if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
             DIFF_LINES=0
@@ -448,7 +407,7 @@ jobs:
 
             # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
             echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
-            PR_DESCRIPTION=$(timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
+            PR_DESCRIPTION=$(cd "$SYNC_WORKTREE" && timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
 
             # Debug what we got back and handle all failure cases
             # Check for errors FIRST before length validation
@@ -699,7 +658,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          ISSUE_BODY="The automated upstream sync workflow failed.
+          # A filter halt is persistent: without dedup the nightly schedule would
+          # open one identical issue per day until someone classifies the change.
+          HALT_DETAIL=""
+          if [ -f "$RUNNER_TEMP/upstream-filter-report.json" ]; then
+            HALT_DETAIL=$(jq -r '[.halts[]? | "\(.code): \(.detail)"] | join("; ")' "$RUNNER_TEMP/upstream-filter-report.json" 2>/dev/null || echo "")
+          fi
+
+          if [ -n "$HALT_DETAIL" ]; then
+            ISSUE_BODY="The upstream filter halted rather than guess.
+
+          ### Halt
+          $HALT_DETAIL
+
+          A halt usually means upstream added something that .github/upstream-filter.yml does not classify yet. Classify the new entry in that file on main, then re-run the sync workflow.
+
+          ### Workflow Run
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          else
+            ISSUE_BODY="The automated upstream sync workflow failed.
 
           ### Error Details
           Please check the workflow logs for more information:
@@ -709,8 +686,15 @@ jobs:
           1. Review the error logs
           2. Resolve any conflicts
           3. Re-run the sync workflow"
+          fi
 
-          gh issue create \
-            --title "🔄 Upstream Sync Failed $(date +%Y-%m-%d)" \
-            --body "$ISSUE_BODY" \
-            --label "sync-failed,human-required"
+          EXISTING_ISSUE=$(gh issue list --state open --label "sync-failed" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_ISSUE" ]; then
+            gh issue comment "$EXISTING_ISSUE" --body "$ISSUE_BODY"
+            echo "Updated existing sync-failed issue #$EXISTING_ISSUE"
+          else
+            gh issue create \
+              --title "🔄 Upstream Sync Failed $(date +%Y-%m-%d)" \
+              --body "$ISSUE_BODY" \
+              --label "sync-failed,human-required"
+          fi

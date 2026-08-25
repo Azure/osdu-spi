@@ -1,0 +1,59 @@
+# Per-service filter config for the fixture service "demo".
+# Mirrors the schema of .github/upstream-filter.yml (see the engine README).
+service: demo
+
+top_level:
+  pom.xml: keep
+  NOTICE: keep
+  .gitattributes: keep
+  archive-metadata.txt: keep
+  .fossa.yml: keep
+  .gitlab-ci.yml: strip
+  .gitignore: keep
+  .mvn: keep
+  demo-core: keep
+  demo-core-plus: strip
+  demo-acceptance-test: keep
+  docs: keep
+
+testing:
+  pom.xml: keep
+  demo-test-core: keep
+  demo-test-azure: fork
+  demo-test-aws: strip
+
+profiles:
+  core: keep
+  Default: keep
+  azure: inject
+  aws: strip
+
+fossa_modules:
+  demo-core: keep
+  demo-core-plus: strip
+  demo-azure: strip
+  demo-aws: strip
+
+expected_kept:
+  - pom.xml
+  - demo-core
+  - testing/demo-test-core
+
+expected_absent:
+  - provider
+  - devops
+  - demo-core-plus
+  - .gitlab-ci.yml
+  - testing/demo-test-azure
+  - testing/demo-test-aws
+
+inject_root_pom_azure_profile: |
+          <profile>
+              <id>azure</id>
+              <modules>
+                  <module>provider/demo-azure</module>
+              </modules>
+          </profile>
+
+inject_testing_pom_azure_module: |
+          <module>demo-test-azure</module>

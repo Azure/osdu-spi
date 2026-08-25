@@ -24,7 +24,9 @@
 #   None
 #
 # Environment Variables:
-#   None required (runs in git repository context)
+#   UPSTREAM_REPO_URL - upstream repository URL, used to derive the service slug
+#                       for <service> substitution (falls back to the repository
+#                       variable via gh when unset)
 #
 # Usage:
 #   ./deploy-fork-resources.sh
@@ -44,12 +46,22 @@ fi
 if [[ -f ".github/fork-resources/dependabot.yml" ]]; then
   echo "Installing fork-specific Dependabot configuration..."
 
-  # Detect service name from repository name
-  SERVICE_NAME=$(basename "$(git rev-parse --show-toplevel)")
-  echo "Detected service name: $SERVICE_NAME"
+  # Derive the service slug from the upstream URL (e.g. partition), not the
+  # checkout directory, which on a runner is the repository name (osdu-spi-partition).
+  SERVICE_SLUG=""
+  UPSTREAM_URL="${UPSTREAM_REPO_URL:-$(gh variable get UPSTREAM_REPO_URL 2>/dev/null || true)}"
+  if [[ -n "$UPSTREAM_URL" ]]; then
+    SERVICE_SLUG=$(basename "${UPSTREAM_URL%.git}")
+    echo "Derived service slug: $SERVICE_SLUG"
+  fi
 
-  # Copy and replace <service> placeholders, escaping special characters in service name
-  SERVICE_ESCAPED=${SERVICE_NAME//&/\\&}
+  if grep -q "<service>" ".github/fork-resources/dependabot.yml" && [[ -z "$SERVICE_SLUG" ]]; then
+    echo "ERROR: dependabot.yml uses the <service> placeholder but UPSTREAM_REPO_URL is not available"
+    exit 1
+  fi
+
+  # Copy and replace <service> placeholders, escaping special characters in the slug
+  SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
   sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
   git add ".github/dependabot.yml"
 fi

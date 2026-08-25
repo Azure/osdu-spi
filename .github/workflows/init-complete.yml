@@ -272,6 +272,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GitHub App token required for workflows)
           GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Pushing workflow files needs 'workflows' permission + setting variables needs admin
+          UPSTREAM_REPO_URL: ${{ vars.UPSTREAM_REPO_URL }}  # May be empty when the variable was set earlier in this same run; deploy-fork-resources.sh falls back to gh variable get
         run: |
           # Copy workflows from template-workflows before deploy-fork-resources deletes the directory
           echo "Deploying production workflows from template..."
