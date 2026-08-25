@@ -192,13 +192,30 @@ def module_paths_in(block):
 # ---------------------------------------------------------------------------
 # Pom surgery (text-level: pom formatting and comments survive untouched)
 
+def in_xml_comment(text, pos):
+    open_idx = text.rfind("<!--", 0, pos)
+    return open_idx != -1 and text.find("-->", open_idx, pos) == -1
+
+
+def find_element_region(text, tag):
+    """First <tag>...</tag> region that is not inside an XML comment."""
+    for m in re.finditer(rf"<{tag}>.*?</{tag}>", text, re.S):
+        if not in_xml_comment(text, m.start()):
+            return m
+    return None
+
+
 def classify_profiles(pom_text, profiles_cfg):
-    """Return (profile blocks with spans and ids, unknown ids)."""
-    region = re.search(r"<profiles>.*?</profiles>", pom_text, re.S)
+    """Return (profile blocks with spans and ids, unknown ids). A block inside
+    an XML comment is dead text: it is neither classified nor stripped."""
+    region = find_element_region(pom_text, "profiles")
     if not region:
         return [], []
     blocks, unknown = [], []
     for m in re.finditer(r"[ \t]*<profile>.*?</profile>[ \t]*\n?", region.group(0), re.S):
+        tag_pos = region.start() + m.start() + m.group(0).index("<profile>")
+        if in_xml_comment(pom_text, tag_pos):
+            continue
         block = m.group(0)
         idm = re.search(r"<id>\s*([^<]+?)\s*</id>", block)
         pid = idm.group(1) if idm else "(missing id)"
@@ -227,7 +244,7 @@ def prune_dangling_modules(pom_path, exempt):
     base = os.path.dirname(pom_path)
     removed, kept_lines = [], []
     for line in read_text(pom_path).splitlines(keepends=True):
-        m = re.match(r"^\s*<module>([^<]+)</module>\s*$", line)
+        m = re.match(r"^\s*<module>([^<]+)</module>\s*(?:<!--.*?-->\s*)?$", line)
         if m:
             target = m.group(1).strip()
             if target not in exempt and not os.path.exists(os.path.join(base, target)):
@@ -239,14 +256,23 @@ def prune_dangling_modules(pom_path, exempt):
     return removed
 
 
-def inject_before(pom_path, anchor, block, halt_detail):
+def iter_live_modules(pom_text):
+    """Yield <module> targets that are not inside XML comments."""
+    for m in re.finditer(r"<module>([^<]+)</module>", pom_text):
+        if not in_xml_comment(pom_text, m.start()):
+            yield m.group(1).strip()
+
+
+def inject_into_region(pom_path, tag, block, halt_detail):
+    """Insert the stored block verbatim before the closing line of the first
+    live <tag> region, the same region classification and stripping used."""
     text = read_text(pom_path)
-    m = None
-    for m in re.finditer(rf"^[ \t]*{anchor}[ \t]*$", text, re.M):
-        pass  # keep the last anchor
-    if m is None:
+    region = find_element_region(text, tag)
+    if region is None:
         raise Halt("INJECT_TARGET_MISSING", halt_detail)
-    write_text(pom_path, text[: m.start()] + block + text[m.start():])
+    close_pos = region.end() - len(f"</{tag}>")
+    line_start = text.rfind("\n", 0, close_pos) + 1
+    write_text(pom_path, text[:line_start] + block + text[line_start:])
 
 
 # ---------------------------------------------------------------------------
@@ -269,20 +295,24 @@ def parse_fossa_modules(text):
             break
     if mod_idx is None:
         raise Halt("FOSSA_UNPARSEABLE", ".fossa.yml has no analyze.modules key")
+    # YAML allows list items at the key's own column or deeper; accept both.
     items = []
     idx = mod_idx + 1
-    item_re = re.compile(r"^(\s+)- ")
     current_start, current_indent = None, None
     while idx < len(lines):
         line = lines[idx]
-        stripped = line.strip()
-        if stripped and not line.startswith(" " * (mod_indent + 1)):
-            break
-        m = item_re.match(line)
-        if m and len(m.group(1)) > mod_indent and (current_indent is None or len(m.group(1)) == current_indent):
-            if current_start is not None:
-                items.append((current_start, idx))
-            current_start, current_indent = idx, len(m.group(1))
+        if line.strip():
+            indent = len(line) - len(line.lstrip(" "))
+            is_item = bool(re.match(r"^\s*- ", line)) and indent >= mod_indent \
+                and (current_indent is None or indent == current_indent)
+            if indent < mod_indent:
+                break
+            if indent == mod_indent and not is_item:
+                break
+            if is_item:
+                if current_start is not None:
+                    items.append((current_start, idx))
+                current_start, current_indent = idx, indent
         idx += 1
     if current_start is not None:
         items.append((current_start, idx))
@@ -367,15 +397,15 @@ def generate(checkout, cfg, report):
         write_text(root_pom, strip_profiles(text, blocks))
         prune_dangling_modules(root_pom, exempt=set())
         if any(verdict == "inject" for _pid, verdict, _span in blocks) or cfg["inject_root_pom_azure_profile"].strip():
-            inject_before(root_pom, "</profiles>", cfg["inject_root_pom_azure_profile"],
-                          "root pom has no </profiles> anchor for the azure profile injection")
+            inject_into_region(root_pom, "profiles", cfg["inject_root_pom_azure_profile"],
+                               "root pom has no <profiles> element for the azure profile injection")
 
     testing_pom = os.path.join(testing_dir, "pom.xml")
     if os.path.isfile(testing_pom):
         prune_dangling_modules(testing_pom, exempt=set())
         if cfg["inject_testing_pom_azure_module"].strip():
-            inject_before(testing_pom, "</modules>", cfg["inject_testing_pom_azure_module"],
-                          "testing/pom.xml has no </modules> anchor for the azure module injection")
+            inject_into_region(testing_pom, "modules", cfg["inject_testing_pom_azure_module"],
+                               "testing/pom.xml has no <modules> element for the azure module injection")
 
     fossa = os.path.join(checkout, ".fossa.yml")
     if os.path.isfile(fossa):
@@ -432,16 +462,14 @@ def verify(checkout, cfg):
             problems.append(Halt("UNKNOWN_PROFILE", f"unclassified root pom profile: {pid}"))
         for pid, verdict, _span in blocks:
             check(verdict != "strip", "STRIPPED_PATH_SURVIVES", f"stripped profile survives: {pid}")
-        for target in re.findall(r"<module>([^<]+)</module>", text):
-            target = target.strip()
+        for target in iter_live_modules(text):
             check(target in root_exempt or os.path.exists(os.path.join(checkout, target)),
                   "MODULE_UNRESOLVED", f"pom.xml module does not resolve: {target}")
 
     testing_pom = os.path.join(testing_dir, "pom.xml")
     testing_exempt = module_paths_in(cfg["inject_testing_pom_azure_module"])
     if os.path.isfile(testing_pom):
-        for target in re.findall(r"<module>([^<]+)</module>", read_text(testing_pom)):
-            target = target.strip()
+        for target in iter_live_modules(read_text(testing_pom)):
             check(target in testing_exempt or os.path.exists(os.path.join(testing_dir, target)),
                   "MODULE_UNRESOLVED", f"testing/pom.xml module does not resolve: {target}")
 
@@ -510,19 +538,25 @@ def stamp(checkout, cfg, report):
         (os.path.join("provider", f"{svc}-azure"), root_version),
         (os.path.join("testing", f"{svc}-test-azure"), testing_version),
     ]
-    mapping = {}
+    rewrites, survivors = [], []
+    total_poms = 0
 
-    def add(old, new):
-        if not old or "${" in old or old == new:
-            return
-        if old in mapping and mapping[old] != new:
-            raise Halt("STAMP_AMBIGUOUS", f"'{old}' would become both '{mapping[old]}' and '{new}'")
-        mapping[old] = new
-
-    all_poms = []
+    # One mapping per tree: the provider tree follows the root pom version and the
+    # testing tree follows the testing pom version, which may legitimately differ.
     for tree, tree_version in targets:
         poms = _fork_poms(checkout, tree)
-        all_poms.extend(poms)
+        total_poms += len(poms)
+        if not poms:
+            continue
+        mapping = {}
+
+        def add(old, new):
+            if not old or "${" in old or old == new:
+                return
+            if old in mapping and mapping[old] != new:
+                raise Halt("STAMP_AMBIGUOUS", f"in {tree}: '{old}' would become both '{mapping[old]}' and '{new}'")
+            mapping[old] = new
+
         for pom in poms:
             root = ET.parse(pom).getroot()
             parent = _pom_child(root, "parent")
@@ -541,27 +575,26 @@ def stamp(checkout, cfg, report):
                     if artifact is not None and artifact.text and artifact.text.strip() == f"{svc}-test-core" \
                             and version is not None and version.text:
                         add(version.text.strip(), testcore_version)
-    if not all_poms:
+
+        for pom in poms:
+            text = read_text(pom)
+            updated = text
+            for old, new in sorted(mapping.items()):
+                if f">{old}<" in updated:
+                    updated = updated.replace(f">{old}<", f">{new}<")
+                    rewrites.append({"pom": os.path.relpath(pom, checkout), "from": old, "to": new})
+            if updated != text:
+                write_text(pom, updated)
+
+        # Post-condition, not a site list: no pre-bump version string survives.
+        for pom in poms:
+            text = read_text(pom)
+            for old in mapping:
+                if f">{old}<" in text:
+                    survivors.append(f"{os.path.relpath(pom, checkout)} still carries {old}")
+
+    if total_poms == 0:
         raise Halt("STAMP_NO_FORK_POMS", f"no fork-owned poms found under {' or '.join(t for t, _v in targets)}")
-
-    rewrites = []
-    for pom in all_poms:
-        text = read_text(pom)
-        updated = text
-        for old, new in sorted(mapping.items()):
-            if f">{old}<" in updated:
-                updated = updated.replace(f">{old}<", f">{new}<")
-                rewrites.append({"pom": os.path.relpath(pom, checkout), "from": old, "to": new})
-        if updated != text:
-            write_text(pom, updated)
-
-    # Post-condition, not a site list: no pre-bump version string survives.
-    survivors = []
-    for pom in all_poms:
-        text = read_text(pom)
-        for old in mapping:
-            if f">{old}<" in text:
-                survivors.append(f"{os.path.relpath(pom, checkout)} still carries {old}")
     if survivors:
         raise Halt("STAMP_INCOMPLETE", "; ".join(survivors))
 

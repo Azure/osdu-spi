@@ -68,7 +68,7 @@ for absent in provider devops demo-core-plus .gitlab-ci.yml testing/demo-test-az
 done
 for present in pom.xml demo-core/pom.xml demo-core/src/Main.java demo-acceptance-test/pom.xml \
                testing/pom.xml testing/demo-test-core/pom.xml .fossa.yml .mvn/community-maven.settings.xml \
-               NOTICE docs/index.md .gitignore; do
+               .mvn/wrapper/maven-wrapper.jar NOTICE docs/index.md .gitignore; do
   [ -e "$GEN1/$present" ] || die "generate lost $present"
 done
 grep -q '<id>azure</id>' "$GEN1/pom.xml" || die "azure profile not injected into root pom"
@@ -111,6 +111,65 @@ note "verify: passes on a generated tree without mutating it"
 engine --mode verify --config "$CONFIG" --checkout "$GEN1" > /dev/null
 diff -r "$GEN1" "$GEN2" > /dev/null || die "verify mutated the tree"
 ok "clean verify"
+
+note "generate: commented-out legacy profiles block does not capture the injection"
+H11="$TMP/h11"
+fresh_copy "$H11"
+replace_in_file "$H11/pom.xml" "</profiles>" "</profiles>
+    <!--
+    <profiles>
+        <profile>
+            <id>legacy</id>
+        </profile>
+    </profiles>
+    -->"
+engine --mode generate --config "$CONFIG" --checkout "$H11" > /dev/null
+python3 -c "
+import sys, xml.etree.ElementTree as ET
+ids = [e.text for e in ET.parse(sys.argv[1]).getroot().iter() if e.tag.rsplit('}', 1)[-1] == 'id']
+assert 'azure' in ids, f'azure profile is not live XML: {ids}'
+assert 'legacy' not in ids, 'commented legacy profile became live'
+" "$H11/pom.xml"
+ok "azure profile is live XML; commented block untouched"
+
+note "generate: fossa modules at the key's own column still filter"
+H12="$TMP/h12"
+fresh_copy "$H12"
+cat > "$H12/.fossa.yml" <<'EOF'
+version: 1
+
+analyze:
+  modules:
+  - name: demo-core
+    type: mvn
+    target: demo-core/pom.xml
+    path: .
+  - name: demo-azure
+    type: mvn
+    target: provider/demo-azure/pom.xml
+    path: .
+EOF
+engine --mode generate --config "$CONFIG" --checkout "$H12" > /dev/null
+grep -q "name: demo-core" "$H12/.fossa.yml" || die "kept same-column fossa module lost"
+! grep -q "name: demo-azure" "$H12/.fossa.yml" || die "stripped same-column fossa module survives"
+ok "same-column list style filtered"
+
+note "generate: module line with a trailing comment still prunes"
+H13="$TMP/h13"
+fresh_copy "$H13"
+replace_in_file "$H13/pom.xml" "<module>demo-core-plus</module>" "<module>demo-core-plus</module> <!-- community only -->"
+engine --mode generate --config "$CONFIG" --checkout "$H13" > /dev/null
+! grep -q "demo-core-plus" "$H13/pom.xml" || die "trailing-comment module line survives"
+ok "pruned"
+
+note "generate: fully commented module line neither prunes nor halts"
+H14="$TMP/h14"
+fresh_copy "$H14"
+replace_in_file "$H14/pom.xml" "<module>demo-core</module>" "<module>demo-core</module>
+                <!-- <module>demo-retired</module> -->"
+engine --mode generate --config "$CONFIG" --checkout "$H14" > /dev/null
+grep -q "demo-retired" "$H14/pom.xml" || die "commented module line was removed"
+ok "left in place"
 
 note "halt: config missing"
 expect_halt "missing config fails closed" CONFIG_MISSING "$TMP/h0.json" \
@@ -211,6 +270,21 @@ engine --mode stamp --config "$CONFIG" --checkout "$PM" --report "$TMP/stamp2.js
 [ "$(report_field "$TMP/stamp2.json" "len(r['stamp']['rewrites'])")" = "0" ] || die "no-op stamp rewrote something"
 ok "converged"
 
+note "stamp: provider and testing trees follow their own reference versions"
+PMD="$TMP/post-merge-diverged"
+rm -rf "$PMD"
+cp -R "$GEN1" "$PMD"
+engine --mode seed --config "$CONFIG" --checkout "$PMD" --seed-source "$FIXTURE" > /dev/null
+replace_in_file "$PMD/pom.xml" "0.31.0-SNAPSHOT" "0.32.0-SNAPSHOT"
+replace_in_file "$PMD/testing/pom.xml" "0.31.0-SNAPSHOT" "0.40.0-SNAPSHOT"
+replace_in_file "$PMD/testing/demo-test-core/pom.xml" "0.31.0-SNAPSHOT" "0.40.0-SNAPSHOT"
+engine --mode stamp --config "$CONFIG" --checkout "$PMD" > /dev/null
+grep -q "0.32.0-SNAPSHOT" "$PMD/provider/demo-azure/pom.xml" || die "provider pom missed the root version"
+grep -q "0.40.0-SNAPSHOT" "$PMD/testing/demo-test-azure/pom.xml" || die "testing pom missed the testing version"
+! grep -q "0.31.0-SNAPSHOT" "$PMD/provider/demo-azure/pom.xml" || die "pre-bump survives in the provider pom"
+! grep -q "0.31.0-SNAPSHOT" "$PMD/testing/demo-test-azure/pom.xml" || die "pre-bump survives in the testing pom"
+ok "each tree stamped to its own reference"
+
 note "halt: stamp without fork-owned poms"
 expect_halt "stamp needs the merged fork trees" STAMP_NO_FORK_POMS "$TMP/h9.json" \
   engine --mode stamp --config "$CONFIG" --checkout "$GEN1" --report "$TMP/h9.json"
@@ -232,7 +306,7 @@ git -C "$PLUMB" config user.email harness@local
 git -C "$PLUMB" commit -qm "previous fork_upstream tip" --allow-empty
 BASE_SHA=$(git -C "$PLUMB" rev-parse HEAD)
 cp -R "$FIXTURE/." "$PLUMB/"
-git -C "$PLUMB" add -A
+git -C "$PLUMB" add -A -f
 git -C "$PLUMB" commit -qm "upstream tip"
 UP_SHA=$(git -C "$PLUMB" rev-parse HEAD)
 GEN_OUT="$TMP/generate.env"
@@ -246,6 +320,7 @@ git -C "$PLUMB" cat-file -p "$commit" | grep -q "Upstream-Sha: $UP_SHA" || die "
 git -C "$PLUMB" cat-file -p "$commit" | grep -q "Filter-Rev: $filter_rev" || die "Filter-Rev trailer missing"
 TREE_FILES=$(git -C "$PLUMB" ls-tree -r --name-only "$commit" | wc -l | tr -d ' ')
 [ "$TREE_FILES" = "$KEPT_ACTUAL" ] || die "commit tree has $TREE_FILES files, expected $KEPT_ACTUAL"
+git -C "$PLUMB" ls-tree -r --name-only "$commit" | grep -q "maven-wrapper.jar" || die "ignored-but-tracked upstream file missing from the generated tree"
 if [ -n "$(git -C "$PLUMB" status --porcelain)" ]; then
   die "plumbing dirtied the calling checkout"
 fi

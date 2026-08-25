@@ -147,7 +147,7 @@ New fork initialization is frozen from now until this lands. A fork created befo
 
 ## ADR-038 amendments
 
-Four corrections, to be made in one pass across the ADR and its catalog entry, which currently repeats two of them.
+Four corrections, applied in one pass across the ADR and its catalog entry (which had repeated two of them).
 
 1. The cascade stamp is defined by its post-condition, that no pre-bump version survives in the fork-owned poms, not by a count of `<parent><version>` sites.
 2. The file counts become 421 to 88 against the current upstream tip.

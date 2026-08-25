@@ -318,16 +318,23 @@ jobs:
           
           echo "conflicts=false" >> $GITHUB_OUTPUT
 
-      - name: Assert fork-owned paths survived the merge
+      - name: Check for filter config
+        id: filter-config
         if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        run: |
+          # The assertion and stamp steps below are inert until the fork carries a config.
+          if [ -f ".github/upstream-filter.yml" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No .github/upstream-filter.yml - skipping fork-owned path assertion and stamp"
+          fi
+
+      - name: Assert fork-owned paths survived the merge
+        if: steps.filter-config.outputs.exists == 'true'
         env:
           UPSTREAM_REPO_URL: ${{ vars.UPSTREAM_REPO_URL }}
         run: |
-          # Inert until the fork carries a filter config.
-          if [ ! -f ".github/upstream-filter.yml" ]; then
-            echo "No .github/upstream-filter.yml - skipping fork-owned path assertion"
-            exit 0
-          fi
           SERVICE_SLUG=$(basename "${UPSTREAM_REPO_URL%.git}")
           if [ -z "$SERVICE_SLUG" ]; then
             echo "::error::UPSTREAM_REPO_URL is not set - cannot derive the service slug"
@@ -343,18 +350,17 @@ jobs:
           echo "✅ Fork-owned Azure paths survived the merge"
 
       - name: Stamp fork-owned pom versions
-        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        if: steps.filter-config.outputs.exists == 'true'
+        # The engine halts (exit 2) if any pre-bump version survives, failing the cascade.
+        uses: ./.github/actions/upstream-filter
+        with:
+          mode: stamp
+          config: .github/upstream-filter.yml
+          checkout: .
+
+      - name: Commit stamped versions
+        if: steps.filter-config.outputs.exists == 'true'
         run: |
-          # Inert until the fork carries a filter config. The engine halts (exit 2)
-          # if any pre-bump version survives, failing the cascade.
-          if [ ! -f ".github/upstream-filter.yml" ]; then
-            echo "No .github/upstream-filter.yml - skipping stamp"
-            exit 0
-          fi
-          python3 .github/actions/upstream-filter/upstream_filter.py \
-            --mode stamp \
-            --config .github/upstream-filter.yml \
-            --checkout .
           if ! git diff --quiet; then
             git add -A
             git commit -m "chore: stamp fork-owned pom versions"

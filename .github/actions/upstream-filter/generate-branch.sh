@@ -42,7 +42,10 @@ python3 "$HERE/upstream_filter.py" \
 FILTER_REV=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['filter_rev'])" "$REPORT")
 
 GITDIR="$(git rev-parse --absolute-git-dir)"
-(cd "$GEN" && GIT_INDEX_FILE="$SCRATCH" git --git-dir="$GITDIR" --work-tree="$GEN" add -A)
+# --force: the extraction contains upstream's own .gitignore, and the runner may
+# carry a core.excludesfile; every extracted file was tracked upstream and must
+# reach the tree regardless of what any ignore rule says.
+(cd "$GEN" && GIT_INDEX_FILE="$SCRATCH" git --git-dir="$GITDIR" --work-tree="$GEN" add -A --force)
 TREE=$(GIT_INDEX_FILE="$SCRATCH" git write-tree)
 
 {
