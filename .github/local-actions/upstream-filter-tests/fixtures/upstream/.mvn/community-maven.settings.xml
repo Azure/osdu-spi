@@ -1,0 +1,7 @@
+<settings>
+    <servers>
+        <server>
+            <id>community-maven-via-private-token</id>
+        </server>
+    </servers>
+</settings>

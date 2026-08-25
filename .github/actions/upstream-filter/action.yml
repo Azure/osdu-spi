@@ -1,0 +1,46 @@
+name: 'Upstream Filter'
+description: 'Runs the upstream filter engine: generate, verify, stamp, or seed over a checkout directory'
+
+inputs:
+  mode:
+    description: 'Engine mode: generate | verify | stamp | seed'
+    required: true
+  config:
+    description: 'Path to the per-service upstream-filter.yml'
+    required: true
+  checkout:
+    description: 'Directory the engine transforms or inspects'
+    required: true
+  seed_source:
+    description: 'Seed mode only: checkout of the newest upstream commit still containing the Azure trees'
+    required: false
+    default: ''
+  report:
+    description: 'Optional path to write the JSON report (always printed to stdout)'
+    required: false
+    default: ''
+
+outputs:
+  filter_rev:
+    description: 'Engine version plus config hash, for the Filter-Rev commit trailer'
+    value: ${{ steps.run.outputs.filter_rev }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run upstream filter engine
+      id: run
+      shell: bash
+      run: |
+        set -euo pipefail
+        REPORT="${{ inputs.report }}"
+        if [ -z "$REPORT" ]; then
+          REPORT="$RUNNER_TEMP/upstream-filter-report.json"
+        fi
+        ARGS=(--mode "${{ inputs.mode }}" --config "${{ inputs.config }}" --checkout "${{ inputs.checkout }}" --report "$REPORT")
+        if [ -n "${{ inputs.seed_source }}" ]; then
+          ARGS+=(--seed-source "${{ inputs.seed_source }}")
+        fi
+        python3 "${{ github.action_path }}/upstream_filter.py" "${ARGS[@]}"
+        FILTER_REV=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('filter_rev',''))" "$REPORT")
+        echo "filter_rev=$FILTER_REV" >> "$GITHUB_OUTPUT"
