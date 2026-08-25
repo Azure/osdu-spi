@@ -14,10 +14,10 @@ Numbers below come from a working prototype of the filter run against the curren
 | --- | --- |
 | Upstream tree today | 421 files |
 | Generated `fork_upstream` after filtering | 88 files (21%) |
-| Removed outright | 262 files |
+| Discarded entirely | 274 files |
 | Moved to fork ownership | 59 files (`provider/partition-azure` 47, `testing/partition-test-azure` 12) |
 
-The removals break down as `provider/` 149, `devops/` 90, `partition-core-plus` 22, the five non-Azure `testing/` modules 59, and `.gitlab-ci.yml`. The prototype produced byte-identical output across repeated runs and converged when re-applied to its own output.
+The 333 files that leave `fork_upstream` are `provider/` 149, `devops/` 90, `partition-core-plus` 22, the six non-core `testing/` modules 71, and `.gitlab-ci.yml`. Of those, the 59 Azure files return as fork-owned content on `fork_integration` and `main`, leaving 274 discarded. The prototype produced byte-identical output across repeated runs and converged when re-applied to its own output.
 
 ## What investigation changed
 
