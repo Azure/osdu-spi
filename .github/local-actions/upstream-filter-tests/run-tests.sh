@@ -175,6 +175,15 @@ note "halt: config missing"
 expect_halt "missing config fails closed" CONFIG_MISSING "$TMP/h0.json" \
   engine --mode generate --config "$TMP/does-not-exist.yml" --checkout "$GEN1" --report "$TMP/h0.json"
 
+note "halt: inject_root_pom_azure_profile set without an inject verdict"
+H0B="$TMP/h0b"
+fresh_copy "$H0B"
+CONFIG_NO_INJECT="$TMP/demo-no-inject.yml"
+cp "$CONFIG" "$CONFIG_NO_INJECT"
+replace_in_file "$CONFIG_NO_INJECT" "azure: inject" "azure: strip"
+expect_halt "non-empty inject block without an inject verdict halts" CONFIG_INVALID "$TMP/h0b.json" \
+  engine --mode generate --config "$CONFIG_NO_INJECT" --checkout "$H0B" --report "$TMP/h0b.json"
+
 note "halt: unknown top-level entry"
 H1="$TMP/h1"
 fresh_copy "$H1"

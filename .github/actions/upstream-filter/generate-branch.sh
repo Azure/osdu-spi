@@ -19,6 +19,9 @@
 #   commit=<generated commit sha>          (only when has_changes=true)
 #
 # Exit codes follow the engine: 0 success, 1 operational error, 2 halt.
+#
+# Outside RUNNER_TEMP (e.g. local runs), the scratch dir is removed on success
+# and kept on failure so the halt report stays readable.
 
 set -euo pipefail
 
@@ -28,7 +31,18 @@ CONFIG="$3"
 OUT="$4"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKDIR="${RUNNER_TEMP:-$(mktemp -d)}"
+if [ -n "${RUNNER_TEMP:-}" ]; then
+  WORKDIR="$RUNNER_TEMP"
+else
+  WORKDIR="$(mktemp -d)"
+  cleanup_workdir() {
+    local exit_code=$?
+    if [ "$exit_code" -eq 0 ]; then
+      rm -rf "$WORKDIR"
+    fi
+  }
+  trap cleanup_workdir EXIT
+fi
 GEN="$WORKDIR/generated-upstream"
 SCRATCH="$WORKDIR/generated-upstream.index"
 REPORT="$WORKDIR/upstream-filter-report.json"

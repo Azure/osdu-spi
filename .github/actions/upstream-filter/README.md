@@ -230,6 +230,10 @@ inject_testing_pom_azure_module: |
   <module>partition-test-azure</module>
 ```
 
+`inject_root_pom_azure_profile` may be non-empty only when a `profiles` entry
+carries the `inject` verdict; a non-empty block with no `inject` verdict halts
+with `CONFIG_INVALID`.
+
 The file is parsed by a small fixed-schema reader, not a general YAML parser.
 The accepted subset: top-level `key: value`, `key:` introducing a two-space
 indented block of `name: verdict` pairs or `- item` list entries, and `key: |`

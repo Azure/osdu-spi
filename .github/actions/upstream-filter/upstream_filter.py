@@ -153,6 +153,8 @@ def load_config(path):
         raise Halt("CONFIG_INVALID", f"profiles: at most one inject verdict, found {injects}")
     if injects and not cfg["inject_root_pom_azure_profile"].strip():
         raise Halt("CONFIG_INVALID", "profiles declare an inject verdict but inject_root_pom_azure_profile is empty")
+    if cfg["inject_root_pom_azure_profile"].strip() and not injects:
+        raise Halt("CONFIG_INVALID", "inject_root_pom_azure_profile is set but no profile declares an inject verdict")
     cfg["_sha256"] = hashlib.sha256(raw).hexdigest()
     return cfg
 

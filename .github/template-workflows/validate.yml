@@ -64,6 +64,8 @@ jobs:
   check-initialization:
     name: "🔍 Check Initialization Status"
     # Skip automatic runs during initialization - only run on manual trigger or PR
+    # pull_request_target: same-repo check below excludes forks, so sync/ prefix only admits
+    # writer-pushed branches; kept over an actor check since human conflict-resolution pushes change the actor.
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'pull_request' ||
