@@ -59,6 +59,14 @@ def _unquote(value):
     return value
 
 
+def _strip_inline_comment(value):
+    # YAML rule: an inline comment's '#' must be preceded by whitespace.
+    if value.lstrip().startswith("#"):
+        return ""
+    m = re.search(r"\s#", value)
+    return value[:m.start()] if m else value
+
+
 def parse_config(text):
     """Fixed-schema reader for the accepted YAML subset (see README)."""
     data = {}
@@ -79,7 +87,7 @@ def parse_config(text):
         m = re.match(r"^([A-Za-z0-9_.-]+):(.*)$", line)
         if not m:
             raise Halt("CONFIG_INVALID", f"line {i + 1}: expected 'key:' form")
-        key, rest = m.group(1), m.group(2).strip()
+        key, rest = m.group(1), _strip_inline_comment(m.group(2)).strip()
         i += 1
         if rest == "|":
             block = []
@@ -112,7 +120,7 @@ def parse_config(text):
                     if kind == "map":
                         raise Halt("CONFIG_INVALID", f"line {i + 1}: list entry inside a map block")
                     kind = "list"
-                    entries_list.append(_unquote(body[2:].strip()))
+                    entries_list.append(_unquote(_strip_inline_comment(body[2:]).strip()))
                 else:
                     mm = re.match(r"^(.+?):\s*(.*)$", body)
                     if not mm:
@@ -123,7 +131,7 @@ def parse_config(text):
                     name = _unquote(mm.group(1).strip())
                     if name in entries_map:
                         raise Halt("CONFIG_INVALID", f"line {i + 1}: duplicate entry '{name}'")
-                    entries_map[name] = _unquote(mm.group(2).strip())
+                    entries_map[name] = _unquote(_strip_inline_comment(mm.group(2)).strip())
                 i += 1
             if kind is None:
                 data[key] = [] if REQUIRED_KEYS.get(key) is list else {}
@@ -306,7 +314,7 @@ def parse_fossa_modules(text):
     current_start, current_indent = None, None
     while idx < len(lines):
         line = lines[idx]
-        if line.strip():
+        if line.strip() and not line.lstrip().startswith("#"):
             indent = len(line) - len(line.lstrip(" "))
             is_item = bool(re.match(r"^\s*- ", line)) and indent >= mod_indent \
                 and (current_indent is None or indent == current_indent)
@@ -318,9 +326,14 @@ def parse_fossa_modules(text):
                 if current_start is not None:
                     items.append((current_start, idx))
                 current_start, current_indent = idx, indent
+            elif current_start is None:
+                raise Halt("FOSSA_UNPARSEABLE",
+                           f".fossa.yml analyze.modules is not a list (line {idx + 1})")
         idx += 1
     if current_start is not None:
         items.append((current_start, idx))
+    if not items:
+        raise Halt("FOSSA_UNPARSEABLE", ".fossa.yml analyze.modules has no list items")
     named = []
     for start, end in items:
         body = "\n".join(lines[start:end])

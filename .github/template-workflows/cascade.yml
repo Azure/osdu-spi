@@ -332,12 +332,12 @@ jobs:
 
       - name: Assert fork-owned paths survived the merge
         if: steps.filter-config.outputs.exists == 'true'
-        env:
-          UPSTREAM_REPO_URL: ${{ vars.UPSTREAM_REPO_URL }}
         run: |
-          SERVICE_SLUG=$(basename "${UPSTREAM_REPO_URL%.git}")
+          # The config's service key names the module prefix, which can differ from
+          # the repository name (e.g. repo entitlements, modules entitlements-v2-*).
+          SERVICE_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml | head -1)
           if [ -z "$SERVICE_SLUG" ]; then
-            echo "::error::UPSTREAM_REPO_URL is not set - cannot derive the service slug"
+            echo "::error::Could not read the service key from .github/upstream-filter.yml"
             exit 1
           fi
           # Index-based on purpose: a filesystem glob still passes over an unmerged file.
@@ -485,6 +485,10 @@ jobs:
             # The testing/ tree is a separate reactor the root build never enters.
             # Compile-only: its tests are integration tests that need a live environment.
             SERVICE_SLUG=$(basename "${UPSTREAM_REPO_URL%.git}")
+            if [ -f ".github/upstream-filter.yml" ]; then
+              CONFIG_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml | head -1)
+              [ -n "$CONFIG_SLUG" ] && SERVICE_SLUG="$CONFIG_SLUG"
+            fi
             if [ "$VALIDATION_SUCCESS" = "true" ] && [ -n "$SERVICE_SLUG" ] && [ -f "testing/pom.xml" ] && \
                [ -d "testing/${SERVICE_SLUG}-test-core" ] && [ -d "testing/${SERVICE_SLUG}-test-azure" ]; then
               echo "🔨 Building the testing reactor (${SERVICE_SLUG}-test-core, ${SERVICE_SLUG}-test-azure)..."

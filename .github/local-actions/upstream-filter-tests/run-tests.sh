@@ -171,6 +171,18 @@ engine --mode generate --config "$CONFIG" --checkout "$H14" > /dev/null
 grep -q "demo-retired" "$H14/pom.xml" || die "commented module line was removed"
 ok "left in place"
 
+note "generate: inline comments in the config are ignored"
+H15="$TMP/h15"
+fresh_copy "$H15"
+CONFIG_COMMENTS="$TMP/demo-comments.yml"
+cp "$CONFIG" "$CONFIG_COMMENTS"
+replace_in_file "$CONFIG_COMMENTS" "top_level:" "top_level:  # every top-level entry"
+replace_in_file "$CONFIG_COMMENTS" "  pom.xml: keep" "  pom.xml: keep  # root reactor"
+replace_in_file "$CONFIG_COMMENTS" "  - provider" "  - provider  # non-azure providers"
+engine --mode generate --config "$CONFIG_COMMENTS" --checkout "$H15" > /dev/null
+diff -r "$GEN1" "$H15" > /dev/null || die "inline comments changed the generated tree"
+ok "inline comments ignored"
+
 note "halt: config missing"
 expect_halt "missing config fails closed" CONFIG_MISSING "$TMP/h0.json" \
   engine --mode generate --config "$TMP/does-not-exist.yml" --checkout "$GEN1" --report "$TMP/h0.json"
@@ -237,6 +249,44 @@ cat >> "$H4/.fossa.yml" <<'EOF'
 EOF
 expect_halt "new fossa module halts" UNKNOWN_FOSSA_MODULE "$TMP/h4.json" \
   engine --mode generate --config "$CONFIG" --checkout "$H4" --report "$TMP/h4.json"
+
+note "halt: fossa modules body that is not a list"
+H16="$TMP/h16"
+fresh_copy "$H16"
+cat > "$H16/.fossa.yml" <<'EOF'
+version: 1
+
+analyze:
+  modules:
+    demo-core:
+      type: mvn
+EOF
+expect_halt "mapping-shaped fossa modules halts" FOSSA_UNPARSEABLE "$TMP/h16.json" \
+  engine --mode generate --config "$CONFIG" --checkout "$H16" --report "$TMP/h16.json"
+
+note "generate: comment lines inside fossa modules do not end the scan"
+H17="$TMP/h17"
+fresh_copy "$H17"
+cat > "$H17/.fossa.yml" <<'EOF'
+version: 1
+
+analyze:
+  modules:
+  # core module
+  - name: demo-core
+    type: mvn
+    target: demo-core/pom.xml
+    path: .
+  # azure module
+  - name: demo-azure
+    type: mvn
+    target: provider/demo-azure/pom.xml
+    path: .
+EOF
+engine --mode generate --config "$CONFIG" --checkout "$H17" > /dev/null
+grep -q "name: demo-core" "$H17/.fossa.yml" || die "kept module lost with comment lines present"
+! grep -q "name: demo-azure" "$H17/.fossa.yml" || die "stripped module survives with comment lines present"
+ok "comments skipped, filtering intact"
 
 note "halt: expected_kept path missing (upstream rename fails loud)"
 H5="$TMP/h5"

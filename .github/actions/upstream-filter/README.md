@@ -186,6 +186,12 @@ every release, so a copy there is derived, not durable.
 Each category is a single mapping from name to verdict. A name appears exactly
 once, so keep and strip can never disagree.
 
+`service` is the Maven module prefix, not necessarily the repository name: the
+`entitlements` repository's modules are `entitlements-v2-*`, so its config would
+say `service: entitlements-v2`. Everything path-shaped derives from it:
+`provider/<service>-azure`, `testing/<service>-test-azure`, and the cascade's
+survival assertion all read this key.
+
 ```yaml
 service: partition
 
@@ -238,7 +244,9 @@ The file is parsed by a small fixed-schema reader, not a general YAML parser.
 The accepted subset: top-level `key: value`, `key:` introducing a two-space
 indented block of `name: verdict` pairs or `- item` list entries, and `key: |`
 literal blocks whose lines are de-indented by exactly two spaces. Comments start
-with `#`. Nothing deeper nests. An empty indented block (`key:` followed by
+with `#`, on their own line or inline after a value; an inline `#` needs
+preceding whitespace. Literal block content is never comment-stripped. Nothing
+deeper nests. An empty indented block (`key:` followed by
 nothing) is valid: it yields an empty list for list-typed keys such as
 `expected_kept` and `expected_absent`, and an empty map for the others.
 
