@@ -73,9 +73,9 @@ The same job's self-heal arm runs `git reset --hard origin/main` followed by `gi
 
 Five choices the design left open, resolved.
 
-**Never leave `main` in `sync.yml`.** `fork_upstream` carries no `.github/` at all, so the moment the workflow checks it out the engine and config vanish from the worktree. Rather than staging copies to a temp directory, the generation runs entirely through git plumbing with `GIT_INDEX_FILE` and `git write-tree` / `git commit-tree`, and the branch is written by ref update. This keeps `uses: ./.github/actions/upstream-filter` resolvable in sync, cascade, and init alike, and it retires the standing duplication that ADR-028 §7.1 records. The cost is honest: `sync.yml`'s 130-line integration step is the largest single edit in the program.
+**Never leave `main` in `sync.yml`.** `fork_upstream` carries no `.github/` at all, so the moment the workflow checks it out the engine and config vanish from the worktree. Rather than staging copies to a temp directory, the generation runs entirely through git plumbing with `GIT_INDEX_FILE` and `git write-tree` / `git commit-tree`, and the branch is written by ref update. This keeps `uses: ./.github/actions/upstream-filter` resolvable in sync, cascade, and init alike, and it retires the standing duplication that ADR-028 §7.1 records. The cost is honest: `sync.yml`'s 130-line integration step is the largest single edit in the program. Never leaving `main` means the primary working tree never moves: a step that genuinely needs a checked-out tree, such as AIPR's diff context, gets a disposable `git worktree add` rather than a treeless contortion.
 
-**The engine never touches git.** One Python file with `--mode {generate,stamp,seed,verify}`, driven by a composite action, transforming a directory in place. Archive, rsync, and commit stay in workflow shell where fixtures cannot reach them either way. An engine that runs git commands makes the fixture corpus mean less than it appears to.
+**The engine never touches git.** One Python file with `--mode {generate,stamp,seed,verify}`, driven by a composite action, transforming a directory in place. The git surface, archive extraction, scratch-index serialization, and commit, lives beside it as scripts in the composite action directory per ADR-028, invoked by the workflows and testable locally as ordinary shell. The fixture corpus still drives only the engine: an engine that runs git commands makes that corpus mean less than it appears to.
 
 **Standard library only, no `pip install`.** A YAML dependency resolved at runtime makes the generated tree a function of the runner image, which contradicts the reproducibility that the `Filter-Rev` trailer promises. The config file is a fixed, small schema and does not need a general parser. `cascade.yml` and `init-complete.yml` install nothing today and must not start.
 
@@ -95,7 +95,7 @@ Defects found along the way that stand on their own merit and that later phases 
 - The self-heal arm gains a guard so it cannot force-push over a restore commit.
 - `SERVICE_SLUG` derives from `UPSTREAM_REPO_URL`.
 - The `.mvn/community-maven.settings.xml` copy in `validate.yml` and `dependabot-validation.yml` becomes conditional.
-- The dead Trivy install in `sync.yml` is removed, and two broken documentation links are fixed.
+- The dead Trivy install and the unused Node.js setup in `sync.yml` are removed, and the broken relative links in the published ADR pages are fixed. (A repo-wide sweep found 36 broken relative links across `doc/`; the remainder is a separate documentation chore, not part of this program.)
 
 **Exit:** all five on template `main`, the fork's template-sync PR merged, one ordinary cascade observed green.
 
@@ -109,7 +109,7 @@ Fixtures live at `.github/local-actions/upstream-filter-tests/`, a path already 
 
 ### Phase 2: Downstream workflows, still inert
 
-The cascade gains the stamp step, an index-based assertion that fork-owned paths survived the merge, `-P` supplied through a validated `MAVEN_PROFILE` environment key, and a second invocation for the `testing/` reactor. `validate.yml` selects the profile by target branch and guards the Docker jobs against a JAR that will not exist on a filtered branch.
+The cascade gains the stamp step, an index-based assertion that fork-owned paths survived the merge, `-P` supplied through a validated `MAVEN_PROFILE` environment key, and a second invocation for the `testing/` reactor. `validate.yml` selects the profile by target branch and guards the Docker jobs against a JAR that will not exist on a filtered branch. Its `pull_request_target` actor gate also widens to admit the sync app's bot account and drops the dead `app/github-actions` arm, which is what makes sync-PR validation run at all. That stays inside the ADR-036 trust boundary: the restore-trusted-actions steps already exist to run trusted code against sync content, and `docker-push` remains excluded from `pull_request_target`.
 
 Everything here runs against today's unfiltered tree. The stamp is a no-op while all versions agree, so a green run is not stamp validation and should not be recorded as such. The `-P` addition is the real change and it is the point: Azure compiles during a cascade for the first time.
 
@@ -119,7 +119,7 @@ Everything here runs against today's unfiltered tree. The stamp is a no-op while
 
 Plant `.github/upstream-filter.yml` on the fork's `main` by ordinary PR and set the service slug variable. Then merge the template-sync PR carrying the new `sync.yml`. Then disable the scheduled sync.
 
-**Exit:** one manually dispatched sync run inspected without merging its PR, producing exactly 88 files, no `provider/`, no `devops/`, both injected Azure blocks present, and `Upstream-Sha` plus `Filter-Rev` trailers on the generated commit.
+**Exit:** one manually dispatched sync run inspected without merging its PR. The generated manifest matches the filter's own report for that day's upstream tip (88 files against the tip the prototype measured; upstream will have advanced), with no `provider/` or `devops/` paths, both injected Azure blocks present, and `Upstream-Sha` plus `Filter-Rev` trailers on the generated commit.
 
 ### Phase 4: Cutover
 
@@ -152,4 +152,4 @@ Four corrections, to be made in one pass across the ADR and its catalog entry, w
 1. The cascade stamp is defined by its post-condition, that no pre-bump version survives in the fork-owned poms, not by a count of `<parent><version>` sites.
 2. The file counts become 421 to 88 against the current upstream tip.
 3. The claim that Azure compilation is validated during the cascade becomes a statement of what Phase 2 makes true, since it is false today in both halves.
-4. The `.fossa.yml` handling names `analyze.modules` as the key, and states whether the Azure target is injected or deliberately dropped.
+4. The `.fossa.yml` handling names `analyze.modules` as the key, and records that the Azure module entry is deliberately dropped rather than injected: the fork strips `.gitlab-ci.yml` and runs no FOSSA analysis of its own, so an injected entry would be a second fork-maintained block that nothing consumes.

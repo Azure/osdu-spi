@@ -227,7 +227,7 @@ These Architecture Decision Records document the key design choices made in the 
 - `JAR_FILE` defaults to `provider/<SERVICE_NAME>-azure/target/*-spring-boot.jar` (override via the `SERVICE_TARGET_JAR` repository variable); `BASE_IMAGE` is an `ARG` defaulting to OSDU `alpine-zulu17` so a later registry pivot is a one-line swap
 
 **Upstream Filter Transform and One-Time Azure Seeding (ADR-038)**
-- `sync.yml` generates rather than merges: the filter runs over a clean checkout of the verbatim upstream tip and the result lands as a merge-shaped commit, so modify/delete conflicts are structurally impossible (`-X theirs` does not resolve them)
-- Allow-list with halt-on-unknown (exit 2) strips non-Azure providers, `<svc>-core-plus`, all of `devops/`, non-Azure `testing/` modules, and `.gitlab-ci.yml` (279 of 435 files on the partition reference fork)
-- `provider/<svc>-azure` and `testing/<svc>-test-azure` are seeded once and become fork-owned (upstream is deleting them). The root pom `azure` profile and `testing/pom.xml` module line are filter-injected each sync, while both Azure `<parent><version>` values are stamped by the cascade on `fork_integration`, where the fork-owned poms actually exist
+- `sync.yml` generates rather than merges: the filter runs over a scratch extraction of the verbatim upstream tip while the workflow checkout never leaves `main`, and the result lands as a merge-shaped commit via git plumbing, so modify/delete conflicts are structurally impossible (`-X theirs` does not resolve them)
+- Allow-list with halt-on-unknown (exit 2) strips non-Azure providers, `<svc>-core-plus`, all of `devops/`, non-Azure `testing/` modules, and `.gitlab-ci.yml` (274 of 421 files discarded on the partition reference fork; 88 remain on `fork_upstream`)
+- `provider/<svc>-azure` and `testing/<svc>-test-azure` are seeded once and become fork-owned (upstream is deleting them). The root pom `azure` profile and `testing/pom.xml` module line are filter-injected each sync, while the cascade stamps the fork-owned poms on `fork_integration` under a post-condition: no pre-bump upstream version string survives
 

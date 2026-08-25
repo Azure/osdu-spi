@@ -2,7 +2,7 @@
 
 ## Context
 
-Upstream OSDU service repositories carry shared service code alongside implementations for several cloud providers. Our Azure forks need the shared code and the Azure implementation. They do not need the AWS, Google Cloud, or IBM providers, the community `<svc>-core-plus` module, upstream's `devops/` pipelines, or the other providers' test suites. On the `osdu-spi-partition` reference fork that surplus is 279 of 435 files (64%), code the Azure SPI never builds or ships but today still scans, patches, and reviews. Dependabot opens CVE PRs against it, CodeQL and Trivy scan it, and every cascade PR asks reviewers to read diffs for providers we do not own. `-P core,azure` (ADR-035) stops *building* it, but it stays in the tree.
+Upstream OSDU service repositories carry shared service code alongside implementations for several cloud providers. Our Azure forks need the shared code and the Azure implementation. They do not need the AWS, Google Cloud, or IBM providers, the community `<svc>-core-plus` module, upstream's `devops/` pipelines, or the other providers' test suites. On the `osdu-spi-partition` reference fork that surplus is 274 of 421 files (65%), measured by a working prototype of the filter against the current upstream tip, code the Azure SPI never builds or ships but today still scans, patches, and reviews. Dependabot opens CVE PRs against it, CodeQL and Trivy scan it, and every cascade PR asks reviewers to read diffs for providers we do not own. `-P core,azure` (ADR-035) stops *building* it, but it stays in the tree.
 
 Upstream also plans to remove its Azure implementations. `provider/<svc>-azure` and `testing/<svc>-test-azure` will be deleted, and the Azure code becomes ours to own. A fork that keeps mirroring upstream unchanged would faithfully propagate that deletion into our repositories.
 
@@ -48,23 +48,23 @@ Fork ownership needs no new machinery. It is how `.github/` and `build/` already
 
 ### Generate `fork_upstream` instead of merging into it
 
-A permanently reduced tree cannot be maintained by repeatedly merging the complete upstream tree into it (see Context). Each sync instead builds the desired tree directly. The same generated-branch pattern is already proven in production on core-only forks of these same upstream services, and this ADR adapts it to preserve fork-owned Azure implementations. The sync checks out the verbatim upstream tip, runs the filter over it, and commits the result to `fork_upstream`:
+A permanently reduced tree cannot be maintained by repeatedly merging the complete upstream tree into it (see Context). Each sync instead builds the desired tree directly. The same generated-branch pattern is already proven in production on core-only forks of these same upstream services, and this ADR adapts it to preserve fork-owned Azure implementations. The sync extracts the verbatim upstream tip to a scratch directory, runs the filter over it, and serializes the result through a scratch index into a commit on `fork_upstream`. The workflow's own checkout never leaves `main`, where the engine and the per-service config live, and the branch is written by ref update:
 
 ```
 git archive upstream/$DEFAULT_BRANCH | tar -x -C $GEN
 upstream-filter --config .github/upstream-filter.yml --checkout $GEN   # exit 2 = halt
-rsync -a --delete --exclude .git $GEN/ $WORKTREE/
-git add -A && TREE=$(git write-tree)
+GIT_INDEX_FILE=$SCRATCH git -C $GEN --git-dir=$REPO/.git add -A
+TREE=$(GIT_INDEX_FILE=$SCRATCH git write-tree)
 git commit-tree $TREE -p fork_upstream -p $UPSTREAM_SHA
 ```
 
-Nothing is textually merged, so modify/delete conflicts cannot occur. The `git add -A` stages rsync's edits and deletions into the index that `write-tree` serializes. That is safe here precisely because no merge is in progress. The hazard described in Context is staging during a conflicted merge.
+Nothing is textually merged, so modify/delete conflicts cannot occur. The scratch index starts empty and never contains the previous branch state, so the tree that `write-tree` serializes is exactly the filtered directory, deletions included. No merge is ever in progress, which is what makes staging everything safe; the hazard described in Context is `git add -A` during a conflicted merge.
 
 The commit is merge-shaped, with the previous `fork_upstream` tip as its first parent and the upstream tip as its second. That is an implementation detail, but it is what preserves upstream history. `git log`, `git blame`, contributor attribution, the changelog, and the AIPR meta commit (ADR-023) all work unchanged. Every generated commit records `Upstream-Sha` and `Filter-Rev` trailers, where `Filter-Rev` identifies both the filter engine version and the effective per-service configuration, so any generated tree can be reproduced exactly from its inputs.
 
 ### The filter halts rather than guesses
 
-The filter classifies in two modes. Two directory categories are handled wholesale. The entire `provider/` tree is excluded from `fork_upstream`. The configured Azure provider is fork-owned and seeded separately, and every other provider is discarded automatically, never silently kept. All of `devops/` is likewise excluded. Everything else is classified entry by entry from `.github/upstream-filter.yml`: the top level, each `testing/` module, each root pom `<profile>`, and each `.fossa.yml` target. Anything the config does not name makes the filter **exit 2**, failing the sync and opening a `sync-failed,human-required` issue, so a genuinely new shared module is never silently deleted.
+The filter classifies in two modes. Two directory categories are handled wholesale. The entire `provider/` tree is excluded from `fork_upstream`. The configured Azure provider is fork-owned and seeded separately, and every other provider is discarded automatically, never silently kept. All of `devops/` is likewise excluded. Everything else is classified entry by entry from `.github/upstream-filter.yml`: the top level, each `testing/` module, each root pom `<profile>`, and each module under `.fossa.yml`'s `analyze.modules` key. The Azure module entry there is deliberately dropped rather than injected: the fork strips `.gitlab-ci.yml` and runs no FOSSA analysis of its own, so an injected entry would be a second fork-maintained block that nothing consumes. Anything the config does not name makes the filter **exit 2**, failing the sync and opening a `sync-failed,human-required` issue, so a genuinely new shared module is never silently deleted.
 
 Verification is three-way: **negative** (no stripped provider, profile, or FOSSA module survives), **positive** (`expected_kept` paths still exist, so an upstream rename fails loud instead of passing as an empty diff), and a non-mutating re-run of the classification as a new-module alarm.
 
@@ -80,15 +80,15 @@ Removing directories and splitting ownership leave dangling references in the po
 
 **During cascade**, in the fork-owned poms on `fork_integration`:
 
-- Both Azure modules inherit an upstream-versioned `<parent>` such as `0.30.0-SNAPSHOT`, and the sync cannot rewrite those values because the poms exist on neither `fork_upstream` nor the generated tree. `fork_integration` is the first branch where an upstream version bump and the fork-owned poms coexist. After `cascade.yml` merges `fork_upstream` there, it invokes the engine's stamp mode to rewrite both `<parent><version>` values to match the merged parent poms, commits the result, and fails the cascade if they still disagree. The bump then rides the normal release PR from `fork_integration` to `main`.
+- The fork-owned poms carry upstream-derived versions in several places fed by independent sources: each module's `<parent><version>`, and pins such as the Azure test module's dependency on `testing/<svc>-test-core`'s own version. The sync cannot rewrite any of them because the poms exist on neither `fork_upstream` nor the generated tree, and `fork_integration` is the first branch where an upstream version bump and the fork-owned poms coexist. After `cascade.yml` merges `fork_upstream` there, it invokes the engine's stamp mode, which is defined by a post-condition rather than a site list: after stamping, no pre-bump upstream version string survives anywhere in the fork-owned poms, and the cascade fails if one does. A site list would not generalize across services, and a partial stamp is worse than a failed build, since Maven accepts a child whose version differs from its parent and would ship an Azure JAR carrying the old coordinates inside a bumped reactor. The bump then rides the normal release PR from `fork_integration` to `main`.
 
 ### Validation builds core-only on `fork_upstream`
 
-`validate.yml` runs `java-build` on sync PRs and pushes to `fork_upstream` with `-P core,azure` (ADR-035). Against the generated tree that would hard-fail. The injected azure profile points at directories the tree deliberately omits, and Maven aborts the reactor when an explicitly activated profile's `<module>` has no pom. Validation targeting `fork_upstream` therefore drops `azure` and builds `core` only, validating the branch as what it is, a provider-less tree. Azure compilation is validated where the trees exist, on `fork_integration` during the cascade and on `main`.
+`validate.yml` runs `java-build` on sync PRs and pushes to `fork_upstream` with `-P core,azure` (ADR-035). Against the generated tree that would hard-fail. The injected azure profile points at directories the tree deliberately omits, and Maven aborts the reactor when an explicitly activated profile's `<module>` has no pom. Validation targeting `fork_upstream` therefore drops `azure` and builds `core` only, validating the branch as what it is, a provider-less tree. Azure compilation is validated where the trees exist: the cascade compiles `fork_integration` with the Azure profiles, a check this program introduces since no workflow compiled the Azure modules after a sync before it, and `main` builds them on every PR.
 
 ### Where the machinery lives
 
-- **Engine**: `.github/actions/upstream-filter/`, owned by the engineering system and synced to every fork like `docker-build` (ADR-013, ADR-028, ADR-037). Invoked by `sync.yml` to generate the tree and by `cascade.yml` to stamp the Azure parent versions.
+- **Engine**: `.github/actions/upstream-filter/`, owned by the engineering system and synced to every fork like `docker-build` (ADR-013, ADR-028, ADR-037). Invoked by `sync.yml` to generate the tree, by `cascade.yml` to stamp the fork-owned pom versions, and by initialization to seed the Azure trees. The git plumbing lives beside the engine as scripts in the action directory, so the surface is locally testable and no caller ever checks out a branch lacking `.github/`.
 - **Per-service config**: `.github/upstream-filter.yml`, seeded at init from `.github/fork-resources/` with `<service>` substitution (ADR-018), then fork-owned. Classifying a new upstream module is an ordinary PR in the repository whose team knows the answer.
 - **Halt path**: the existing `Handle Failure` step and its `sync-failed,human-required` issue (ADR-020, ADR-022). A halt just supplies a more specific body.
 - **Proof**: fixture tests drive every halt path, plus idempotence and determinism gates, in `dev-ci.yml` ahead of the sync stage.
@@ -115,14 +115,14 @@ Re-enabling `cascade-monitor` lets `cascade.yml`'s already-merged check pick up 
 ### Positive
 
 - Modify/delete conflicts become structurally impossible. Removed paths are absent from the generated tree, every branch, and every merge base alike, so cascade merges have nothing to conflict over. The fork-owned Azure paths exist only on our side of any merge, so merges leave them untouched. Azure-local changes on `main` merge exactly as today.
-- The sync surface on the partition reference fork drops from 435 files to 97 (22%). The filter removes 279 files, and the 59 files of the Azure trees leave the sync surface by becoming fork-owned. Reviewers read Azure-relevant diffs, and Dependabot, CodeQL, and Trivy stop covering code we never ship.
+- The sync surface on the partition reference fork drops from 421 files to 88 (21%). The filter discards 274 files, and the 59 files of the Azure trees leave the sync surface by becoming fork-owned. Reviewers read Azure-relevant diffs, and Dependabot, CodeQL, and Trivy stop covering code we never ship.
 - Upstream's removal of the Azure provider requires no action and produces no incident.
 - A new provider under `provider/` is stripped automatically, anything outside the recognized categories halts for review, and a rename of a kept module fails loud via `expected_kept`.
 
 ### Negative
 
 - The Azure trees stop receiving upstream changes at seeding. That is the explicit intent, since upstream is deleting them, but any late upstream fix to them must be ported by hand.
-- The cascade writes two `<parent><version>` lines inside fork-owned files, the automation's only write to fork-owned content. The rule becomes that automation owns the Azure modules' parent-version wiring, never their content. (The alternative of halting on mismatch would block every fork's cascade at each upstream version bump.)
+- The cascade rewrites upstream-derived version strings inside fork-owned poms, the automation's only write to fork-owned content. The rule becomes that automation owns the Azure modules' version wiring, never their content. (The alternative of halting on mismatch would block every fork's cascade at each upstream version bump.)
 - Sync-PR validation compiles `core` only, so an upstream change that breaks the Azure modules is first caught during the cascade on `fork_integration`, not on the sync PR.
 - Each fork carries a classification file, and an unclassified upstream module blocks that fork's sync until someone classifies it. This is deliberate, but it is real recurring work.
 - A filter program replaces a one-line `git merge`. A bug in it produces a wrong tree rather than a failed merge, which is why the idempotence, determinism, and halt-path gates run before the sync stage.
@@ -141,7 +141,7 @@ Re-enabling `cascade-monitor` lets `cascade.yml`'s already-merged check pick up 
 - **Strip `testing/` wholesale.** Rejected. SPI needs `testing/<svc>-test-azure` as its Azure integration suite, and per-entry classification keeps the new-module alarm.
 - **Keep `devops/azure`.** Rejected. `osdu-spi-stack` ships its own charts, and ADR-037 already owns the Dockerfile.
 - **Keep `<svc>-core-plus`.** Rejected. Across all eight services its only consumers are modules that are themselves removed.
-- **Stamp parent versions by emitting the Azure poms into the generated tree.** Rejected. It would put those poms back on the `fork_upstream` lineage, reopening the modify/delete class this design exists to close, make `main` a third input to the generated tree, and revert fork edits to those poms on every sync. The cascade stamp writes the two lines where the files actually live.
+- **Stamp parent versions by emitting the Azure poms into the generated tree.** Rejected. It would put those poms back on the `fork_upstream` lineage, reopening the modify/delete class this design exists to close, make `main` a third input to the generated tree, and revert fork edits to those poms on every sync. The cascade stamp writes the version wiring where the files actually live.
 - **Decouple the Azure modules entirely** (standalone poms, depending on `<svc>-core` as a resolved artifact). Deferred, not rejected. It would end the version coupling and the parent stamp permanently, but costs a per-service pom rewrite and loses inherited `dependencyManagement`. Revisit once upstream's deletion has landed.
 
 ---
