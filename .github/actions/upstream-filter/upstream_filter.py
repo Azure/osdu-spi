@@ -125,7 +125,10 @@ def parse_config(text):
                         raise Halt("CONFIG_INVALID", f"line {i + 1}: duplicate entry '{name}'")
                     entries_map[name] = _unquote(mm.group(2).strip())
                 i += 1
-            data[key] = entries_list if kind == "list" else entries_map
+            if kind is None:
+                data[key] = [] if REQUIRED_KEYS.get(key) is list else {}
+            else:
+                data[key] = entries_list if kind == "list" else entries_map
         else:
             data[key] = _unquote(rest)
     return data

@@ -238,7 +238,9 @@ The file is parsed by a small fixed-schema reader, not a general YAML parser.
 The accepted subset: top-level `key: value`, `key:` introducing a two-space
 indented block of `name: verdict` pairs or `- item` list entries, and `key: |`
 literal blocks whose lines are de-indented by exactly two spaces. Comments start
-with `#`. Nothing deeper nests.
+with `#`. Nothing deeper nests. An empty indented block (`key:` followed by
+nothing) is valid: it yields an empty list for list-typed keys such as
+`expected_kept` and `expected_absent`, and an empty map for the others.
 
 ## Testing
 

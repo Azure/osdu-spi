@@ -184,6 +184,22 @@ replace_in_file "$CONFIG_NO_INJECT" "azure: inject" "azure: strip"
 expect_halt "non-empty inject block without an inject verdict halts" CONFIG_INVALID "$TMP/h0b.json" \
   engine --mode generate --config "$CONFIG_NO_INJECT" --checkout "$H0B" --report "$TMP/h0b.json"
 
+note "generate: empty expected_absent block parses as an empty list, not a map"
+H0C="$TMP/h0c"
+fresh_copy "$H0C"
+CONFIG_EMPTY_ABSENT="$TMP/demo-empty-expected-absent.yml"
+cp "$CONFIG" "$CONFIG_EMPTY_ABSENT"
+replace_in_file "$CONFIG_EMPTY_ABSENT" "expected_absent:
+  - provider
+  - devops
+  - demo-core-plus
+  - .gitlab-ci.yml
+  - testing/demo-test-azure
+  - testing/demo-test-aws" "expected_absent:"
+engine --mode generate --config "$CONFIG_EMPTY_ABSENT" --checkout "$H0C" --report "$TMP/h0c.json" > /dev/null
+[ "$(report_field "$TMP/h0c.json" "r['ok']")" = "True" ] || die "empty expected_absent block did not parse as an empty list"
+ok "empty expected_absent block parses as [] and the run completes"
+
 note "halt: unknown top-level entry"
 H1="$TMP/h1"
 fresh_copy "$H1"
