@@ -82,7 +82,15 @@ jobs:
               INTEGRATION_PRS=$(gh pr list --base main --head fork_integration --json number 2>/dev/null || echo "[]")
               INTEGRATION_PR_COUNT=$(echo "$INTEGRATION_PRS" | jq length)
 
-              if [ "$INTEGRATION_PR_COUNT" -eq 0 ]; then
+              # Guard: never reset away real work. git cherry marks '+' for any
+              # non-merge commit on fork_integration with no patch-equivalent on
+              # main (e.g. a manual restore commit); stale divergence has none.
+              UNMATCHED_COMMITS=$(git cherry origin/main origin/fork_integration | grep -c '^+' || true)
+              if [ "$UNMATCHED_COMMITS" -gt 0 ]; then
+                echo "::notice::fork_integration carries $UNMATCHED_COMMITS commits with no equivalent on main - not a stale divergence, skipping auto-reset"
+              fi
+
+              if [ "$INTEGRATION_PR_COUNT" -eq 0 ] && [ "$UNMATCHED_COMMITS" -eq 0 ]; then
                 echo "::notice::No active integration PRs found - this is a stale divergence. Auto-resetting fork_integration to main."
                 git checkout -b fork_integration --track origin/fork_integration 2>/dev/null || git checkout fork_integration
                 OLD_SHA=$(git rev-parse HEAD)
@@ -254,8 +262,10 @@ jobs:
           if git merge origin/fork_upstream --no-edit; then
             echo "✅ Clean merge of upstream changes achieved"
           else
-            # Check if there are unresolved conflicts
-            if git status --porcelain | grep -q "^UU\|^AA\|^DD"; then
+            # Check if there are unresolved conflicts.
+            # ls-files -u lists every unmerged path, including the modify/delete
+            # (UD/DU) states that a UU/AA/DD status grep misses.
+            if [ -n "$(git ls-files -u)" ]; then
               echo "::warning::Merge conflicts detected"
               CONFLICTS_FOUND=true
               
