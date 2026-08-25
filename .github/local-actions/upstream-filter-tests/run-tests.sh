@@ -196,6 +196,25 @@ replace_in_file "$CONFIG_NO_INJECT" "azure: inject" "azure: strip"
 expect_halt "non-empty inject block without an inject verdict halts" CONFIG_INVALID "$TMP/h0b.json" \
   engine --mode generate --config "$CONFIG_NO_INJECT" --checkout "$H0B" --report "$TMP/h0b.json"
 
+note "halt: fork testing verdict without a module injection"
+H18="$TMP/h18"
+fresh_copy "$H18"
+CONFIG_NO_TESTINJ="$TMP/demo-no-test-inject.yml"
+cp "$CONFIG" "$CONFIG_NO_TESTINJ"
+replace_in_file "$CONFIG_NO_TESTINJ" "inject_testing_pom_azure_module: |
+          <module>demo-test-azure</module>" "inject_testing_pom_azure_module: |"
+expect_halt "fork verdict with empty testing injection halts" CONFIG_INVALID "$TMP/h18.json" \
+  engine --mode generate --config "$CONFIG_NO_TESTINJ" --checkout "$H18" --report "$TMP/h18.json"
+
+note "halt: testing module injection without a fork verdict"
+H19="$TMP/h19"
+fresh_copy "$H19"
+CONFIG_NO_FORK="$TMP/demo-no-fork.yml"
+cp "$CONFIG" "$CONFIG_NO_FORK"
+replace_in_file "$CONFIG_NO_FORK" "demo-test-azure: fork" "demo-test-azure: strip"
+expect_halt "testing injection without a fork verdict halts" CONFIG_INVALID "$TMP/h19.json" \
+  engine --mode generate --config "$CONFIG_NO_FORK" --checkout "$H19" --report "$TMP/h19.json"
+
 note "generate: empty expected_absent block parses as an empty list, not a map"
 H0C="$TMP/h0c"
 fresh_copy "$H0C"
@@ -302,6 +321,29 @@ cp -R "$GEN1" "$H6"
 mkdir -p "$H6/provider/demo-aws"
 expect_halt "reintroduced provider tree halts verify" STRIPPED_PATH_SURVIVES "$TMP/h6.json" \
   engine --mode verify --config "$CONFIG" --checkout "$H6" --report "$TMP/h6.json"
+
+note "halt: verify catches a missing injected profile"
+H20="$TMP/h20"
+rm -rf "$H20"
+cp -R "$GEN1" "$H20"
+python3 -c "
+import re, sys
+path = sys.argv[1]
+text = open(path).read()
+new = re.sub(r'<profile>\s*<id>azure</id>.*?</profile>\s*', '', text, flags=re.S)
+assert new != text, 'azure profile not found in generated pom'
+open(path, 'w').write(new)
+" "$H20/pom.xml"
+expect_halt "missing injected profile halts verify" INJECT_MISSING "$TMP/h20.json" \
+  engine --mode verify --config "$CONFIG" --checkout "$H20" --report "$TMP/h20.json"
+
+note "halt: verify catches a missing injected testing module"
+H21="$TMP/h21"
+rm -rf "$H21"
+cp -R "$GEN1" "$H21"
+replace_in_file "$H21/testing/pom.xml" "<module>demo-test-azure</module>" ""
+expect_halt "missing injected testing module halts verify" INJECT_MISSING "$TMP/h21.json" \
+  engine --mode verify --config "$CONFIG" --checkout "$H21" --report "$TMP/h21.json"
 
 note "seed: copies the fork-owned trees from a source checkout"
 SEEDED="$TMP/seeded"

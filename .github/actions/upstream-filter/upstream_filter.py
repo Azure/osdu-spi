@@ -166,6 +166,11 @@ def load_config(path):
         raise Halt("CONFIG_INVALID", "profiles declare an inject verdict but inject_root_pom_azure_profile is empty")
     if cfg["inject_root_pom_azure_profile"].strip() and not injects:
         raise Halt("CONFIG_INVALID", "inject_root_pom_azure_profile is set but no profile declares an inject verdict")
+    forks = [name for name, verdict in cfg["testing"].items() if verdict == "fork"]
+    if forks and not cfg["inject_testing_pom_azure_module"].strip():
+        raise Halt("CONFIG_INVALID", "testing declares a fork verdict but inject_testing_pom_azure_module is empty")
+    if cfg["inject_testing_pom_azure_module"].strip() and not forks:
+        raise Halt("CONFIG_INVALID", "inject_testing_pom_azure_module is set but no testing entry declares a fork verdict")
     cfg["_sha256"] = hashlib.sha256(raw).hexdigest()
     return cfg
 
@@ -480,6 +485,11 @@ def verify(checkout, cfg):
             problems.append(Halt("UNKNOWN_PROFILE", f"unclassified root pom profile: {pid}"))
         for pid, verdict, _span in blocks:
             check(verdict != "strip", "STRIPPED_PATH_SURVIVES", f"stripped profile survives: {pid}")
+        for name, verdict in cfg["profiles"].items():
+            if verdict == "inject":
+                count = sum(1 for pid, _v, _s in blocks if pid == name)
+                check(count == 1, "INJECT_MISSING",
+                      f"injected profile '{name}' appears {count} times in pom.xml, expected exactly once")
         for target in iter_live_modules(text):
             check(target in root_exempt or os.path.exists(os.path.join(checkout, target)),
                   "MODULE_UNRESOLVED", f"pom.xml module does not resolve: {target}")
@@ -487,9 +497,13 @@ def verify(checkout, cfg):
     testing_pom = os.path.join(testing_dir, "pom.xml")
     testing_exempt = module_paths_in(cfg["inject_testing_pom_azure_module"])
     if os.path.isfile(testing_pom):
-        for target in iter_live_modules(read_text(testing_pom)):
+        live = list(iter_live_modules(read_text(testing_pom)))
+        for target in live:
             check(target in testing_exempt or os.path.exists(os.path.join(testing_dir, target)),
                   "MODULE_UNRESOLVED", f"testing/pom.xml module does not resolve: {target}")
+        for target in sorted(testing_exempt):
+            check(target in live, "INJECT_MISSING",
+                  f"injected testing module missing from testing/pom.xml: {target}")
 
     fossa = os.path.join(checkout, ".fossa.yml")
     if os.path.isfile(fossa):

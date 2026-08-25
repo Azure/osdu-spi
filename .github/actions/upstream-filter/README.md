@@ -90,6 +90,10 @@ generated tree (a `fork_upstream` candidate); the fork-owned trees present on
   unknowns, the new-module alarm.
 - **Module resolution**: every surviving `<module>` resolves to an existing
   path, with the injected entries as the one deliberate exemption.
+- **Injection presence**: the inject-verdict profile appears exactly once as
+  live XML in the root pom, and every injected testing module is a live
+  `<module>` entry in `testing/pom.xml`. A tree that lost its injections
+  cannot verify.
 
 ### `stamp`
 
@@ -133,6 +137,7 @@ them) into the checkout. Halts if a source tree is missing or lacks a
 | `EXPECTED_ABSENT_PRESENT` | An `expected_absent` path is present in the generated tree. |
 | `MODULE_UNRESOLVED` | A surviving, non-injected `<module>` points at a missing path. |
 | `INJECT_TARGET_MISSING` | A pom lacks the `</profiles>` or `</modules>` anchor an injection needs. |
+| `INJECT_MISSING` | A configured injection is absent: the inject profile is not present exactly once in the root pom, or an injected testing module is missing from `testing/pom.xml`. |
 | `STAMP_REF_MISSING` | A reference pom (root, testing, test-core) is missing or carries no version. |
 | `STAMP_NO_FORK_POMS` | Stamp mode found no fork-owned poms to stamp. |
 | `STAMP_AMBIGUOUS` | One pre-bump version string maps to two different reference values. |
