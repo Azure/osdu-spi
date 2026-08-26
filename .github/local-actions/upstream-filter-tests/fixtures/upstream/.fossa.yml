@@ -1,0 +1,20 @@
+version: 1
+
+analyze:
+  modules:
+    - name: demo-core
+      type: mvn
+      target: demo-core/pom.xml
+      path: .
+    - name: demo-core-plus
+      type: mvn
+      target: demo-core-plus/pom.xml
+      path: .
+    - name: demo-azure
+      type: mvn
+      target: provider/demo-azure/pom.xml
+      path: .
+    - name: demo-aws
+      type: mvn
+      target: provider/demo-aws/pom.xml
+      path: .

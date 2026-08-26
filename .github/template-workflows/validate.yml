@@ -64,12 +64,15 @@ jobs:
   check-initialization:
     name: "🔍 Check Initialization Status"
     # Skip automatic runs during initialization - only run on manual trigger or PR
+    # pull_request_target: same-repo check below excludes forks, so sync/ prefix only admits
+    # writer-pushed branches; kept over an actor check since human conflict-resolution pushes change the actor.
     if: |
-      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'workflow_dispatch' ||
       github.event_name == 'pull_request' ||
       (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
-       (github.actor == 'app/github-actions' || github.actor == 'github-actions[bot]' || github.actor == 'dependabot[bot]')) ||
+       (github.actor == 'github-actions[bot]' || github.actor == 'dependabot[bot]' ||
+        startsWith(github.event.pull_request.head.ref, 'sync/'))) ||
       (github.event_name == 'push' && 
        !contains(github.event.head_commit.message, 'chore: complete repository initialization') &&
        !contains(github.event.head_commit.message, 'chore: clean up template files after initialization'))
@@ -270,8 +273,13 @@ jobs:
           
       - name: Setup Maven Settings
         run: |
-          mkdir -p ~/.m2
-          cp .mvn/community-maven.settings.xml ~/.m2/settings.xml
+          if [ -f ".mvn/community-maven.settings.xml" ]; then
+            mkdir -p ~/.m2
+            cp .mvn/community-maven.settings.xml ~/.m2/settings.xml
+            echo "📝 Maven settings configured from .mvn/community-maven.settings.xml"
+          else
+            echo "📝 No custom Maven settings found, using defaults"
+          fi
         
       - name: "Run Java Build"
         id: build
@@ -282,16 +290,23 @@ jobs:
         with:
           generate_coverage: ${{ github.event_name == 'pull_request' }}
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
-          # Default core,azure (ADR-035); core is activeByDefault, so a bare profile would drop it.
-          # MAVEN_PROFILE overrides for services that deviate (e.g. indexer-queue).
-          maven_profile: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
+          # core is activeByDefault, so a bare profile flag would drop it; MAVEN_PROFILE
+          # overrides for services that deviate (e.g. indexer-queue). fork_upstream builds
+          # core only: it is a provider-less tree whose azure profile points at fork-owned
+          # directories that exist only after the cascade merge.
+          maven_profile: ${{ (github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
 
   docker-build:
     # Validate-only worker. NOT the required check — the required "🐳 Docker Build" context is the
     # summary job below (docker-build-required), which reports once even when this job is skipped.
+    # Skipped for fork_upstream targets: that branch builds core only, so the Azure JAR the
+    # Dockerfile packages does not exist there.
     name: "🐳 Docker Build (validate)"
     needs: [check-initialization, check-repo-state, java-build]
-    if: needs.java-build.outputs.build_result == 'success'
+    if: |
+      needs.java-build.outputs.build_result == 'success' &&
+      github.base_ref != 'fork_upstream' &&
+      github.ref_name != 'fork_upstream'
     runs-on: ubuntu-latest
     permissions:
       contents: read          # no packages: write — runs untrusted Dockerfile content
@@ -300,27 +315,6 @@ jobs:
         with:
           # For pull_request_target, check out the PR head to validate the actual Dockerfile
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-
-      - name: "Restore local actions for sync PRs"
-        if: |
-          github.event_name == 'pull_request_target' &&
-          github.event.pull_request.base.ref == 'fork_upstream' &&
-          startsWith(github.event.pull_request.head.ref, 'sync/')
-        run: |
-          set -euo pipefail
-          # Sync branches carry only upstream content: no local actions and no canonical
-          # build/Dockerfile (ADR-037). Restore both from main so docker validation can run.
-          # This also provides security hardening - we always use trusted actions for validation.
-          echo "🔧 Restoring local actions and Dockerfile from main branch for sync PR validation..."
-          if ! git fetch origin main --depth=1; then
-            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
-            exit 1
-          fi
-          if ! git checkout origin/main -- .github/actions/ build/; then
-            echo "❌ Failed to restore .github/actions/ and build/ from origin/main. Cannot proceed with validation."
-            exit 1
-          fi
-          echo "✅ Local actions and Dockerfile restored - validation can proceed"
 
       - name: "Docker Build (validate-only)"
         uses: ./.github/actions/docker-build
@@ -343,6 +337,7 @@ jobs:
         github.actor != 'dependabot[bot]' &&
         github.event_name != 'pull_request_target' &&
         github.event_name != 'workflow_dispatch' &&
+        github.ref_name != 'fork_upstream' &&
         (github.event_name != 'pull_request' ||
          github.event.pull_request.head.repo.full_name == github.repository)
       ) || (
@@ -360,27 +355,6 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-
-      - name: "Restore local actions for sync PRs"
-        if: |
-          github.event_name == 'pull_request_target' &&
-          github.event.pull_request.base.ref == 'fork_upstream' &&
-          startsWith(github.event.pull_request.head.ref, 'sync/')
-        run: |
-          set -euo pipefail
-          # Sync branches contain only upstream content and don't have local actions.
-          # Restore .github/actions/ from main branch to enable validation.
-          # This also provides security hardening - we always use trusted actions for validation.
-          echo "🔧 Restoring local actions from main branch for sync PR validation..."
-          if ! git fetch origin main --depth=1; then
-            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
-            exit 1
-          fi
-          if ! git checkout origin/main -- .github/actions/; then
-            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
-            exit 1
-          fi
-          echo "✅ Local actions restored - validation can proceed"
 
       - name: "Docker Build and Push"
         id: push

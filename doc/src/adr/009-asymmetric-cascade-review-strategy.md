@@ -181,7 +181,7 @@ The original decision says "All production PRs require manual approval before me
 - [ADR-005: Automated Conflict Management Strategy](005-conflict-management.md)
 - [ADR-019: Cascade Monitor Pattern](019-cascade-monitor-pattern.md) - Human-centric cascade triggering
 - [ADR-022: Issue Lifecycle Tracking Pattern](022-issue-lifecycle-tracking-pattern.md) - Integration with issue tracking
-- [Cascade Workflow Specification](../cascade-workflow.md)
+- [Cascade Workflow](../workflows/cascade.md)
 ---
 
 [← ADR-008](008-centralized-label-management.md) | :material-arrow-up: [Catalog](index.md) | [ADR-010 →](010-yaml-safe-shell-scripting.md)

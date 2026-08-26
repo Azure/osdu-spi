@@ -71,8 +71,13 @@ jobs:
           
       - name: Setup Maven Settings
         run: |
-          mkdir -p ~/.m2
-          cp .mvn/community-maven.settings.xml ~/.m2/settings.xml
+          if [ -f ".mvn/community-maven.settings.xml" ]; then
+            mkdir -p ~/.m2
+            cp .mvn/community-maven.settings.xml ~/.m2/settings.xml
+            echo "📝 Maven settings configured from .mvn/community-maven.settings.xml"
+          else
+            echo "📝 No custom Maven settings found, using defaults"
+          fi
         
       - name: "Run Java Build"
         id: build

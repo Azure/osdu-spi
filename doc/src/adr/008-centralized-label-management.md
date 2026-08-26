@@ -80,8 +80,8 @@ gh pr create --label "cascade-active,upstream-sync"
 ## Related
 - [ADR-002: GitHub Actions Workflow Automation](002-github-actions-automation.md)
 - [ADR-007: Initialization Workflow Bootstrap Process](007-initialization-workflow-bootstrap.md)
-- [Label Management Strategy](../label-strategy.md)
-- [Cascade Workflow Specification](../cascade-workflow.md)
+- Label Management Strategy: `doc/product/label-strategy.md` in the repository
+- [Cascade Workflow](../workflows/cascade.md)
 ---
 
 [← ADR-007](007-initialization-workflow-bootstrap.md) | :material-arrow-up: [Catalog](index.md) | [ADR-009 →](009-asymmetric-cascade-review-strategy.md)
