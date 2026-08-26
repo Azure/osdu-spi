@@ -137,7 +137,6 @@ jobs:
 ### Key Files
 - `doc/src/adr/` - Architecture decisions
 - `.github/workflows/` - All automation workflows
-- `doc/product-prd.md` - Product requirements
 
 ### Environment Variables
 - `UPSTREAM_OWNER` - Upstream repository owner

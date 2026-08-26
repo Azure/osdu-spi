@@ -114,7 +114,6 @@ We will implement an **MCP Configuration Template Pattern** that:
 - [GitHub Copilot MCP Documentation](https://docs.github.com/en/enterprise-cloud@latest/copilot/customizing-copilot/extending-copilot-coding-agent-with-mcp)
 - [Maven MCP Server Repository](https://pypi.org/project/mvn-mcp-server/)
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/)
-- Template MCP Integration Documentation: `doc/product/mcp-integration.md` in the repository
 ---
 
 [← ADR-016](016-initialization-security-handling.md) | :material-arrow-up: [Catalog](index.md) | [ADR-018 →](018-fork-resources-staging-pattern.md)
