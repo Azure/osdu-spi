@@ -1,11 +1,10 @@
 # Upstream Synchronization Workflow
 
-The upstream synchronization workflow is the cornerstone of the fork management system, automatically keeping your repository synchronized with changes from the upstream OSDU repository.
-This workflow runs daily to detect new commits, bug fixes, and features from upstream. It then intelligently integrates them into your fork using a safe three-branch strategy.
+The upstream synchronization workflow keeps the fork's shared service code synchronized with the upstream OSDU repository. It does not mirror the upstream tree: it deterministically generates the provider-less `fork_upstream` tree defined by the fork's filter configuration.
 
 The workflow includes sophisticated duplicate prevention that avoids creating multiple PRs for the same upstream state. When changes are detected, it either creates a new sync PR or updates an existing one, ensuring a clean workflow without PR proliferation. The system intelligently uses AI for change analysis on reasonably-sized diffs (under 20,000 lines) while falling back to standard templates for massive changes to avoid token limits.
 
-Both clean merges and conflicts are handled gracefully - clean changes get a straightforward PR ready for review, while conflicts are automatically packaged with detailed resolution guidance and marked for human attention.
+The transform avoids recurring modify/delete conflicts by excluding provider source before a sync branch is created. If upstream introduces unclassified shared content, the filter halts rather than guessing and opens a `sync-failed,human-required` issue.
 
 ## When It Runs
 
@@ -13,17 +12,18 @@ The synchronization workflow runs on multiple triggers to ensure your fork stays
 
 - **Daily at midnight UTC** - Scheduled automatic sync to catch upstream changes
 - **Manual trigger** - Run on-demand via the GitHub Actions tab when needed
-- **API trigger** - Programmatically triggered via GitHub REST API for integrations
 
 ## What Happens
 
 The workflow follows a systematic process to safely integrate upstream changes:
 
-1. **Checks for upstream changes** - Compares your fork with upstream repository to detect new commits
-2. **Creates sync branch** - If changes exist, creates a timestamped `sync/upstream-YYYYMMDD-HHMMSS` branch
-3. **Generates PR** - Creates pull request with AI-generated description analyzing the changes
-4. **Creates tracking issue** - Links to PR with `human-required` label for team visibility and coordination
-5. **Waits for human review** - Team reviews and merges PR to continue the cascade process
+1. **Fetches upstream** - Resolves the upstream `main` or `master` tip
+2. **Generates a filtered tree** - Keeps shared code, removes provider and `devops/` source, and injects references to fork-owned Azure modules
+3. **Verifies classification** - Halts on unknown shared modules or missing expected paths
+4. **Creates or updates a sync branch** - Serializes the generated tree as a merge-shaped commit without checking out `fork_upstream`
+5. **Generates a PR** - Uses Azure AI when configured and the diff is below 20,000 lines; otherwise uses a deterministic template
+6. **Creates a tracking issue** - Links the PR with `human-required` and `upstream-sync` labels
+7. **Waits for human review** - The team merges the PR into `fork_upstream` to continue the cascade
 
 ## Smart Duplicate Prevention
 
@@ -38,6 +38,18 @@ The workflow uses intelligent state management to avoid creating duplicate sync 
 
 This prevents PR proliferation and maintains a clear workflow where only one sync PR exists at a time.
 
+## Upstream Filter Transform
+
+The transform separates source ownership:
+
+| Ownership | Contents |
+|-----------|----------|
+| **Upstream-owned** | Shared core and acceptance-test code, core tests, root/testing POMs, docs, notices, licenses, and Maven configuration |
+| **Removed** | Provider source, `core-plus`, `devops/`, non-Azure tests, and upstream CI files |
+| **Fork-owned** | Azure provider and Azure test source, `.github/`, and the canonical `build/` assets |
+
+The fork-owned Azure trees live on `main` and `fork_integration`; they are deliberately absent from `fork_upstream`. The per-service `.github/upstream-filter.yml` classifies upstream content. Because the generic initializer does not yet create that file, a new fork must install it and verify the Azure trees before its first filtered sync. A new unclassified shared module stops the sync so maintainers can explicitly keep or remove it.
+
 ## Workflow Outcomes
 
 ```mermaid
@@ -45,28 +57,27 @@ flowchart TD
     A[Daily Sync Trigger] --> B{Upstream Changes?}
     B -->|No| C[Exit - No Action Needed]
     B -->|Yes| D{Existing Sync PR?}
-    D -->|No| E{Merge Conflicts?}
+    D -->|No| E{Filter Valid?}
     D -->|Yes| F[Update Existing PR]
-    E -->|No| G[Create Clean PR]
-    E -->|Yes| H[Create Conflict PR]
+    E -->|Yes| G[Create Filtered PR]
+    E -->|No| H[Halt and Open Failure Issue]
     G --> I[AI Description < 20k lines]
-    H --> I
     F --> I
     I --> J[Ready for Human Review]
 ```
 
 The workflow produces different outcomes based on what it discovers:
-- **Clean merge**: Creates a straightforward PR ready for review with no conflicts
-- **Merge conflicts**: Creates a PR with conflict markers and detailed step-by-step resolution instructions
+- **Filtered changes**: Creates a PR containing only the generated upstream-owned tree
+- **Filter halt**: Opens or updates a failure issue when upstream content is not classified
 - **Large changes**: Uses standard templates instead of AI for diffs over 20,000 lines
 - **Existing PR updates**: Updates the existing sync PR rather than creating duplicates
 
 ## When You Need to Act
 
-Look for GitHub issues labeled [`human-required` + `upstream-sync`](../../issues?q=is:open+label:human-required+label:upstream-sync):
+Look for `human-required,upstream-sync` issues for sync PR review and `human-required,sync-failed` issues for filter halts:
 
 - **Clean sync** - Review AI summary and merge PR if changes look safe
-- **Conflict sync** - Resolve merge conflicts locally before merging
+- **Filter halt** - Update `.github/upstream-filter.yml` on `main`, then rerun sync
 
 ## How to Respond
 
@@ -74,29 +85,13 @@ Look for GitHub issues labeled [`human-required` + `upstream-sync`](../../issues
 1. **Review the PR** - Check AI-generated summary of upstream changes
 2. **Verify compatibility** - Ensure no breaking changes for your fork
 3. **Merge PR** - Approve and merge to `fork_upstream` branch
-4. **Trigger cascade** - Go to Actions → "Cascade Integration" → enter issue number → Run
+4. **Monitor cascade** - The cascade monitor dispatches automatically; run "Cascade Integration" manually with the issue number only if that dispatch fails
 
-### For Conflicts
-1. **Checkout branch locally**:
-   ```bash
-   git checkout sync/upstream-YYYYMMDD-HHMMSS
-   git status  # See conflicted files
-   ```
-
-2. **Resolve conflicts** - Use your IDE's merge tools or edit manually
-3. **Test and commit**:
-   ```bash
-   # Test your changes
-   npm test  # or your project's test command
-
-   # Commit resolution
-   git add .
-   git commit -m "resolve: merge conflicts from upstream sync"
-   git push
-   ```
-
-4. **Complete PR** - Request review, get approval, merge
-5. **Trigger cascade** - Same as clean sync process
+### For Filter Halts
+1. Open the `sync-failed,human-required` issue and note the halt code and path.
+2. Classify the new or renamed upstream entry in `.github/upstream-filter.yml` on `main`.
+3. Run the upstream-filter harness if the engine or classification rules changed.
+4. Rerun the synchronization workflow.
 
 ## Configuration
 
@@ -107,28 +102,31 @@ Look for GitHub issues labeled [`human-required` + `upstream-sync`](../../issues
 | **AI Diff Limit** | 20,000 lines | Uses standard templates above this limit |
 | **Duplicate Prevention** | Enabled | Prevents multiple PRs for same upstream state |
 | **Monitor Trigger** | 6 hours | Auto-cascade if human trigger missed |
-| **State Persistence** | Git config | Tracks last sync state between runs |
+| **State Persistence** | Issues and open PRs | Tracks the active upstream SHA and sync branch |
+| **Filter Configuration** | `.github/upstream-filter.yml` | Explicit per-service classification |
 
 ### AI Configuration
 To enable AI-generated PR descriptions, configure these secrets:
 - `AZURE_API_KEY` + `AZURE_API_BASE` (primary)
-- `OPENAI_API_KEY` (fallback)
-- `ANTHROPIC_API_KEY` (future use)
+- `AZURE_API_VERSION` (optional API version)
+
+When Azure credentials are absent or generation fails, the workflow uses its built-in template.
 
 ## Troubleshooting
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | "No upstream changes detected" | Fork is current with upstream | Normal - no action needed |
-| "Failed to fetch upstream" | Network issues or incorrect URL | Verify `UPSTREAM_REPO_URL` secret |
+| "Failed to fetch upstream" | Network issues or incorrect URL | Verify the `UPSTREAM_REPO_URL` variable |
 | "AI description generation failed" | API key issues or service down | PR created with fallback template |
 | "Large diff - using fallback template" | Changes exceed 20k lines | Normal for major upstream updates |
 | "Duplicate PR detected" | Existing sync PR found | Updates existing PR instead |
 | "Cascade not triggered" | Forgot to run manually | Monitor auto-triggers after 6 hours |
-| "Sync branch conflicts" | Upstream conflicts with fork changes | Follow conflict resolution steps in PR |
+| "Upstream filter halted" | New or renamed content is unclassified | Update `.github/upstream-filter.yml` and rerun |
 
 ## Related
 
-- [Three-Branch Strategy](../decisions/adr_001_three_branch_strategy.md) - Core branching approach
+- [Three-Branch Strategy](../adr/001-three-branch-strategy.md) - Core branching approach
 - [Cascade Workflow](cascade.md) - Next step after sync PR is merged
-- [Conflict Management](../decisions/adr_005_conflict_management.md) - Detailed resolution guidance
+- [Conflict Management](../adr/005-conflict-management.md) - Detailed resolution guidance
+- [ADR-038: Upstream Filter Transform](../adr/038-upstream-filter-transform.md) - Filter ownership and halt behavior

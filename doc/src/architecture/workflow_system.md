@@ -65,10 +65,11 @@ graph TD
 
     ---
 
-    AI powered daily synchronization with intelligent duplicate prevention that fetches upstream changes, analyzes them for conflicts, and creates integration PRs with conventional commit messages
+    Daily synchronization that filters the upstream tip into a reproducible provider-less tree, prevents duplicate PRs, and optionally uses Azure AI for conventional commit messages and PR descriptions
 
     - **Trigger**: Scheduled daily at midnight UTC with intelligent duplicate prevention
-    - **State Management**: Tracks sync state between runs to prevent duplicate PRs and issues
+    - **Transform**: Keeps shared code, removes provider/deployment source, and injects references to fork-owned Azure modules
+    - **Safety**: Halts when shared upstream content is unclassified or an expected kept path disappears
     - **Decision Logic**: Updates existing branches when upstream advances, prevents duplicates for same SHA
     - **Integration**: Three-branch safety pattern (fork_upstream → fork_integration → main)
     - **AI Features**: Intelligent change analysis and conventional commit generation
@@ -105,8 +106,9 @@ graph TD
 
     Comprehensive quality assurance system that enforces code standards, verifies build integrity, and ensures consistency across all changes
 
-    - **Quality Gates**: Multi-phase validation pipeline with adaptive rules
-    - **Scope**: Commit format, branch naming, build verification, conflict detection
+    - **Quality Gates**: Multi-phase validation pipeline with always-reporting summary checks
+    - **Scope**: Semantic PR titles, branch status, Java build, canonical Dockerfile build, and trusted-event GHCR push
+    - **Profiles**: `core,azure` by default; `core` for provider-less `fork_upstream`
     - **Intelligence**: Context-aware validation for different contribution types
     - **Feedback**: Detailed status reporting with actionable developer guidance
 
@@ -120,12 +122,12 @@ graph TD
 
     ---
 
-    Automated dependency update validation with intelligent risk assessment and selective auto-merging for routine updates
+    Dedicated build validation and failure tracking for Dependabot pull requests
 
-    - **Automation**: Validates and tests all Dependabot dependency updates
-    - **Security**: Comprehensive vulnerability assessment of new dependencies
-    - **Intelligence**: Risk-based auto-merging for low-impact updates
-    - **Integration**: Seamless coordination with main validation pipeline
+    - **Automation**: Runs the reusable Java build with coverage
+    - **Feedback**: Posts the build result to the pull request
+    - **Failure Handling**: Labels the PR and opens a `human-required` issue
+    - **Integration**: Keeps automated dependency updates out of the regular validation build lane
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/validation.md)
 
@@ -139,12 +141,12 @@ graph TD
 
     ---
 
-    Feature branch build verification with comprehensive testing, coverage analysis, and performance-optimized execution
+    Java/Maven feature-branch build verification with tests, JaCoCo reporting, and short-lived JAR artifacts
 
     - **Focus**: Rapid developer feedback for feature branch development
-    - **Coverage**: Unit tests, integration tests, and comprehensive quality metrics
-    - **Performance**: Intelligent caching and parallel execution strategies
-    - **Support**: Java/Maven projects with extensible patterns for other languages
+    - **Coverage**: Unit tests and JaCoCo report artifacts
+    - **Performance**: Maven caching and docs/config path exclusions
+    - **Boundary**: Container validation and publication belong to `validate.yml`, not `build.yml`
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/build.md)
 
@@ -161,7 +163,7 @@ graph TD
     - **Versioning**: Release Please integration with conventional commit standards
     - **Coordination**: Upstream version tracking and alignment strategies
     - **Documentation**: Automated changelog and release notes generation
-    - **Distribution**: Package publication and artifact management
+    - **Distribution**: Upstream correlation tags and registry-side SemVer tagging of the existing GHCR image
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/release.md)
 
@@ -192,28 +194,30 @@ graph TD
 
     ---
 
-    Intelligent monitoring system that detects completed synchronizations and automatically triggers cascade operations with SLA management
+    Monitoring system that detects completed synchronizations and dispatches cascade or recovery operations
 
     - **Detection**: Automated monitoring for completed upstream synchronizations
-    - **SLA Management**: Ensures cascade operations meet timing requirements
+    - **Schedule**: Six-hour safety-net checks for missed events and stale conflicts
     - **Escalation**: Proactive alerts and notifications for overdue operations
-    - **Recovery**: Automatic retry mechanisms with intelligent backoff strategies
+    - **Recovery**: Retries failure issues after maintainers mark them ready
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/cascade.md)
 
 </div>
 
-## AI Enhanced Integration Workflows
+## Service Image Lifecycle
 
-### :material-git: Cross-Platform Integration
+```mermaid
+flowchart LR
+    A[Java Build<br/>core,azure] --> B[build-artifacts JAR]
+    B --> C[Canonical build/Dockerfile]
+    C --> D[Validate-only amd64 build]
+    C --> E[Trusted multi-arch push]
+    E --> F[Public GHCR<br/>sha + snapshot tags]
+    F --> G[Release SemVer tag]
+```
 
-<div class="grid cards" markdown>
-
-
-</div>
-
-!!! info "AI Enhanced Extensions"
-    These workflows extend the core fork management system with AI-powered capabilities that bridge platforms and enhance developer productivity. They operate alongside the core workflows without disrupting the fundamental three-branch strategy.
+The engineering system owns the Dockerfile and entrypoint. The Docker action packages the JAR produced by the Java job; it never runs Maven or downloads the service's own binary. Untrusted PR validation has no registry credentials. Trusted events publish `linux/amd64` and `linux/arm64` images to public GHCR, and release automation retags the immutable release-commit image.
 
 ## Workflow Event Architecture
 
@@ -241,9 +245,9 @@ graph LR
 | **Scheduled** | Template Sync | `0 8 * * *` | Daily 8 AM UTC template updates with duplicate prevention |
 | **Scheduled** | Monitoring | `0 */6 * * *` | 6-hour cascade monitoring |
 | **Event-Based** | PR Validation | PR creation/updates | Validation workflows on pull requests |
-| **Event-Based** | Cascade Trigger | Issue creation | Cascade triggering on sync completion |
-| **Event-Based** | Build | Push to main | Build workflows on main branch updates |
-| **Event-Based** | Release | Tag creation | Distribution workflows on releases |
+| **Event-Based** | Cascade Monitor | Sync PR merged | Dispatches cascade after merge to `fork_upstream` |
+| **Event-Based** | Build | Feature push or protected-branch PR | Java developer feedback |
+| **Event-Based** | Release | Push to `main` | Release Please and GHCR SemVer tagging |
 | **Manual** | Emergency Sync | On-demand | Immediate upstream synchronization |
 | **Manual** | Cascade Override | On-demand | Manual cascade operation initiation |
 | **Manual** | Template Update | On-demand | Immediate template propagation |
@@ -255,37 +259,31 @@ graph LR
 
 <div class="grid cards" markdown>
 
--   :material-microsoft-azure:{ .lg .middle } **Azure OpenAI**
+-   :material-microsoft-azure:{ .lg .middle } **Azure Foundry**
 
     ---
 
-    Primary AI provider with enterprise integration, Microsoft compliance features, and comprehensive reasoning capabilities
+    Optional AIPR provider for synchronization commit messages and PR descriptions
 
--   :material-brain:{ .lg .middle } **OpenAI GPT-4**
-
-    ---
-
-    Secondary AI provider providing comprehensive coverage and established performance baselines
-
--   :material-robot:{ .lg .middle } **Claude (Anthropic)**
+-   :material-file-document:{ .lg .middle } **Template Fallback**
 
     ---
 
-    Third-tier AI provider for analysis and generation with advanced reasoning capabilities
+    Workflow-owned output used when Azure credentials are absent, the diff is too large, or generation fails
 
 </div>
 
-**AI-Powered Capabilities** enhance every stage of the workflow system:
+**AI-Powered Capabilities** are limited to synchronization:
 
 - **Change Analysis**: Intelligent assessment of upstream modifications
 - **Commit Generation**: Conventional commit message creation
 - **PR Descriptions**: Comprehensive pull request documentation
-- **Conflict Guidance**: Step-by-step conflict resolution instructions
+- **Fallback**: Deterministic descriptions keep synchronization operational without AI
 
 ### Security Integration
 
 !!! warning "Security-First Approach"
-    All workflows integrate comprehensive security scanning and branch protection to ensure production stability and compliance.
+    Security responsibilities are separated across CodeQL, Dependabot validation, repository rulesets, pinned actions, and trusted-event package permissions.
 
 <div class="grid cards" markdown>
 
@@ -293,10 +291,10 @@ graph LR
 
     ---
 
-    - Trivy scanning for container and dependency vulnerabilities
-    - Secret detection and automated leak prevention
-    - GitHub security advisory integration
-    - Automated compliance rule validation
+    - CodeQL analysis with a stable required summary check
+    - Dependabot update validation
+    - Registry writes restricted to trusted events
+    - Pinned third-party workflow actions
 
 -   :material-shield-check:{ .lg .middle } **Branch Protection Integration**
 
@@ -320,9 +318,9 @@ graph LR
 - **Audit Trail**: Complete record of all workflow operations
 
 #### **Label-Based Organization**
-- **Workflow Types**: `upstream-sync`, `cascade-active`, `template-update`
-- **Status Indicators**: `in-progress`, `completed`, `requires-attention`
-- **Priority Levels**: `high-priority`, `critical`, `routine`
+- **Workflow Types**: `upstream-sync`, `template-sync`, `release-tracking`
+- **Status Indicators**: `cascade-active`, `cascade-blocked`, `validation-failed`
+- **Priority and recovery**: `high-priority`, `cascade-ready`, `needs-resolution`
 - **Assignment Strategy**: `human-required` for manual intervention points
 
 ### Performance Optimization
@@ -333,36 +331,24 @@ graph LR
 
     ---
 
-    - Maven dependencies, Node modules, Docker layers
-    - Compiled assets and test results
-    - Upstream repository metadata
-    - Previously generated AI analysis results
+    - Maven dependencies
+    - Docker build layers
+    - Short-lived JAR and coverage artifacts
 
 -   :material-speedometer:{ .lg .middle } **Resource Management**
 
     ---
 
     - Concurrent workflow execution where safe
-    - Intelligent scheduling to prevent resource contention
-    - Appropriate timeouts with graceful degradation
-    - Exponential backoff for transient failures
+    - Concurrency groups for sync, cascade, and deployment operations
+    - Timeouts and deterministic fallback around optional AI generation
 
 </div>
+## Reusable Actions
 
-## Workflow Extensibility
-
-### Custom Action Integration
-
-#### **Reusable Actions**
-- **Enhanced PR Creation**: AI-powered pull request generation
-- **Java Build Status**: Specialized build reporting for Maven projects
-- **Security Scanning**: Standardized vulnerability assessment
-- **Notification Management**: Intelligent alert distribution
-
-#### **Extension Points**
-- **Project Type Detection**: Automatic workflow adaptation based on project type
-- **Custom Validation**: Project-specific quality gates and testing
-- **Integration Hooks**: External system integration capabilities
-- **Notification Customization**: Flexible alert and reporting mechanisms
+- **Java Build**: Maven build, tests, coverage, and JAR artifacts
+- **Docker Build**: Canonical image build and trusted GHCR publication
+- **Upstream Filter**: Generate, verify, seed, and stamp modes
+- **State and PR Status**: Duplicate prevention and workflow feedback
 
 ---

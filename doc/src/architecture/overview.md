@@ -2,7 +2,7 @@
 
 ## Principles
 
-The OSDU SPI Fork Management system is built on a foundation of **template-driven automation** that prioritizes zero-configuration deployment, intelligent automation, and continuous maintenance. The architecture leverages GitHub's native capabilities to provide fork management without external dependencies.
+The OSDU SPI Fork Management system is built on **template-driven automation** that prioritizes guided initialization, controlled upstream integration, and continuous maintenance. The architecture uses GitHub-native workflows, issues, rulesets, releases, and packages.
 
 <div class="grid cards" markdown>
 
@@ -10,7 +10,7 @@ The OSDU SPI Fork Management system is built on a foundation of **template-drive
 
     ---
 
-    Template repositories automatically adapt to specific upstream sources through intelligent initialization workflows that detect and configure appropriate settings.
+    An initialization issue captures the upstream repository, creates the branch topology, deploys fork workflows, and applies repository settings.
 
 -   :material-shield-check:{ .lg .middle } **Safety First**
 
@@ -22,7 +22,7 @@ The OSDU SPI Fork Management system is built on a foundation of **template-drive
 
     ---
 
-    Automated response to repository changes, schedules, and external triggers enables real-time synchronization and conflict management.
+    Scheduled, pull-request, push, issue-comment, and manual events drive synchronization, validation, release, and recovery.
 
 -   :material-trending-up:{ .lg .middle } **Scalable**
 
@@ -57,7 +57,7 @@ graph TD
 
 **Template Development Context** includes `.github/workflows/` for template development and maintenance workflows, template-specific documentation and configuration, and update propagation mechanisms with testing frameworks.
 
-**Fork Instance Context** encompasses `.github/template-workflows/` for production fork management workflows, instance-specific configuration and customization, and upstream-specific synchronization and integration.
+**Fork Instance Context** receives the files from `.github/template-workflows/` as deployed `.github/workflows/`, plus fork-owned configuration, actions, and build assets.
 
 **Event Driven Architecture** enables intelligent automation through GitHub's native event system. The system responds to scheduled events (daily sync), change events (PR validation), and manual events (on-demand resolution), providing comprehensive lifecycle management.
 
@@ -96,17 +96,29 @@ graph TD
 
     ---
 
-    Multi-provider AI support with intelligent analysis, automated documentation, and fallback strategies.
+    Optional Azure AI support for sync commit messages and PR descriptions, with deterministic template fallback.
 
     [:octicons-arrow-right-24: Discover AI capabilities](ai_integration.md)
 
 </div>
 
+## Source and Artifact Ownership
+
+The engineering system separates ownership rather than mirroring every upstream file:
+
+- The sync workflow regenerates `fork_upstream` from the upstream tip, retaining shared code while removing provider implementations and upstream deployment assets.
+- Azure provider and test source is seeded once, then owned on `main` and `fork_integration`.
+- Validation builds `core,azure` by default; provider-less `fork_upstream` builds `core` only.
+- The engineering system supplies `build/Dockerfile`, which packages the Azure JAR built from source.
+- Trusted validation events publish multi-architecture images to public GHCR; release automation adds the semantic-version tag without rebuilding.
+
+See [ADR-033](../adr/033-ghcr-as-service-image-registry.md), [ADR-035](../adr/035-azure-only-maven-profile.md), [ADR-037](../adr/037-engineering-system-owns-service-dockerfile.md), and [ADR-038](../adr/038-upstream-filter-transform.md).
+
 ## Enterprise Capabilities
 
-The system delivers enterprise-grade features through comprehensive security, proven scalability patterns, and native GitHub integration. Branch protection strategies ensure production stability while enabling flexible conflict resolution workflows.
+The system combines repository rulesets, CodeQL, Dependabot validation, trusted-event package publication, and GitHub App authentication. Branch protection keeps human approval on `main` while allowing automation to maintain the integration branches.
 
 !!! success "Enterprise Ready"
-    Production deployments benefit from automated security scanning, unlimited scalability through template propagation, and seamless integration with existing development toolchains and AI services.
+    Forks receive centrally maintained workflows and the canonical container recipe while retaining explicit ownership of service-specific Azure source and filter configuration.
 
 ---
