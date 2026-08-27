@@ -39,6 +39,7 @@ Template Repository:
 │   │   ├── copilot-instructions.md  # → copied to .github/copilot-instructions.md
 │   │   ├── copilot-firewall-config.json # → copied to .github/ + variables
 │   │   ├── triage.prompt.md         # → copied to .github/prompts/
+│   │   ├── upstream-filter.yml      # → substituted to .github/upstream-filter.yml
 │   │   └── .vscode/                 # → copied to .vscode/
 │   └── sync-config.json             # Includes fork-resources in sync rules
 
@@ -72,6 +73,8 @@ Fork Repository (after deployment):
 2. **Specialized Logic**: Each resource type can have custom deployment logic
 3. **Cleanup Required**: Deployment workflows must remove fork-resources after processing
 4. **Sync Integration**: Changes to fork-resources trigger template sync workflow
+5. **Service Substitution**: A resource may carry a `<service>` placeholder, replaced at deployment with the service slug derived from `UPSTREAM_REPO_URL` (the URL basename). `dependabot.yml` and `upstream-filter.yml` use this today.
+6. **Fork-Owned After Planting**: `upstream-filter.yml` deploys create-if-missing only. Once planted it belongs to the fork, and template sync never overwrites it.
 
 ## Rationale
 

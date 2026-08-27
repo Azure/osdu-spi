@@ -588,7 +588,10 @@ def stamp(checkout, cfg, report):
         mapping = {}
 
         def add(old, new):
-            if not old or "${" in old or old == new:
+            # Identity claims (old == new) register too: a literal one reference
+            # bumps while another keeps must halt as ambiguous, not silently
+            # rewrite the site that should have stayed.
+            if not old or "${" in old:
                 return
             if old in mapping and mapping[old] != new:
                 raise Halt("STAMP_AMBIGUOUS", f"in {tree}: '{old}' would become both '{mapping[old]}' and '{new}'")
@@ -617,6 +620,8 @@ def stamp(checkout, cfg, report):
             text = read_text(pom)
             updated = text
             for old, new in sorted(mapping.items()):
+                if old == new:
+                    continue
                 updated, count = _version_site(old).subn(
                     lambda m: f">{m.group(1)}{new}{m.group(2)}<", updated)
                 if count:
@@ -627,7 +632,9 @@ def stamp(checkout, cfg, report):
         # Post-condition, not a site list: no pre-bump version string survives.
         for pom in poms:
             text = read_text(pom)
-            for old in mapping:
+            for old, new in mapping.items():
+                if old == new:
+                    continue
                 if _version_site(old).search(text):
                     survivors.append(f"{os.path.relpath(pom, checkout)} still carries {old}")
 

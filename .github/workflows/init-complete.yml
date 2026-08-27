@@ -158,28 +158,67 @@ jobs:
           fi
           echo "VARIABLES_SUCCESS=$VARIABLES_SUCCESS" >> $GITHUB_ENV
 
+      - name: Check for prior completion
+        run: |
+          # A retried run after the main push must not repeat the branch work:
+          # settings-apply may already have armed the rulesets, which would
+          # reject the direct pushes below. Resume with configuration only.
+          if [ "${{ vars.INITIALIZATION_COMPLETE }}" = "true" ]; then
+            echo "::notice::Branches already pushed; resuming configuration steps only"
+            echo "RESUME_ONLY=true" >> $GITHUB_ENV
+          else
+            echo "RESUME_ONLY=false" >> $GITHUB_ENV
+          fi
+
       - name: Branch Structure
+        if: env.RESUME_ONLY != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Used for git operations only
         run: |
-          # Check if this is an OSDU partition repository (for debugging)
-          if [[ "${{ needs.validate_and_setup.outputs.upstream_repo }}" == *"partition"* ]]; then
-            # List release branches for OSDU repos (internal logging only)
-            RELEASE_BRANCHES=$(git branch -r | grep upstream/release | sed 's/upstream\///' | tr '\n' ', ')
-            if [ -n "$RELEASE_BRANCHES" ]; then
-              echo "Debug: Found release branches: $RELEASE_BRANCHES"
-            fi
+          # Materialize the per-service filter config exactly once. Generation,
+          # seeding, stamping, and the planted copy all read this one file, so
+          # the planted config always matches the generated commit's Filter-Rev.
+          # HEAD is main and stays there for this whole step (the branch is
+          # built through plumbing); the escape-hatch test below is only valid
+          # because the worktree is main.
+          FILTER_CONFIG="$RUNNER_TEMP/upstream-filter.yml"
+          if [ -f ".github/upstream-filter.yml" ]; then
+            echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
+            cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
+          else
+            SERVICE_SLUG=$(basename "${REPO_URL%.git}")
+            echo "::notice::Substituting filter config template for service: $SERVICE_SLUG"
+            SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
+            sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/upstream-filter.yml" > "$FILTER_CONFIG"
           fi
-          
-          # Create fork_upstream from upstream's default branch
-          git checkout -b fork_upstream upstream/$DEFAULT_BRANCH
-          
+          echo "FILTER_CONFIG=$FILTER_CONFIG" >> $GITHUB_ENV
+
+          # Generate the filtered fork_upstream tree (ADR-038). A branch left
+          # by a previous partial run becomes the base of an ordinary
+          # incremental generation, so a retry converges instead of colliding.
+          UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
+          BASE_SHA=$(git rev-parse -q --verify origin/fork_upstream || true)
+          bash .github/actions/upstream-filter/generate-branch.sh \
+            "$BASE_SHA" "$UPSTREAM_SHA" "$FILTER_CONFIG" "$RUNNER_TEMP/generate-branch.env"
+          . "$RUNNER_TEMP/generate-branch.env"
+
+          if [ "$has_changes" = "true" ]; then
+            git branch -f fork_upstream "$commit"
+          else
+            git branch -f fork_upstream "$BASE_SHA"
+          fi
+
+          if [ -n "$(git ls-tree fork_upstream -- provider devops)" ]; then
+            echo "::error::Generated fork_upstream still contains provider/ or devops/"
+            exit 1
+          fi
+
           # Try to push with error handling for push protection
           echo "::notice::Pushing fork_upstream branch..."
 
           # Capture both stdout and stderr, and preserve exit code
           set +e  # Don't exit on command failure
-          git push -u origin fork_upstream 2>&1 | tee push_output.txt
+          git push -u origin fork_upstream 2>&1 | tee "$RUNNER_TEMP/push_output.txt"
           PUSH_EXIT_CODE=${PIPESTATUS[0]}
           set -e  # Re-enable exit on error
 
@@ -193,16 +232,16 @@ jobs:
           fi
 
       - name: Handle fork_upstream push protection
-        if: env.PUSH_EXIT_CODE != '0'
+        if: env.RESUME_ONLY != 'true' && env.PUSH_EXIT_CODE != '0'
         uses: ./.github/local-actions/secret-push-handler
         with:
-          push_output_file: push_output.txt
+          push_output_file: ${{ runner.temp }}/push_output.txt
           issue_number: ${{ github.event.issue.number }}
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
 
       - name: Exit if fork_upstream push failed
-        if: env.PUSH_EXIT_CODE != '0'
+        if: env.RESUME_ONLY != 'true' && env.PUSH_EXIT_CODE != '0'
         run: exit 1
 
       - name: Continue branch setup
@@ -222,13 +261,63 @@ jobs:
           source_branch: 'main'
           template_repo_url: ${{ vars.TEMPLATE_REPO_URL || 'https://github.com/azure/osdu-spi.git' }}
 
+      - name: Seed fork-owned trees and plant filter config
+        if: env.PUSH_EXIT_CODE == '0'
+        run: |
+          # HEAD is fork_integration. The seeded trees enter history here,
+          # after the branch point that becomes the cascade merge base, so
+          # upstream merges never see them and the fork owns them (ADR-038).
+          SERVICE_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" "$FILTER_CONFIG" | head -1)
+          if [ -z "$SERVICE_SLUG" ]; then
+            echo "::error::Could not read the service key from the filter config"
+            exit 1
+          fi
+
+          if git ls-files -- "provider/${SERVICE_SLUG}-azure" | grep -q . \
+            && git ls-files -- "testing/${SERVICE_SLUG}-test-azure" | grep -q .; then
+            echo "::notice::Fork-owned trees already present; skipping seed"
+          else
+            bash .github/actions/upstream-filter/seed-source.sh \
+              "upstream/$DEFAULT_BRANCH" "$SERVICE_SLUG" "$RUNNER_TEMP/seed-source.env"
+            . "$RUNNER_TEMP/seed-source.env"
+
+            python3 .github/actions/upstream-filter/upstream_filter.py \
+              --mode seed --config "$FILTER_CONFIG" --checkout . \
+              --seed-source "$seed_dir" \
+              --report "$RUNNER_TEMP/upstream-filter-seed-report.json"
+
+            # Seeded poms carry the versions of the commit they were taken
+            # from; stamp against the current tree before anything builds them.
+            python3 .github/actions/upstream-filter/upstream_filter.py \
+              --mode stamp --config "$FILTER_CONFIG" --checkout . \
+              --report "$RUNNER_TEMP/upstream-filter-stamp-report.json"
+
+            cp "$FILTER_CONFIG" .github/upstream-filter.yml
+
+            git add -A
+            git commit -m "chore: seed fork-owned azure trees" \
+              -m "Seeded-From-Provider: $provider_sha
+          Seeded-From-Testing: $testing_sha"
+          fi
+
+          # Same survival assertion the cascade runs after every merge.
+          for path in "provider/${SERVICE_SLUG}-azure" "testing/${SERVICE_SLUG}-test-azure" ".github/upstream-filter.yml"; do
+            if ! git ls-files -- "$path" | grep -q .; then
+              echo "::error::$path is missing from the index after seeding"
+              exit 1
+            fi
+          done
+          echo "✅ Fork-owned azure trees seeded and filter config planted"
+
       - name: Push fork_integration branch
         if: env.PUSH_EXIT_CODE == '0'
         run: |
-          # Push fork_integration with error handling
+          # Push fork_integration with error handling. Force: a retried run
+          # rebuilds the branch with fresh commit ids, and the integration
+          # ruleset only blocks deletion, never force-push.
           echo "::notice::Pushing fork_integration branch..."
           set +e
-          git push -u origin fork_integration 2>&1 | tee push_integration_output.txt
+          git push -u -f origin fork_integration 2>&1 | tee "$RUNNER_TEMP/push_integration_output.txt"
           PUSH_INTEGRATION_EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -243,16 +332,16 @@ jobs:
           fi
 
       - name: Handle fork_integration push protection
-        if: env.PUSH_INTEGRATION_EXIT_CODE != '0'
+        if: env.RESUME_ONLY != 'true' && env.PUSH_INTEGRATION_EXIT_CODE != '0'
         uses: ./.github/local-actions/secret-push-handler
         with:
-          push_output_file: push_integration_output.txt
+          push_output_file: ${{ runner.temp }}/push_integration_output.txt
           issue_number: ${{ github.event.issue.number }}
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
 
       - name: Exit if fork_integration push failed
-        if: env.PUSH_INTEGRATION_EXIT_CODE != '0'
+        if: env.RESUME_ONLY != 'true' && env.PUSH_INTEGRATION_EXIT_CODE != '0'
         run: exit 1
 
       - name: Final branch setup
@@ -260,6 +349,7 @@ jobs:
         run: echo "✅ Both branches successfully created"
 
       - name: Merge to Main
+        if: env.RESUME_ONLY != 'true'
         uses: ./.github/local-actions/merge-with-theirs-resolution
         with:
           source_branch: fork_integration
@@ -269,6 +359,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git merge operations and posting comments
 
       - name: Finalize Initialization
+        if: env.RESUME_ONLY != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GitHub App token required for workflows)
           GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Pushing workflow files needs 'workflows' permission + setting variables needs admin
@@ -395,13 +486,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Creating issues
         run: |
-          # Use preserved template from /tmp
-          gh issue create \
-            --title "Configure MCP Server for GitHub Copilot Agent" \
-            --body-file /tmp/templates/mcp-setup-issue.md \
-            --label "human-required"
+          # A resumed run must not open a duplicate
+          EXISTING=$(gh issue list --state all --search "Configure MCP Server for GitHub Copilot Agent in:title" --json number --jq 'length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "MCP configuration issue already exists, skipping"
+          else
+            # Use preserved template from /tmp
+            gh issue create \
+              --title "Configure MCP Server for GitHub Copilot Agent" \
+              --body-file /tmp/templates/mcp-setup-issue.md \
+              --label "human-required"
 
-          echo "Created MCP configuration issue"
+            echo "Created MCP configuration issue"
+          fi
 
       - name: Complete Initialization
         env:
@@ -409,3 +506,47 @@ jobs:
         run: |
           # Close the initialization issue
           gh issue close "${{ github.event.issue.number }}" --reason completed
+
+      - name: Report initialization failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+        run: |
+          # Surface engine halts (exit 2) from any of the three invocations;
+          # each writes its own report so none clobbers another.
+          HALT_DETAIL=""
+          for report in upstream-filter-report.json upstream-filter-seed-report.json upstream-filter-stamp-report.json; do
+            if [ -f "$RUNNER_TEMP/$report" ]; then
+              DETAIL=$(jq -r '[.halts[]? | "\(.code): \(.detail)"] | join("; ")' "$RUNNER_TEMP/$report" 2>/dev/null || echo "")
+              if [ -n "$DETAIL" ]; then
+                HALT_DETAIL="${HALT_DETAIL}${DETAIL}"$'\n'
+              fi
+            fi
+          done
+
+          COMMENT_FILE="$RUNNER_TEMP/init-failure-comment.md"
+          if [ -n "$HALT_DETAIL" ]; then
+            {
+              echo "## ❌ Initialization halted by the upstream filter"
+              echo ""
+              echo "The filter halted rather than guess:"
+              echo ""
+              echo '```'
+              printf '%s' "$HALT_DETAIL"
+              echo '```'
+              echo ""
+              echo "Two ways to resolve:"
+              echo ""
+              echo "1. If the unclassified entry applies to every service, add it to the template repository's \`.github/fork-resources/upstream-filter.yml\`. New forks pick the change up automatically."
+              echo "2. If it is specific to this service, commit a complete \`.github/upstream-filter.yml\` to this repository's \`main\` branch. Initialization prefers that file over the template."
+              echo ""
+              echo "Then comment on this issue again to retry initialization."
+            } > "$COMMENT_FILE"
+          else
+            {
+              echo "## ❌ Initialization failed"
+              echo ""
+              echo "The workflow failed without a filter halt. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details, then comment on this issue again to retry initialization."
+            } > "$COMMENT_FILE"
+          fi
+          gh issue comment "${{ github.event.issue.number }}" --body-file "$COMMENT_FILE"

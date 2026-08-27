@@ -41,6 +41,10 @@ fi
 if ! grep -q "GH013: Repository rule violations found" "$PUSH_OUTPUT_FILE"; then
     echo "push_protected=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
     echo "No push protection violation detected"
+    # Not push protection, but the push still failed; surface the output on
+    # the initialization issue instead of dying silently in the workflow log.
+    FAILURE_MSG="❌ **Branch push failed** (not a push protection violation)\n\n\`\`\`\n$(tail -20 "$PUSH_OUTPUT_FILE")\n\`\`\`\n\n[View workflow logs](${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-})\n\nAfter resolving the underlying problem, comment on this issue again to retry initialization."
+    printf "%b" "$FAILURE_MSG" | gh issue comment "$ISSUE_NUMBER" --body-file - || true
     exit 0
 fi
 

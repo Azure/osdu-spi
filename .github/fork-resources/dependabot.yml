@@ -13,8 +13,8 @@ updates:
     directories:
       - "/"
       - "/*-core"
-      - "/*-core-plus"
       - "/provider/*-azure"
+      - "/testing/*-test-azure"
     schedule:
       interval: "daily"
       time: "09:00"
@@ -27,7 +27,8 @@ updates:
       - "provider/*-gc/**"
       - "provider/*-ibm/**"
       - "provider/*-jdbc/**"
-      - "testing/**"
+      - "testing/*-test-core/**"
+      - "testing/*-test-aws/**"
       - "*-acceptance-test/**"
     ignore:
       # Only allow patch updates for stability

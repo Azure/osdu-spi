@@ -21,10 +21,11 @@ The initialization process unfolds in two coordinated phases designed to provide
 The workflow verifies that the repository is not the template itself, creates the standard labels, and opens a setup issue. Reply to that issue with the upstream repository reference; the issue comment triggers the completion workflow.
 
 ### Full Configuration Phase (5-10 minutes)
-The completion workflow validates the upstream repository, sets `UPSTREAM_REPO_URL`, creates `fork_upstream` and `fork_integration`, deploys all fork workflows, applies fork resources and repository rulesets, and marks `INITIALIZATION_COMPLETE`.
+The completion workflow validates the upstream repository, sets `UPSTREAM_REPO_URL`, generates a filtered `fork_upstream` through the upstream filter engine, creates `fork_integration`, seeds the fork-owned Azure trees and plants `.github/upstream-filter.yml`, deploys all fork workflows, applies fork resources and repository rulesets, and marks `INITIALIZATION_COMPLETE`.
 
-!!! warning "Filter configuration required"
-    The generic initializer currently starts all three branches from upstream, but does not generate `.github/upstream-filter.yml`. Before the first filtered sync, install the service's classification file and verify the Azure provider and test trees are present on `main`. This is especially important after upstream removes those trees; ADR-038 defines historical seeding as the target behavior.
+The filter configuration comes from the template's `.github/fork-resources/upstream-filter.yml` with `<service>` substituted from the upstream repository name. A service that deviates from the conventional shape (extra top-level entries, a module prefix that differs from the repository name) uses the escape hatch: commit a complete `.github/upstream-filter.yml` to the fork's `main` before replying to the initialization issue, and initialization prefers that file over the template. If the filter halts on an unclassified entry, the initialization issue receives the halt detail and both remediation paths; fix the config and comment again to retry.
+
+The Azure provider and test trees (`provider/<service>-azure`, `testing/<service>-test-azure`) are seeded from the newest upstream commit that still contains them, version-stamped against the generated tree, and committed on `fork_integration` before the merge to `main`. From that point the fork owns them: they never appear on `fork_upstream`, so upstream merges cannot touch them.
 
 The initialization process produces clear outcomes to guide your next steps:
 - **Success**: Your repository is fully configured and ready for upstream synchronization and team development
@@ -35,7 +36,7 @@ The initialization process produces clear outcomes to guide your next steps:
 ### Required Configuration
 - **GitHub App credentials** - `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must be available for workflow and ruleset writes
 - **Upstream repository** - Reply to the initialization issue with `owner/repository` or a supported repository URL
-- **Filter configuration** - Add the service-specific `.github/upstream-filter.yml` before the first sync
+- **Filter configuration** - Generated automatically from the template; only nonconventional services need a hand-planted `.github/upstream-filter.yml` on `main` before replying to the issue
 - **Team permissions** - Ensure team has appropriate access levels
 
 ### Optional Configuration
@@ -127,6 +128,8 @@ The initialization process produces clear outcomes to guide your next steps:
 
 - [ ] **Setup issue closed successfully** - Initialization completed without errors
 - [ ] **Three branches exist** - `main`, `fork_upstream`, `fork_integration`
+- [ ] **`fork_upstream` is filtered** - No `provider/` or `devops/` directories on the branch
+- [ ] **Azure trees seeded on `main`** - `provider/<service>-azure` and `testing/<service>-test-azure` present, with `.github/upstream-filter.yml`
 - [ ] **Workflows active** - All deployed fork workflows are visible in the Actions tab
 - [ ] **Variables configured** - `UPSTREAM_REPO_URL` and `INITIALIZATION_COMPLETE` are set
 - [ ] **GitHub App available** - Release App credentials support protected writes
