@@ -11,7 +11,7 @@ The build workflow activates during active development to provide continuous fee
 - **Feature branch pushes** - Triggers on every commit to non-protected branches during development
 - **Pull request updates** - Runs for PRs targeting `main`, `fork_integration`, or `fork_upstream`
 
-Documentation and configuration-only changes are excluded.
+Markdown/text-only changes (for example `**/*.md`, `**/*.txt`) and selected repository-metadata paths (for example `.github/**` and `docs/**`) are excluded.
 
 ## What Happens
 
