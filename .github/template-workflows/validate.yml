@@ -512,7 +512,9 @@ jobs:
           echo "items=$(echo "$ITEMS" | jq -c '.')" >> $GITHUB_OUTPUT
 
       - name: "Post PR Status"
-        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        # Fork-head pull_request runs carry a read-only token and cannot comment;
+        # pull_request_target covers those PRs when it fires (it path-ignores docs).
+        if: github.event_name == 'pull_request_target' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: ./.github/actions/pr-status
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
