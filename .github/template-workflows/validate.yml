@@ -464,7 +464,7 @@ jobs:
           fi
 
           if ! git rev-parse --verify "$CURRENT_BRANCH" >/dev/null 2>&1; then
-            echo "::error::Pull request head not found"
+            echo "::error::Head of PR #$PR_NUMBER not found at $CURRENT_BRANCH after fetching refs/pull/$PR_NUMBER/head"
             exit 1
           fi
 
@@ -512,8 +512,10 @@ jobs:
           echo "items=$(echo "$ITEMS" | jq -c '.')" >> $GITHUB_OUTPUT
 
       - name: "Post PR Status"
-        # Fork-head pull_request runs carry a read-only token and cannot comment;
-        # pull_request_target covers those PRs when it fires (it path-ignores docs).
+        # Post only from contexts whose token can comment: pull_request_target runs
+        # (job-level gates already restrict those to same-repo heads) and pull_request
+        # runs from same-repo heads. Fork-head pull_request tokens are read-only, so
+        # external-fork PRs get no status comment.
         if: github.event_name == 'pull_request_target' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: ./.github/actions/pr-status
         with:
