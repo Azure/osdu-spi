@@ -134,6 +134,8 @@ graph TD
 
 **AI Enhanced Development Support** leverages multiple AI providers for intelligent analysis, automated impact assessment, step-by-step conflict resolution guidance, and generated commit messages and PR descriptions through custom agent integration.
 
+**The model extends one tier further.** A customer organization can run a true GitHub fork of a service repository through this same machinery in mirror mode: their `fork_upstream` mirrors the service repository's `main` verbatim, they build and release with their own credentials, and proven features return as contribution PRs through the fork network. See [Fork Tiers](architecture/fork_tiers.md).
+
 ## Why This Matters
 
 This automated fork management approach delivers significant operational and strategic value across development teams, operations, and enterprise architecture.

@@ -170,6 +170,8 @@ sequenceDiagram
     end
 ```
 
+A downstream repository does not have to stop at pulling release tags. It can be a customer-tier fork running this same three-branch machinery in mirror mode: `fork_upstream` becomes a verbatim mirror of this repository's `main`, the cascade integrates it with the downstream's local work, and contribution PRs flow back through the fork network. See [Fork Tiers](fork_tiers.md) and ADR-039.
+
 ## Safety Mechanisms
 
 ### Branch Protection Rules
