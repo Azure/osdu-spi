@@ -119,9 +119,12 @@ jobs:
             name=$(_jq '.name')
             description=$(_jq '.description')
             color=$(_jq '.color')
-            gh label create "$name" \
+            # --force updates an existing label instead of erroring, while a
+            # real failure (permissions, rate limit) still fails the step
+            # before adoption finalizes, keeping the run re-dispatchable.
+            gh label create "$name" --force \
               --description "$description" \
-              --color "$color" || echo "Label $name already exists"
+              --color "$color"
           done
 
       - name: Set repository variables
@@ -137,6 +140,17 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           bash .github/scripts/settings-apply/setup-rulesets.sh "$GITHUB_REPOSITORY"
+
+      - name: Verify rulesets applied
+        run: |
+          # setup-rulesets.sh exits 0 on API failures and reports only through
+          # RULESET_SUCCESS (its settings-cadence contract). Adoption must not
+          # finalize with unprotected branches: the entry guard would then
+          # block the re-dispatch that could repair them.
+          if [ "${RULESET_SUCCESS:-}" != "true" ]; then
+            echo "::error::Ruleset reconciliation failed (see the step above). Fix the cause and re-dispatch; adoption has not finalized."
+            exit 1
+          fi
 
       - name: Enable merge settings
         env:
