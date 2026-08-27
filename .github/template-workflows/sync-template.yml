@@ -508,14 +508,14 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           base-branch: main
           head-branch: ${{ env.SYNC_BRANCH }}
-          pr-title: "Sync template updates ${{ env.CURRENT_DATE }}"
+          # Conventional prefix required: forks' Validate Commit Messages check gates PR titles.
+          pr-title: "chore(template-sync): sync template updates ${{ env.CURRENT_DATE }}"
           fallback-description: ${{ env.FALLBACK_DESCRIPTION }}
           fallback-description-b64: ${{ env.FALLBACK_DESCRIPTION_B64 }}
           azure-api-key: ${{ secrets.AZURE_API_KEY }}
           azure-api-base: ${{ secrets.AZURE_API_BASE }}
           azure-api-version: ${{ secrets.AZURE_API_VERSION }}
           aipr-model: ${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           target-branch-for-aipr: main
           use-vulns-flag: 'false'
           labels: 'template-sync'
@@ -571,9 +571,10 @@ jobs:
           # Decode the base64 PR description
           FALLBACK_DESCRIPTION_DECODED=$(echo "${{ env.FALLBACK_DESCRIPTION_B64 }}" | base64 -d)
 
-          # Update PR title and description
+          # Update PR title and description. The prefix must lead the title:
+          # the semantic-pr check reads the type from the first characters.
           gh pr edit "$PR_NUMBER" \
-            --title "🔄 Sync template updates (Updated $(date +%Y-%m-%d))" \
+            --title "chore(template-sync): sync template updates (updated $(date +%Y-%m-%d))" \
             --body "$FALLBACK_DESCRIPTION_DECODED"
 
           # Add comment to the PR about the update
