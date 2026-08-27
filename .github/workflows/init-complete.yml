@@ -303,8 +303,7 @@ jobs:
 
             git add -A
             git commit -m "chore: seed fork-owned azure trees" \
-              -m "Seeded-From-Provider: $provider_sha
-          Seeded-From-Testing: $testing_sha"
+              -m $'Seeded-From-Provider: '"$provider_sha"$'\nSeeded-From-Testing: '"$testing_sha"
           fi
 
           # Same survival assertion the cascade runs after every merge.
