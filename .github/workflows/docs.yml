@@ -42,6 +42,6 @@ jobs:
       - run: pip install --require-hashes -r doc/requirements.txt
       - run: |
           cd doc
-          mkdocs gh-deploy --force --clean --verbose
+          mkdocs gh-deploy --force --clean --verbose --strict
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

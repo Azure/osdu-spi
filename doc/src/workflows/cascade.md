@@ -2,16 +2,17 @@
 
 The cascade integration workflow is the second phase of the fork management process. It is responsible for safely moving synchronized upstream changes through your repository's three-branch hierarchy toward production. After an upstream synchronization PR has been merged into the `fork_upstream` branch, this workflow takes over to validate and integrate those changes into your main development branch.
 
-This workflow acts as a quality gate, running comprehensive validation including Maven builds, unit tests, and compatibility checks before allowing changes to reach your production `main` branch. It embodies a "trust but verify" approach - trusting that the upstream sync was correct, but verifying that the integration works properly with your fork's specific modifications and enhancements.
+This workflow acts as a quality gate, running the Azure Maven build and tests before allowing changes to reach `main`. It combines the generated, provider-less upstream tree with the fork-owned Azure implementation and verifies that the result works.
 
-The cascade process includes built-in safety mechanisms with a dedicated monitor workflow that runs every 6 hours to detect stalled sync PRs. If a sync PR has been merged but no cascade has been triggered within 6 hours, the monitor automatically starts the cascade process, ensuring synchronized changes never get stuck in the pipeline.
+The cascade process includes a dedicated monitor workflow. A merged sync PR triggers the monitor immediately, while a 6-hour schedule detects missed events, stale conflicts, and recovery-ready failures.
 
 ## When It Runs
 
 The cascade workflow operates on both manual and automatic triggers to ensure reliable integration:
 
 - **Manual trigger** - You provide the sync issue number in the GitHub Actions tab after reviewing a sync PR
-- **Automatic trigger** - The monitor system detects unhandled sync PRs after 6 hours and runs automatically
+- **Automatic trigger** - The monitor dispatches the cascade when a sync PR is merged
+- **Scheduled recovery** - The monitor checks every 6 hours for missed or recoverable cascades
 - **Emergency manual** - Can be run on-demand for any validated upstream changes that need immediate propagation
 
 ## What Happens
@@ -19,10 +20,12 @@ The cascade workflow operates on both manual and automatic triggers to ensure re
 The workflow follows a structured validation and integration process:
 
 1. **Validates sync completion** - Ensures the upstream sync PR was properly merged and prerequisites are met
-2. **Creates integration branch** - Merges changes from `fork_upstream` into `fork_integration` for testing
-3. **Runs full validation** - Executes comprehensive Maven build, unit tests, and integration compatibility checks
-4. **Creates production PR** - If all validation passes, opens a PR to merge changes into your `main` branch
-5. **Provides status updates** - Comments on the original sync issue with progress reports and next steps
+2. **Builds the integration state** - Merges `main` and then `fork_upstream` into `fork_integration`
+3. **Preserves Azure ownership** - Verifies the fork-owned Azure provider and test trees remain present
+4. **Stamps Azure versions** - Updates upstream-derived versions in the fork-owned POMs after an upstream version bump
+5. **Runs validation** - Builds and tests `core,azure`, then compiles the separate core and Azure testing reactor
+6. **Creates production PR** - Opens a temporary `release/upstream-*` PR to `main`
+7. **Provides status updates** - Comments on the original sync issue with progress reports and next steps
 
 ## Three-Branch Progression
 
@@ -46,11 +49,11 @@ The workflow produces clear outcomes to guide your next actions:
 ## When You Need to Act
 
 ### Automatic Triggers
-- **Monitor alerts** - Issue comments when 6-hour threshold reached
-- **Validation failures** - PR created with specific errors to fix
+- **Monitor dispatch** - A merged sync PR starts the cascade through the monitor
+- **Validation failures** - A dedicated issue records errors and recovery steps
 
-### Manual Triggers Required
-- **After sync PR merge** - Trigger cascade with sync issue number
+### Manual Actions
+- **After sync PR merge** - Trigger cascade with the sync issue number if the monitor did not
 - **Integration conflicts** - Resolve conflicts in `fork_integration` branch
 - **Production PR review** - Final approval before merge to `main`
 
@@ -88,8 +91,8 @@ git push origin fork_integration
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Monitor Schedule** | Every 6 hours | Automatic detection of stalled sync PRs |
-| **Validation Process** | Maven build + tests | Required validation before production PR |
-| **Auto-merge Production** | Disabled | Always requires human approval for `main` |
+| **Validation Process** | `core,azure` build + tests | `MAVEN_PROFILE` can override exceptional layouts |
+| **Auto-merge Production** | Armed when possible | Waits for the required human approval on `main` |
 | **Integration Conflicts** | Manual resolution | Human intervention required for conflicts |
 | **Failure Handling** | Create dedicated issue | Automatic issue creation with resolution steps |
 
@@ -107,6 +110,8 @@ git push origin fork_integration
 
 - **Three-branch isolation** - Failures don't affect `main` branch
 - **Comprehensive validation** - Build, test, security, and quality gates
+- **Fork-owned path assertion** - Fails if the Azure provider or test tree disappears
+- **Version stamping** - Aligns fork-owned Azure POMs with new upstream coordinates
 - **Human approval gates** - Production changes require explicit review
 - **Rollback capability** - Can revert to previous stable state
 - **Complete audit trail** - All actions logged in GitHub issues
@@ -115,4 +120,5 @@ git push origin fork_integration
 
 - [Synchronization Workflow](synchronization.md) - Previous step in process
 - [Validation Workflow](validation.md) - Details on quality checks
-- [Three-Branch Strategy](../decisions/adr_001_three_branch_strategy.md) - Core architecture
+- [Three-Branch Strategy](../adr/001-three-branch-strategy.md) - Core architecture
+- [ADR-038: Upstream Filter Transform](../adr/038-upstream-filter-transform.md) - Ownership and version-stamping model

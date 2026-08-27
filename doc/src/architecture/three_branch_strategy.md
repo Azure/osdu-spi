@@ -6,7 +6,7 @@ The three-branch strategy forms the cornerstone of safe, systematic fork managem
 
 ```mermaid
 graph TD
-    A[Upstream Repository] --> B[fork_upstream<br/>Mirror]
+    A[Upstream Repository] --> B[fork_upstream<br/>Filtered Shared Code]
     B --> C[fork_integration<br/>Staging]  
     C --> D[main<br/>Production]
     
@@ -32,24 +32,25 @@ graph TD
     Stable production branch containing successfully integrated changes
 
     - Maximum security with required PR reviews
-    - Production-ready Azure SPI implementations  
-    - Updates only through validated pull requests from `fork_integration`
+    - Production-ready shared and fork-owned Azure code
+    - Upstream updates arrive through validated release PRs from `fork_integration`
+    - Local feature and hotfix branches also merge through reviewed PRs
     - All changes must pass comprehensive validation
 
 </div>
 
 <div class="grid cards" markdown>
 
--   :material-source-commit:{ .lg .middle } **`fork_upstream` - Upstream Mirror**
+-   :material-source-commit:{ .lg .middle } **`fork_upstream` - Generated Upstream Tree**
 
     ---
 
-    Clean tracking of upstream OSDU repository without local modifications
+    Deterministic upstream-owned tree generated from the upstream tip
 
-    - Automation-only updates to maintain purity
-    - Exact mirror of upstream repository state
-    - Automated synchronization from upstream repository
-    - Enables clear diff analysis and change detection
+    - Keeps shared core, acceptance-test, test-core, POM, documentation, and license content
+    - Excludes provider source, `core-plus`, `devops/`, non-Azure tests, and upstream CI files
+    - Injects POM references to Azure modules that exist only on the fork-owned branches
+    - Halts when new shared content is not classified
 
 </div>
 
@@ -62,9 +63,9 @@ graph TD
     Dedicated space for conflict resolution and comprehensive validation
 
     - Flexible protection for conflict resolution workflows
-    - Merge workspace for upstream changes with local modifications
+    - Combines generated shared code with fork-owned Azure provider and test source
     - Automated merges from `fork_upstream` with conflict resolution
-    - Complete build, test, and security scanning before production
+    - Azure POM version stamping plus `core,azure` build and test validation
 
 </div>
 
@@ -76,15 +77,15 @@ sequenceDiagram
     participant U as Upstream Repo
     participant FU as fork_upstream
     participant S as Sync Workflow
-    participant SM as Sync State Manager
+    participant F as Upstream Filter
     participant H as Human Reviewer
     
     S->>U: Fetch latest changes
-    S->>SM: Check existing sync PRs and upstream SHA
-    SM->>SM: Compare with stored last-sync state
+    S->>S: Check existing sync PRs and upstream SHA
+    S->>F: Generate and verify provider-less tree
     
     alt New upstream changes, no existing PR
-        S->>FU: Create new sync branch from fork_upstream
+        S->>FU: Create sync branch containing generated tree
         activate FU
         S->>S: Generate AI analysis
         S->>S: Create new sync PR and issue
@@ -104,14 +105,14 @@ sequenceDiagram
     opt Human approval received
         H->>H: Review and approve
         H->>FU: Merge sync branch into fork_upstream
-        SM->>SM: Update stored sync state
-        SM->>SM: Cleanup completed sync artifacts
+        S->>S: Update issue and PR state
+        S->>S: Cleanup completed sync artifacts
         deactivate FU
     end
 ```
 
 !!! info "Sync State Management"
-    The synchronization process includes intelligent duplicate prevention that maintains sync continuity. The **Sync State Manager** tracks upstream SHA, active PR numbers, and issue state between runs to prevent duplicate PRs and maintain human workflow continuity. When upstream advances while a PR is open, the existing branch is updated rather than creating duplicates.
+    The synchronization process tracks the upstream SHA, active PR, and issue state to prevent duplicates. Before creating or updating a sync branch, the upstream filter classifies the upstream tip and halts on unknown shared content. When upstream advances while a PR is open, the existing branch is regenerated and updated.
 
 #### **Integrate**
 ```mermaid
@@ -127,7 +128,8 @@ sequenceDiagram
     activate FI
     C->>FU: Check for upstream updates
     FU->>FI: Merge fork_upstream → fork_integration
-    C->>FI: Run validation suite
+    C->>FI: Assert Azure trees and stamp POM versions
+    C->>FI: Build and test core,azure
     C->>C: Create main PR
     
     alt Validation Conflicts/Failures
@@ -174,18 +176,18 @@ sequenceDiagram
 | Protection Setting | :material-source-branch: *main* | :material-source-branch: *fork_upstream* | :material-source-branch: *fork_integration* |
 |-------------------|-------|---------------|------------------|
 | **Required Reviews** | 1 minimum | Not required | Not required |
-| **Status Checks** | All workflows | Not required | Validation only |
+| **Status Checks** | `CodeQL`, `🐳 Docker Build` | Not required | Not required |
 | **Up-to-date Branch** | Required | Not enforced | Not enforced |
 | **Force Push** | Blocked | Allowed | Allowed |
-| **Human Access** | PR only | Blocked | Direct push |
+| **Expected Writers** | Reviewed PRs | Sync automation | Cascade and cleanup automation |
 
 ### Quality Gates
 
 !!! check "Integration Validation"
-    ✓ **Build Verification**: Complete compilation and dependency resolution  
-    ✓ **Test Execution**: Full test suite including integration tests  
-    ✓ **Security Scanning**: Automated vulnerability and compliance checks  
-    ✓ **Code Quality**: Linting and code quality metrics verification
+    ✓ **Build Verification**: `core,azure` compilation and dependency resolution
+    ✓ **Test Execution**: Unit tests plus compile-only validation of the separate Azure testing reactor
+    ✓ **Container Validation**: Canonical Dockerfile build on branches that contain the Azure JAR
+    ✓ **Security Scanning**: CodeQL reports through its separate workflow
 
 !!! warning "Production Validation"
     ⚠️ **Human Review**: Manual approval for all production changes  
@@ -207,7 +209,7 @@ sequenceDiagram
 
     ---
 
-    Easy identification of what changes originate from upstream versus local Azure SPI modifications through clean branch separation.
+    Clear separation between generated upstream-owned shared code and fork-owned Azure implementation changes.
 
 -   :material-shield-account:{ .lg .middle } **Multi-Stage Validation**
 
@@ -219,7 +221,7 @@ sequenceDiagram
 
     ---
 
-    Pure upstream branch enables accurate diff analysis, change detection, and impact assessment for each synchronization.
+    Reproducible filtered commits retain upstream history and record the upstream SHA and filter revision.
 
 -   :material-backup-restore:{ .lg .middle } **Rollback Capability**
 
@@ -242,9 +244,9 @@ sequenceDiagram
 **Automated Processing:**
 
 :material-arrow-right: **Step 1:** Check Upstream - Daily automated check for new upstream changes  
-:material-arrow-right: **Step 2:** Sync Detection - AI-enhanced analysis of change scope and impact  
-:material-arrow-right: **Step 3:** Integration Attempt - Automated merge to integration branch  
-:material-arrow-right: **Step 4:** Validation Execution - Comprehensive testing and security scanning
+:material-arrow-right: **Step 2:** Filter Transform - Regenerate and verify the upstream-owned tree
+:material-arrow-right: **Step 3:** Sync Review - Review and merge the filtered PR to `fork_upstream`
+:material-arrow-right: **Step 4:** Cascade - Merge into integration, stamp Azure POMs, and run validation
 
 **Human Intervention Points:**
 

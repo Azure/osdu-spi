@@ -1,8 +1,8 @@
 # Pull Request Validation Workflow
 
-The pull request validation workflow acts as the automated quality gatekeeper for your repository. It ensures that all changes meet established standards before they can be merged into protected branches. This workflow runs comprehensive checks on every pull request and serves as your first line of defense against build failures, security vulnerabilities, and process violations that could disrupt your development workflow or compromise your fork's stability.
+The pull request validation workflow acts as the automated quality gatekeeper for your repository. It ensures that changes build correctly and meet process requirements before they merge into protected branches.
 
-The validation system is intelligent enough to apply different rules based on context - it treats upstream sync pull requests differently than regular development contributions, and applies stricter requirements to changes targeting your production `main` branch versus integration branches. This contextual awareness helps balance thorough quality control with practical workflow needs.
+The validation system applies different build rules by context. Sync PRs targeting the provider-less `fork_upstream` tree build `core` only and skip the image jobs; other Java changes build the Azure profile set and validate a service image.
 
 ## When It Runs
 
@@ -17,19 +17,19 @@ The validation workflow activates automatically across multiple scenarios to mai
 The workflow performs comprehensive validation across three key areas to ensure both code quality and process compliance:
 
 ### Code Quality Validation
-The system verifies that your code is functional and maintainable by running build verification to ensure code compiles and all dependencies resolve correctly, executing the full test suite and generating coverage reports, and performing lint checks to enforce consistent code style and formatting standards.
+The system verifies that code compiles, dependencies resolve, and tests pass. Pull-request builds can generate JaCoCo coverage reports. Documentation and configuration-only PRs keep the required summary checks reporting while skipping the heavy Java and container jobs.
 
 ### Process Compliance Verification
-Beyond code quality, the workflow enforces development process standards by validating that commit messages follow conventional commit format for consistent release notes, checking that branch names follow established naming patterns, and detecting potential merge conflicts early in the development cycle.
+Beyond code quality, the workflow validates semantic PR titles for ordinary PRs to `main`, detects whitespace/conflict-marker errors, and verifies that PR branches are up to date.
 
 ### Security and Dependency Analysis
-The validation system includes security-focused checks that scan for known vulnerabilities in your dependencies, analyze package integrity to prevent supply chain attacks, and detect accidentally committed secrets or credentials in your code changes.
+CodeQL runs in its own workflow and supplies the required `CodeQL` status. Dependabot PRs use `dependabot-validation.yml`; they do not run the regular Java and container jobs in this workflow.
 
 ## Validation Results
 
 ### ✅ **All Checks Pass**
-- PR can be merged immediately
-- No action required
+- PR is eligible to merge after any required human approval
+- Review the change normally
 
 ### ⚠️ **Some Checks Fail**
 - PR blocked until issues resolved
@@ -44,43 +44,26 @@ The validation system includes security-focused checks that scan for known vulne
 ### Build Failures
 ```bash
 # Run build locally to debug
-mvn clean install
+mvn clean install -P core,azure
 
 # Check for missing dependencies
 mvn dependency:tree
 ```
 
-### Commit Message Issues
-```bash
-# Fix last commit message
-git commit --amend -m "feat: add new feature description"
+### PR Title Issues
 
-# For multiple commits, use interactive rebase
-git rebase -i HEAD~3
-```
+Edit the pull request title to use a supported Conventional Commit type, for example `feat: add new feature description`.
 
 ### Test Failures
 ```bash
 # Run tests locally
-mvn test
+mvn test -P core,azure
 
 # Run specific test class
-mvn test -Dtest=TestClassName
+mvn test -P core,azure -Dtest=TestClassName
 
 # Run with coverage report
-mvn test jacoco:report
-```
-
-### Security Vulnerabilities
-```bash
-# Check for vulnerabilities
-mvn dependency-check:check
-
-# Update dependencies to latest versions
-mvn versions:use-latest-versions
-
-# Display dependency updates available
-mvn versions:display-dependency-updates
+mvn test -P core,azure jacoco:report
 ```
 
 ### Merge Conflicts
@@ -97,14 +80,18 @@ git commit -m "resolve: merge conflicts with main"
 
 ## Validation Jobs
 
-The workflow runs four distinct validation jobs:
+The workflow coordinates the following validation jobs:
 
 | Job | Purpose | What It Checks |
 |-----|---------|----------------|
 | **Initialization Check** | Verifies repository setup | Ensures workflows are properly deployed |
 | **Repository State** | Detects project type | Identifies Java projects via `pom.xml` |
-| **Java Build** | Compiles and tests | Maven build, unit tests, dependency resolution |
-| **Code Validation** | Process compliance | Conventional commits, merge conflicts, branch status |
+| **Path Check** | Avoids unnecessary work | Skips heavy jobs for docs/config-only PRs |
+| **Java Build** | Compiles and tests | Uses `core,azure` by default; `core` on `fork_upstream` |
+| **Docker Build (validate)** | Validates the service image | Builds the canonical `build/Dockerfile` without registry credentials |
+| **Docker Push** | Publishes trusted builds | Pushes multi-arch SHA and branch tags to public GHCR |
+| **Code Validation** | Process compliance | Semantic PR title, conflict markers, branch status |
+| **Docker Build summary** | Required status | Always reports a stable `🐳 Docker Build` result |
 
 ## Branch-Specific Rules
 
@@ -112,9 +99,9 @@ All protected branches use the same validation rules, with exemptions for specif
 
 | Branch | Standard Validation | Exemptions |
 |--------|-------------------|------------|
-| **`main`** | All checks required + human approval | None - strictest validation |
-| **`fork_integration`** | All checks required | None - full validation for integration safety |
-| **`fork_upstream`** | All checks required | Sync PRs skip conventional commit validation |
+| **`main`** | Azure Maven and image validation + human approval | Docs/config-only changes skip heavy jobs |
+| **`fork_integration`** | Azure Maven and image validation | Docs/config-only changes skip heavy jobs |
+| **`fork_upstream`** | Core-only Maven validation | No Azure JAR or container image exists on this branch |
 | **Feature branches** | N/A - not protected | Standard PR validation when targeting protected branches |
 
 ## Special Cases
@@ -130,15 +117,17 @@ All protected branches use the same validation rules, with exemptions for specif
 
 ## Status Check Details
 
-### Required Checks
-- `check-initialization` - Repository setup verification
-- `java-build` - Maven compilation, dependency resolution, unit tests
-- `code-validation` - Conventional commits, merge conflicts, branch status
+### Required Checks on `main`
+- `CodeQL` - Stable summary from the separate CodeQL workflow
+- `🐳 Docker Build` - Stable summary covering Java and validate-only image build results
+
+The integration-branch ruleset does not currently require status checks.
 
 ### Check Exemptions
-- **Sync PRs**: Skip conventional commit validation (upstream commits may not follow format)
-- **Release PRs**: Skip conventional commit validation (generated by release automation)
-- **Dependabot PRs**: Reduced validation requirements for automated dependency updates
+- **Sync PRs**: Build `core` only and skip image validation
+- **Release and automation PRs**: Skip semantic PR-title validation
+- **Dependabot PRs**: Build through `dependabot-validation.yml`
+- **Docs/config-only PRs**: Skip Java and container work while summary checks still report
 
 ## Troubleshooting
 
@@ -147,7 +136,7 @@ All protected branches use the same validation rules, with exemptions for specif
 | "Initialization check failed" | Repository not properly set up | Ensure workflows are deployed and `pom.xml` exists |
 | "Java build failed" | Compilation or dependency issues | Run `mvn clean install` locally, check dependency conflicts |
 | "Unit tests failing" | Test failures in Maven build | Run `mvn test` locally, fix failing test cases |
-| "Conventional commits validation failed" | Commit messages don't follow format | Use format: `feat:`, `fix:`, `chore:`, etc. |
+| "Semantic PR validation failed" | PR title doesn't follow the supported format | Use a title such as `feat:`, `fix:`, or `chore:` |
 | "Merge conflicts detected" | Git conflict markers found | Resolve conflicts locally and commit resolution |
 | "Repository not initialized" | Missing required setup files | Complete repository initialization first |
 | "Branch status validation failed" | Branch protection or merge issues | Ensure branch is up to date with target |
@@ -164,13 +153,14 @@ docs: update API documentation
 chore: update dependencies
 ```
 
-### Coverage Thresholds
-- **Minimum coverage**: 80%
-- **Branch coverage**: 75%
-- **Function coverage**: 85%
+### Container Configuration
+
+The engineering system syncs the canonical `build/Dockerfile` to every fork. `SERVICE_NAME` defaults to the repository name, and `SERVICE_TARGET_JAR` is needed only to disambiguate multiple Azure Spring Boot JARs. Trusted pushes publish to `ghcr.io/<owner>/<service>` with the workflow `GITHUB_TOKEN`; untrusted PR contexts never receive package-write permission.
 
 ## Related
 
 - [Conventional Commits](https://conventionalcommits.org/) - Commit message standards
-- [Security Scanning](../decisions/adr_016_security.md) - Security validation details
+- [Initialization Security](../adr/016-initialization-security-handling.md) - Security setup details
 - [Build Workflow](build.md) - Detailed build process
+- [ADR-033: GHCR as Service Image Registry](../adr/033-ghcr-as-service-image-registry.md)
+- [ADR-037: Canonical Service Dockerfile](../adr/037-engineering-system-owns-service-dockerfile.md)

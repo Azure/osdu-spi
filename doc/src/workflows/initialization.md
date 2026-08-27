@@ -9,18 +9,22 @@ The initialization process is designed with a two-phase approach that separates 
 The initialization workflow activates in several scenarios to ensure your repository is properly configured:
 
 - **Template creation** - Automatically triggers when you create a new repository from this template
-- **Manual trigger** - Available via GitHub Actions tab if setup needs to be rerun or troubleshooting is required
-- **Fork creation** - Activates when forking an existing OSDU SPI repository to ensure proper configuration
+- **Push to `main`** - The template's initial commit starts the workflow in a newly created repository
+
+The completion phase starts only after an owner, member, or collaborator replies to the generated initialization issue.
 
 ## What Happens
 
 The initialization process unfolds in two coordinated phases designed to provide optimal user experience while ensuring thorough setup:
 
 ### Immediate Setup Phase (30 seconds)
-The workflow immediately creates a setup issue that serves as a tracking mechanism for initialization progress, validates that all required template files are present and properly formatted, triggers the main configuration workflow to begin the detailed setup process, and provides immediate feedback through the setup issue so you know the process has started successfully.
+The workflow verifies that the repository is not the template itself, creates the standard labels, and opens a setup issue. Reply to that issue with the upstream repository reference; the issue comment triggers the completion workflow.
 
 ### Full Configuration Phase (5-10 minutes)
-The comprehensive setup process deploys all workflow files including sync, cascade, build, validation, and release management workflows to your repository. It creates the essential `fork_upstream` and `fork_integration` branches that form the foundation of the three-branch architecture, applies branch protection rules and security settings to ensure safe collaboration, enables repository features like issues and discussions that support the fork management process, and validates the entire setup by running initial checks to confirm everything is functioning correctly.
+The completion workflow validates the upstream repository, sets `UPSTREAM_REPO_URL`, creates `fork_upstream` and `fork_integration`, deploys all fork workflows, applies fork resources and repository rulesets, and marks `INITIALIZATION_COMPLETE`.
+
+!!! warning "Filter configuration required"
+    The generic initializer currently starts all three branches from upstream, but does not generate `.github/upstream-filter.yml`. Before the first filtered sync, install the service's classification file and verify the Azure provider and test trees are present on `main`. This is especially important after upstream removes those trees; ADR-038 defines historical seeding as the target behavior.
 
 The initialization process produces clear outcomes to guide your next steps:
 - **Success**: Your repository is fully configured and ready for upstream synchronization and team development
@@ -29,8 +33,9 @@ The initialization process produces clear outcomes to guide your next steps:
 ## When You Need to Act
 
 ### Required Configuration
-- **Repository secrets** - Must be configured before first sync
-- **Upstream repository** - Must specify which repository to sync from
+- **GitHub App credentials** - `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must be available for workflow and ruleset writes
+- **Upstream repository** - Reply to the initialization issue with `owner/repository` or a supported repository URL
+- **Filter configuration** - Add the service-specific `.github/upstream-filter.yml` before the first sync
 - **Team permissions** - Ensure team has appropriate access levels
 
 ### Optional Configuration
@@ -42,17 +47,14 @@ The initialization process produces clear outcomes to guide your next steps:
 
 ### Complete Required Setup
 1. **Check setup issue** - Look for repository configuration checklist
-2. **Configure secrets**:
+2. **Reply with the upstream repository**:
    ```
-   UPSTREAM_REPO_URL - Repository to sync from (required)
-   GITHUB_TOKEN - Provided automatically
-   AZURE_API_KEY - AI provider (optional)
-   AZURE_API_BASE - Azure Foundry endpoint (optional)
-   AZURE_API_VERSION - Azure API version (optional)
+   OpenSubsurfaceDataForum/partition
    ```
 
-3. **Verify branch protection** - Ensure `main` branch is protected
-4. **Test initial sync** - Run upstream sync workflow manually to verify setup
+3. **Verify repository variables** - Initialization sets `UPSTREAM_REPO_URL` and `INITIALIZATION_COMPLETE`
+4. **Verify branch protection** - Ensure the repository rulesets are active
+5. **Test initial sync** - Run upstream sync manually to verify setup
 
 ### Handle Setup Failures
 ```bash
@@ -82,7 +84,7 @@ The initialization process produces clear outcomes to guide your next steps:
 
 ### Branches
 - **`main`** - Your production branch (protected)
-- **`fork_upstream`** - Mirror of upstream repository
+- **`fork_upstream`** - Generated upstream-owned tree without provider source
 - **`fork_integration`** - Integration and conflict resolution branch
 
 ### Workflows Installed
@@ -90,7 +92,8 @@ The initialization process produces clear outcomes to guide your next steps:
 - **`cascade.yml`** - Three-branch integration process
 - **`build.yml`** - Build and test automation
 - **`validate.yml`** - PR quality gates
-- **`release.yml`** - Automated version management
+- **`release.yml`** - Automated version and image-tag management
+- **Supporting workflows** - Template sync, CodeQL, Dependabot validation, cascade monitoring, integration cleanup, settings reconciliation, and GHCR retention
 
 ### Security Configuration
 - **Branch protection** - Required PR reviews and status checks
@@ -98,15 +101,17 @@ The initialization process produces clear outcomes to guide your next steps:
 - **Issue templates** - Standardized issue reporting
 - **Security scanning** - Dependabot and vulnerability detection
 
-## Required Secrets
+## Configuration
 
-| Secret | Purpose | Required |
-|--------|---------|----------|
-| `UPSTREAM_REPO_URL` | Repository to sync from | ✅ Yes |
-| `GITHUB_TOKEN` | Automatically provided | ✅ Yes |
-| `AZURE_API_KEY` | AI-enhanced PR descriptions | ❌ Optional |
-| `AZURE_API_BASE` | Azure Foundry endpoint | ❌ Optional |
-| `AZURE_API_VERSION` | Azure API version | ❌ Optional |
+| Name | Type | Purpose |
+|------|------|---------|
+| `UPSTREAM_REPO_URL` | Variable, set during initialization | Repository to synchronize |
+| `INITIALIZATION_COMPLETE` | Variable, set during initialization | Enables fork workflows |
+| `MAVEN_PROFILE` | Optional variable | Overrides the `core,azure` default |
+| `SERVICE_NAME` | Optional variable | Overrides the repository-name image/service slug |
+| `SERVICE_TARGET_JAR` | Optional variable | Disambiguates repositories that build multiple Azure JARs |
+| `GITHUB_TOKEN` | Automatic secret | Normal GitHub API and package operations |
+| `AZURE_API_KEY`, `AZURE_API_BASE`, `AZURE_API_VERSION` | Optional secrets | AI-enhanced sync descriptions |
 
 ## Troubleshooting
 
@@ -116,21 +121,22 @@ The initialization process produces clear outcomes to guide your next steps:
 | "Branch creation failed" | Verify default branch is 'main', check permissions |
 | "Workflow deployment error" | Remove conflicting `.github/workflows/` files |
 | "Protection rules failed" | Ensure admin access, check repository settings |
-| "Initial sync fails" | Verify `UPSTREAM_REPO_URL` secret is correct |
+| "Initial sync fails" | Verify the `UPSTREAM_REPO_URL` variable and filter configuration |
 
 ## Post-Setup Checklist
 
 - [ ] **Setup issue closed successfully** - Initialization completed without errors
 - [ ] **Three branches exist** - `main`, `fork_upstream`, `fork_integration`
-- [ ] **Workflows active** - All 5 workflows visible in Actions tab
-- [ ] **Secrets configured** - At minimum `UPSTREAM_REPO_URL` is set
+- [ ] **Workflows active** - All deployed fork workflows are visible in the Actions tab
+- [ ] **Variables configured** - `UPSTREAM_REPO_URL` and `INITIALIZATION_COMPLETE` are set
+- [ ] **GitHub App available** - Release App credentials support protected writes
 - [ ] **Protection enabled** - `main` branch requires PR reviews
 - [ ] **Initial sync works** - Manual upstream sync runs successfully
 - [ ] **Team permissions** - Team has appropriate repository access
 
 ## Next Steps
 
-1. **Configure upstream sync** - Set `UPSTREAM_REPO_URL` to target repository
+1. **Verify upstream sync** - Confirm `UPSTREAM_REPO_URL` matches the issue response
 2. **Run first sync** - Manually trigger upstream synchronization workflow
 3. **Set up notifications** - Configure team alerts for sync issues and PRs
 4. **Review documentation** - Read [synchronization](synchronization.md) and [cascade](cascade.md) workflows
@@ -139,5 +145,6 @@ The initialization process produces clear outcomes to guide your next steps:
 ## Related
 
 - [Synchronization Workflow](synchronization.md) - Next step after initialization
-- [Three-Branch Strategy](../decisions/adr_001_three_branch_strategy.md) - Branching architecture
-- [Security Setup](../decisions/adr_016_security.md) - Security configuration details
+- [Three-Branch Strategy](../adr/001-three-branch-strategy.md) - Branching architecture
+- [Initialization Security](../adr/016-initialization-security-handling.md) - Security configuration details
+- [ADR-038: Upstream Filter Transform](../adr/038-upstream-filter-transform.md) - Filter and Azure seeding model

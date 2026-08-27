@@ -1,6 +1,6 @@
 # AI Integration Architecture
 
-The OSDU SPI Fork Management system incorporates sophisticated AI capabilities to enhance development workflows while maintaining reliability and cost-effectiveness. This integration provides intelligent analysis, automated documentation generation, and enhanced decision-making support throughout the fork management lifecycle.
+The OSDU SPI Fork Management system uses optional Azure AI generation in synchronization workflows. AI improves commit messages and PR descriptions, but the sync, filter, cascade, build, and release paths do not depend on it.
 
 ## AI Integration Philosophy
 
@@ -40,7 +40,7 @@ The OSDU SPI Fork Management system incorporates sophisticated AI capabilities t
 
     ---
 
-    Intelligent usage patterns, caching, and fallback strategies control API costs while maximizing value from AI capabilities.
+    Diff-size limits, command timeouts, and template fallback bound AI usage without blocking synchronization.
 
 </div>
 
@@ -71,8 +71,8 @@ The system uses Azure Foundry as the primary AI provider with graceful fallback 
 
 | Provider | Priority | Integration Method | Key Capabilities | Typical Use Cases |
 |----------|----------|-------------|---------------|---------------|
-| :material-microsoft-azure: **Azure Foundry** | Primary | Azure API + Enterprise features | Enterprise integration, compliance, GPT-4o access | All AI-enhanced workflows |
-| :material-file-document: **Template Fallback** | Fallback | Structured templates | Consistent output, zero-cost operation | When Azure unavailable |
+| :material-microsoft-azure: **Azure Foundry** | Primary | AIPR with Azure credentials | Sync commit messages and PR descriptions | Upstream and template synchronization |
+| :material-file-document: **Template Fallback** | Fallback | Workflow-owned Markdown | Consistent output without API access | Missing credentials, oversized diffs, timeouts, or API failures |
 
 ## AI Enhancement Points
 
@@ -84,9 +84,7 @@ AI-generated PR descriptions provide comprehensive change analysis:
 # AI-powered PR description generation
 - Change categorization (feat, fix, chore, etc.)
 - Impact analysis
-- Security vulnerability assessment
 - Breaking change detection
-- Review recommendations
 ```
 
 ### Commit Message Generation
@@ -97,18 +95,6 @@ Intelligent conventional commit messages from changesets:
 # AI analyzes changes and generates conventional commit
 # Input: Git diff
 # Output: "feat(sync): add duplicate PR prevention logic"
-```
-
-### Security Analysis
-
-AI-powered triage of vulnerability scans:
-
-```yaml
-# Trivy scan results → AI analysis → Actionable insights
-- Vulnerability severity assessment
-- Exploitation likelihood analysis
-- Mitigation recommendations
-- Priority ranking for remediation
 ```
 
 ## Implementation Patterns
@@ -160,28 +146,19 @@ graph TD
 secrets:
   AZURE_API_KEY:         # Azure Foundry API key (required for AI features)
   AZURE_API_BASE:        # Azure endpoint URL (required for AI features)
-  AZURE_API_VERSION:     # API version (required for AI features)
+  AZURE_API_VERSION:     # Optional API version
 
 # Access Control
 - Repository-level secrets
-- Environment-specific configurations
-- Audit logging for all AI API usage
-- Rotation reminders via GitHub notifications
 ```
 
 ### Data Privacy
 
-```yaml
-# Data handling practices
-- No sensitive data in AI prompts
-- Sanitize repository contents before AI processing
-- Use ephemeral environments for AI operations
-- Clear AI context after each workflow run
-```
+Azure credentials are passed as GitHub secrets and are not available to the fallback path. The sync workflow limits AI description generation to diffs below 20,000 lines and runs AIPR with a timeout; larger or failed requests use the local template instead.
 
 
 ## Related Documentation
 
-- [ADR-014: AI-Enhanced Development Workflow](../decisions/adr_014_ai_integration.md)
+- [ADR-014: AI-Enhanced Development Workflow](../adr/014-ai-enhanced-development-workflow.md)
 - [Workflow System Architecture](./workflow_system.md)
-- [Security Architecture](./security.md)
+- [Synchronization Workflow](../workflows/synchronization.md)
