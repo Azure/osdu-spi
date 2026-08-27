@@ -92,7 +92,7 @@ graph TD
     A -->|Fork| B
     
     subgraph Azure["Azure SPI Repository"]
-        B[fork_upstream<br/>Mirror]
+        B[fork_upstream<br/>Filtered]
         B --> C[fork_integration<br/>Conflict Resolution]
         C --> D[main<br/>Azure SPI Ready]
     end

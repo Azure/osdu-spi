@@ -31,10 +31,14 @@ https://gitlab.company.com/group/repository-name
 ### What happens during initialization?
 
 - Configure the three-branch structure (`main`, `fork_upstream`, `fork_integration`)
+- Generate a filtered `fork_upstream` containing only the shared upstream code
+- Seed the fork-owned Azure provider and test trees onto `main`
 - Set up branch protection rules
 - Configure upstream repository connection
 - Enable automated sync workflows
 - Set up security scanning and dependabot
+
+> **Nonconventional services**: the filter configuration is generated from a template using the upstream repository name. If this service's Maven module prefix differs from that name, or its upstream layout deviates from the conventional shape, commit a complete `.github/upstream-filter.yml` to `main` before replying; initialization will use it instead.
 
 ---
 

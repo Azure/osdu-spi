@@ -471,4 +471,78 @@ GEN_OUT2="$TMP/generate2.env"
 [ "$tree" = "$TREE1" ] || die "two plumbing runs produced different trees"
 ok "merge-shaped commit with trailers, clean checkout, deterministic tree"
 
+note "plumbing: first generation with no base is a single-parent commit"
+GEN_OUT3="$TMP/generate3.env"
+(cd "$PLUMB" && bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$CONFIG" "$GEN_OUT3")
+# shellcheck disable=SC1090
+. "$GEN_OUT3"
+[ "${has_changes:-}" = "true" ] || die "first generation reported no changes"
+FIRST_COMMIT="$commit"
+PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$FIRST_COMMIT" | wc -w | tr -d ' ')
+[ "$PARENTS" = "2" ] || die "first-generation commit is not single-parent"
+[ "$(git -C "$PLUMB" rev-parse "$FIRST_COMMIT^")" = "$UP_SHA" ] || die "first-generation parent is not the upstream tip"
+git -C "$PLUMB" cat-file -p "$FIRST_COMMIT" | grep -q "Upstream-Sha: $UP_SHA" || die "Upstream-Sha trailer missing from first generation"
+git -C "$PLUMB" cat-file -p "$FIRST_COMMIT" | grep -q "Filter-Rev: $filter_rev" || die "Filter-Rev trailer missing from first generation"
+[ "$tree" = "$TREE1" ] || die "first generation produced a different tree"
+GEN_OUT4="$TMP/generate4.env"
+(cd "$PLUMB" && bash "$(dirname "$ENGINE")/generate-branch.sh" "$FIRST_COMMIT" "$UP_SHA" "$CONFIG" "$GEN_OUT4")
+# shellcheck disable=SC1090
+. "$GEN_OUT4"
+[ "${has_changes:-}" = "false" ] || die "retry against the first generation did not converge"
+ok "single-parent first generation; retry converges to no changes"
+
+note "seed-source: extracts trees, surviving a deletion through an ours-merge"
+SSR="$TMP/seed-source-repo"
+rm -rf "$SSR"
+git init -q "$SSR"
+git -C "$SSR" config user.name harness
+git -C "$SSR" config user.email harness@local
+cp -R "$FIXTURE/." "$SSR/"
+rm -rf "$SSR/provider"
+git -C "$SSR" add -A -f
+git -C "$SSR" commit -qm "mainline without provider trees"
+git -C "$SSR" checkout -q -b azure-src
+cp -R "$FIXTURE/provider" "$SSR/provider"
+git -C "$SSR" add -A -f
+git -C "$SSR" commit -qm "add provider trees"
+SIDE_SHA=$(git -C "$SSR" rev-parse HEAD)
+git -C "$SSR" checkout -q -
+git -C "$SSR" merge -q -s ours --no-ff -m "drop provider through a merge" azure-src
+TIP_SHA=$(git -C "$SSR" rev-parse HEAD)
+# The trap seed-source.sh exists for: simplified history hides the deletion.
+[ -z "$(git -C "$SSR" rev-list -1 "$TIP_SHA" -- provider/demo-azure)" ] || die "expected simplified history to return nothing for the merge-deleted tree"
+SS_OUT="$TMP/seed-source.env"
+(cd "$SSR" && RUNNER_TEMP="$TMP/seed-source-scratch" bash "$(dirname "$ENGINE")/seed-source.sh" HEAD demo "$SS_OUT")
+# shellcheck disable=SC1090
+. "$SS_OUT"
+[ -f "$seed_dir/provider/demo-azure/pom.xml" ] || die "provider tree missing from the seed source"
+[ -f "$seed_dir/testing/demo-test-azure/pom.xml" ] || die "testing tree missing from the seed source"
+[ "$provider_sha" = "$SIDE_SHA" ] || die "provider tree not taken from the deletion commit's surviving parent"
+[ "$testing_sha" = "$TIP_SHA" ] || die "testing tree not taken from the tip"
+ok "merge-deleted tree resolved via the deletion commit's parents; split sources composed"
+
+note "template config: substituted for demo, generates the fixture cleanly"
+TTC="$TMP/template-config.yml"
+sed "s|<service>|demo|g" "$HERE/../../fork-resources/upstream-filter.yml" > "$TTC"
+# archive-metadata.txt is a fixture-only file (export-subst probe), not part of
+# the conventional service shape the template describes.
+replace_in_file "$TTC" "top_level:" "top_level:
+  archive-metadata.txt: keep"
+TGEN="$TMP/template-gen"
+fresh_copy "$TGEN"
+engine --mode generate --config "$TTC" --checkout "$TGEN" --report "$TMP/template-gen.json" > /dev/null
+[ -f "$TGEN/demo-core/pom.xml" ] || die "template config stripped demo-core"
+[ ! -d "$TGEN/provider" ] || die "template config kept provider/"
+grep -q "<module>provider/demo-azure</module>" "$TGEN/pom.xml" || die "template config azure profile injection missing"
+ok "fork-resources template aligns with the conventional fixture"
+
+note "halt: stamp refuses a literal one reference bumps and another keeps"
+HAM="$TMP/stamp-ambiguous"
+rm -rf "$HAM"
+cp -R "$GEN1" "$HAM"
+engine --mode seed --config "$CONFIG" --checkout "$HAM" --seed-source "$FIXTURE" > /dev/null
+replace_in_file "$HAM/testing/demo-test-core/pom.xml" "0.31.0-SNAPSHOT" "0.32.0-SNAPSHOT"
+expect_halt "identity collision halts instead of silently rewriting" STAMP_AMBIGUOUS "$TMP/h11.json" \
+  engine --mode stamp --config "$CONFIG" --checkout "$HAM" --report "$TMP/h11.json"
+
 printf '\nAll upstream-filter harness checks passed.\n'

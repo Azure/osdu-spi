@@ -48,7 +48,7 @@ The transform separates source ownership:
 | **Removed** | Provider source, `core-plus`, `devops/`, non-Azure tests, and upstream CI files |
 | **Fork-owned** | Azure provider and Azure test source, `.github/`, and the canonical `build/` assets |
 
-The fork-owned Azure trees live on `main` and `fork_integration`; they are deliberately absent from `fork_upstream`. The per-service `.github/upstream-filter.yml` classifies upstream content. Because the generic initializer does not yet create that file, a new fork must install it and verify the Azure trees before its first filtered sync. A new unclassified shared module stops the sync so maintainers can explicitly keep or remove it.
+The fork-owned Azure trees live on `main` and `fork_integration`; they are deliberately absent from `fork_upstream`. The per-service `.github/upstream-filter.yml` classifies upstream content. Initialization plants it from the template's `.github/fork-resources/upstream-filter.yml` with `<service>` substitution, and it is fork-owned from then on. A new unclassified shared module stops the sync so maintainers can explicitly keep or remove it.
 
 ## Workflow Outcomes
 

@@ -137,6 +137,14 @@ New fork initialization is frozen from now until this lands. A fork created befo
 
 **Exit:** a sandbox fork initializes from scratch with a filtered `fork_upstream` and seeded Azure trees, with no cutover.
 
+Implementation notes, recorded as shipped:
+
+- The config is materialized exactly once per run into the runner's temp directory, from a hand-planted `.github/upstream-filter.yml` on `main` when one exists (the escape hatch for nonconventional services), else by `<service>` substitution of the fork-resources template. Generation, seeding, stamping, and the planted copy all read that one file, so the planted config always matches the first commit's `Filter-Rev`.
+- The first generation is a single-parent commit on the upstream tip: `generate-branch.sh` accepts an empty base and skips the no-change comparison. A retried run finds the pushed branch, passes it as the base, and converges as an ordinary incremental generation; `fork_upstream` is never force-pushed.
+- Seeding, stamping, and config planting happen on `fork_integration` between the sync-config apply and its push, so the seed rides the existing `-X theirs` merge to `main`, the push-protection handler covers its push, and the branch compiles with the azure profile from day one.
+- `seed-source.sh` resolves each Azure tree independently against the newest commit containing it, walking the deletion commit's parents when simplified history returns nothing. The seed commit records both source SHAs as trailers.
+- A run that fails after `INITIALIZATION_COMPLETE` is set resumes with configuration steps only, because settings-apply may already have armed the rulesets that would reject the branch pushes.
+
 ## Risks
 
 **No compiler sees the generated tree before `main`.** A filter bug that produces a structurally plausible but wrong pom reaches production unopposed. Retired in Phase 2 on an unfiltered tree for roughly ten minutes of CI, where a failure means the build configuration is wrong rather than the filter. A second free gate already exists and is unused: pushing the restore commit to `fork_integration` triggers validation on that branch.

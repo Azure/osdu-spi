@@ -51,6 +51,7 @@ graph TD
     - Excludes provider source, `core-plus`, `devops/`, non-Azure tests, and upstream CI files
     - Injects POM references to Azure modules that exist only on the fork-owned branches
     - Halts when new shared content is not classified
+    - Filtered from its first generation: initialization generates the branch through the engine, so the fork never carries a verbatim mirror and the Azure trees never enter the merge base
 
 </div>
 
