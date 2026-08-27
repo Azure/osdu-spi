@@ -448,27 +448,28 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          git fetch origin
+          # A fork PR's head branch does not exist on origin; the base repo
+          # advertises every PR head at refs/pull/<n>/head, so fetch that.
           BASE_BRANCH="origin/$BASE_REF"
-          CURRENT_BRANCH="origin/$HEAD_REF"
+          CURRENT_BRANCH="refs/remotes/origin/pr-$PR_NUMBER-head"
 
           git fetch origin "$BASE_REF"
-          git fetch origin "$HEAD_REF"
-          
+          git fetch origin "+refs/pull/$PR_NUMBER/head:$CURRENT_BRANCH"
+
           if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
             echo "::error::Base branch $BASE_BRANCH not found"
             exit 1
           fi
 
           if ! git rev-parse --verify "$CURRENT_BRANCH" >/dev/null 2>&1; then
-            echo "::error::Current branch $CURRENT_BRANCH not found"
+            echo "::error::Head of PR #$PR_NUMBER not found at $CURRENT_BRANCH after fetching refs/pull/$PR_NUMBER/head"
             exit 1
           fi
 
           BEHIND_BY=$(git rev-list --count "$CURRENT_BRANCH..$BASE_BRANCH")
-          
+
           if [ "$BEHIND_BY" -gt 0 ]; then
             echo "::error::Branch is behind $BASE_BRANCH by $BEHIND_BY commits. Please update your branch."
             exit 1
@@ -511,7 +512,11 @@ jobs:
           echo "items=$(echo "$ITEMS" | jq -c '.')" >> $GITHUB_OUTPUT
 
       - name: "Post PR Status"
-        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        # Post only from contexts whose token can comment: pull_request_target runs
+        # (job-level gates already restrict those to same-repo heads) and pull_request
+        # runs from same-repo heads. Fork-head pull_request tokens are read-only, so
+        # external-fork PRs get no status comment.
+        if: github.event_name == 'pull_request_target' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: ./.github/actions/pr-status
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
