@@ -49,7 +49,7 @@ What it does, in order:
 
 1. Refuses if the repository is already initialized (`INITIALIZATION_COMPLETE` is set). This protects first-tier forks, which also carry this workflow.
 2. Mints a token from your App and detects the upstream from the fork's GitHub parent.
-3. Creates `fork_upstream` and `fork_integration` at the fork point, where all three branches are identical by construction.
+3. Creates `fork_upstream` and `fork_integration` at the merge base with the upstream's default branch: the tip itself on a fresh fork, the fork point on a fork whose `main` was already customized. Local commits stay local instead of being reverted by the first sync.
 4. Creates the system labels the sync and cascade machinery uses.
 5. Sets `UPSTREAM_REPO_URL` and `SYNC_MODE=mirror`.
 6. Applies the branch rulesets (the deploy and integration-test required checks are automatically stripped because the deploy-tier credentials are absent).
@@ -73,4 +73,4 @@ What it does, in order:
 - **Container images**: builds publish to your own namespace, `ghcr.io/<your-org>`, automatically. No registry configuration is needed for the default GHCR flow.
 - **Contribution PRs**: the first PR a new contributor opens against the parent requires a maintainer there to approve the workflow run before checks execute. Credential-bearing jobs never run for external heads regardless; build and validation give the real signal.
 - **`scorecard.yml`**: inherited but guarded to the template's own repository name; it is inert on your fork.
-- **Adopt before customizing**: run adoption and the first sync before making local changes to `main`, so your first sync PR is a clean mirror rather than a mixture of mirror and local edits.
+- **Adopt before customizing** (recommended, not required): adoption pins the sync branches at the merge base with the upstream, so local commits made before adoption stay local instead of being reverted by the first sync. They still become standing differences that surface in every cascade until contributed upstream or reverted.

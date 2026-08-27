@@ -82,16 +82,28 @@ jobs:
           echo "upstream_url=$UPSTREAM_URL" >> "$GITHUB_OUTPUT"
           echo "Upstream: $UPSTREAM_URL"
 
-      - name: Create sync branches at the fork point
+      - name: Create sync branches at the merge base with upstream
+        env:
+          UPSTREAM_URL: ${{ steps.upstream.outputs.upstream_url }}
         run: |
-          # At fork creation main equals the parent's main tip; that commit is
-          # the mirror point where all three branches begin.
+          # Pin both branches at the merge base with the upstream's default
+          # branch: for a fresh fork that is HEAD itself, and for a fork whose
+          # main was customized before adoption it is the fork point. Local
+          # commits must never enter the fork_upstream lineage, or the first
+          # mirror sync's three-way merge would revert them off main.
+          git fetch "$UPSTREAM_URL" HEAD
+          MERGE_BASE=$(git merge-base HEAD FETCH_HEAD || true)
+          if [ -z "$MERGE_BASE" ]; then
+            echo "::error::No common history with $UPSTREAM_URL. Customer-tier adoption requires a true fork of the upstream repository."
+            exit 1
+          fi
+          echo "Merge base with upstream: $MERGE_BASE"
           for b in fork_upstream fork_integration; do
             if git ls-remote --exit-code origin "refs/heads/$b" >/dev/null 2>&1; then
               echo "Branch $b already exists - skipping"
             else
-              git push origin "HEAD:refs/heads/$b"
-              echo "Created $b at $(git rev-parse HEAD)"
+              git push origin "$MERGE_BASE:refs/heads/$b"
+              echo "Created $b at $MERGE_BASE"
             fi
           done
 

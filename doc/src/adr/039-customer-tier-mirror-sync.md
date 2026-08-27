@@ -52,7 +52,7 @@ Validation regains coverage instead. At the first tier, sync PRs build `core` on
 
 A fork of an initialized repository needs no content: `main` is the parent's `main` at fork time, and it carries the engine, the rulesets, the label definitions, and the settings scripts. What it lacks is state. The shipped `Adopt Fork` workflow (`workflow_dispatch`) supplies it:
 
-- `fork_upstream` and `fork_integration` created at the fork point, where all three branches are by definition identical
+- `fork_upstream` and `fork_integration` created at the merge base with the upstream's default branch: for a fresh fork that is the tip itself, and for a fork whose `main` was customized before adoption it is the fork point. Pre-adoption local commits must never enter the `fork_upstream` lineage, or the first mirror sync's three-way merge would revert them off `main`
 - the system labels from `.github/labels.json`
 - the branch rulesets via the same idempotent script the settings cadence uses
 - repository settings the cascade depends on (auto-merge, merge commits)
