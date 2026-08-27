@@ -42,9 +42,10 @@ jobs:
       - name: Check App credentials
         env:
           APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          APP_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
         run: |
-          if [ -z "$APP_ID" ]; then
-            echo "::error::RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY secrets are not set. Create your organization's GitHub App, install it on this repository, and add both secrets before adopting (see the Adoption guide)."
+          if [ -z "$APP_ID" ] || [ -z "$APP_KEY" ]; then
+            echo "::error::RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY secrets must both be set. Create your organization's GitHub App, install it on this repository, and add both secrets before adopting (see the Adoption guide)."
             exit 1
           fi
 
@@ -68,6 +69,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           INPUT_URL: ${{ inputs.upstream_repo_url }}
         run: |
+          set -euo pipefail
           if [ -n "$INPUT_URL" ]; then
             UPSTREAM_URL="$INPUT_URL"
           else
@@ -86,6 +88,7 @@ jobs:
         env:
           UPSTREAM_URL: ${{ steps.upstream.outputs.upstream_url }}
         run: |
+          set -euo pipefail
           # Pin both branches at the merge base with the upstream's default
           # branch: for a fresh fork that is HEAD itself, and for a fork whose
           # main was customized before adoption it is the fork point. Local
@@ -109,9 +112,10 @@ jobs:
 
       - name: Create system labels
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          labels=$(cat .github/labels.json | jq -r '.labels[] | @base64')
+          set -euo pipefail
+          labels=$(jq -r '.labels[] | @base64' .github/labels.json)
           for label in $labels; do
             _jq() {
               echo ${label} | base64 --decode | jq -r ${1}
@@ -132,6 +136,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           UPSTREAM_URL: ${{ steps.upstream.outputs.upstream_url }}
         run: |
+          set -euo pipefail
           gh variable set UPSTREAM_REPO_URL --body "$UPSTREAM_URL"
           gh variable set SYNC_MODE --body "mirror"
 
