@@ -491,6 +491,42 @@ GEN_OUT4="$TMP/generate4.env"
 [ "${has_changes:-}" = "false" ] || die "retry against the first generation did not converge"
 ok "single-parent first generation; retry converges to no changes"
 
+note "plumbing: mirror mode produces the verbatim upstream tree (ADR-039)"
+MIR_OUT="$TMP/mirror.env"
+(cd "$PLUMB" && SYNC_MODE=mirror bash "$(dirname "$ENGINE")/generate-branch.sh" "$BASE_SHA" "$UP_SHA" "$TMP/no-such-config.yml" "$MIR_OUT")
+# shellcheck disable=SC1090
+. "$MIR_OUT"
+[ "${has_changes:-}" = "true" ] || die "mirror generation reported no changes"
+[ "$filter_rev" = "mirror" ] || die "mirror filter_rev is not the sentinel"
+if grep -q '^report=' "$MIR_OUT"; then
+  die "mirror output carries a report= line"
+fi
+[ "$tree" = "$(git -C "$PLUMB" rev-parse "${UP_SHA}^{tree}")" ] || die "mirror tree is not the verbatim upstream tree"
+git -C "$PLUMB" ls-tree --name-only "$commit" | grep -qx "provider" || die "provider/ missing from the mirror tree"
+git -C "$PLUMB" ls-tree --name-only "$commit" | grep -qx "devops" || die "devops/ missing from the mirror tree"
+MIR_PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$commit" | wc -w | tr -d ' ')
+[ "$MIR_PARENTS" = "3" ] || die "mirror commit is not merge-shaped"
+git -C "$PLUMB" cat-file -p "$commit" | grep -q "Upstream-Sha: $UP_SHA" || die "Upstream-Sha trailer missing from mirror commit"
+git -C "$PLUMB" cat-file -p "$commit" | grep -q "Filter-Rev: mirror" || die "Filter-Rev sentinel missing from mirror commit"
+git -C "$PLUMB" cat-file -p "$commit" | grep -q "chore: mirror upstream tree" || die "mirror commit message is wrong"
+if [ -n "$(git -C "$PLUMB" status --porcelain)" ]; then
+  die "mirror plumbing dirtied the calling checkout"
+fi
+MIRROR_COMMIT="$commit"
+MIR_OUT2="$TMP/mirror2.env"
+(cd "$PLUMB" && SYNC_MODE=mirror bash "$(dirname "$ENGINE")/generate-branch.sh" "$MIRROR_COMMIT" "$UP_SHA" "$TMP/no-such-config.yml" "$MIR_OUT2")
+# shellcheck disable=SC1090
+. "$MIR_OUT2"
+[ "${has_changes:-}" = "false" ] || die "mirror retry against its own commit did not converge"
+MIR_OUT3="$TMP/mirror3.env"
+(cd "$PLUMB" && SYNC_MODE=mirror bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$TMP/no-such-config.yml" "$MIR_OUT3")
+# shellcheck disable=SC1090
+. "$MIR_OUT3"
+MIR_PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$commit" | wc -w | tr -d ' ')
+[ "$MIR_PARENTS" = "2" ] || die "mirror first generation is not single-parent"
+[ "$(git -C "$PLUMB" rev-parse "$commit^")" = "$UP_SHA" ] || die "mirror first-generation parent is not the upstream tip"
+ok "mirror mode: verbatim tree, sentinel trailer, no report, converges"
+
 note "seed-source: extracts trees, surviving a deletion through an ours-merge"
 SSR="$TMP/seed-source-repo"
 rm -rf "$SSR"

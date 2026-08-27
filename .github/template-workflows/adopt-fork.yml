@@ -1,0 +1,209 @@
+name: Adopt Fork
+
+# Customer-tier bootstrap (ADR-039). A GitHub fork of an initialized service
+# repository inherits every deployed workflow but none of the initialization
+# machinery (the init workflows are deleted at the parent's own init). This
+# workflow replaces initialization for such forks: it creates the sync branches
+# at the fork point, applies labels, rulesets, and merge settings, and arms
+# mirror-mode sync. It refuses to run on initialized repositories.
+#
+# Deliberately absent compared to initialization: no filtered generation or
+# seeding (the parent's main is already the finished product), no fork-resources
+# deploy and no .template-sync-commit or filter-config planting (template sync
+# is off at this tier; every file arrives through fork creation and the mirror),
+# no workflow deployment (inherited from the parent's main).
+#
+# Ordering is the idempotency design: INITIALIZATION_COMPLETE is both the entry
+# guard and the last mutation, so a partially failed run can simply be
+# re-dispatched and every completed step skips or reconciles.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_repo_url:
+        description: "Upstream repository URL (defaults to this fork's GitHub parent)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  adopt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse initialized repositories
+        if: vars.INITIALIZATION_COMPLETE == 'true'
+        run: |
+          echo "::error::This repository is already initialized. Adoption is only for fresh customer-tier forks (ADR-039)."
+          exit 1
+
+      - name: Check App credentials
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          APP_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_KEY" ]; then
+            echo "::error::RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY secrets must both be set. Create your organization's GitHub App, install it on this repository, and add both secrets before adopting (see the Adoption guide)."
+            exit 1
+          fi
+
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@67018539274d69449ef7c02e8e71183d1719ab42  # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout Repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Resolve upstream repository
+        id: upstream
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          INPUT_URL: ${{ inputs.upstream_repo_url }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_URL" ]; then
+            UPSTREAM_URL="$INPUT_URL"
+          else
+            PARENT=$(gh repo view "$GITHUB_REPOSITORY" --json parent \
+              --jq '.parent | if . then (.owner.login + "/" + .name) else empty end')
+            if [ -z "$PARENT" ]; then
+              echo "::error::This repository is not a GitHub fork and no upstream_repo_url was given. Customer-tier adoption requires a true fork of the service repository (contribution PRs must live in its fork network), or an explicit upstream_repo_url input."
+              exit 1
+            fi
+            UPSTREAM_URL="https://github.com/${PARENT}.git"
+          fi
+          echo "upstream_url=$UPSTREAM_URL" >> "$GITHUB_OUTPUT"
+          echo "Upstream: $UPSTREAM_URL"
+
+      - name: Create sync branches at the merge base with upstream
+        env:
+          UPSTREAM_URL: ${{ steps.upstream.outputs.upstream_url }}
+        run: |
+          set -euo pipefail
+          # Pin both branches at the merge base with the upstream's default
+          # branch: for a fresh fork that is HEAD itself, and for a fork whose
+          # main was customized before adoption it is the fork point. Local
+          # commits must never enter the fork_upstream lineage, or the first
+          # mirror sync's three-way merge would revert them off main.
+          git fetch "$UPSTREAM_URL" HEAD
+          MERGE_BASE=$(git merge-base HEAD FETCH_HEAD || true)
+          if [ -z "$MERGE_BASE" ]; then
+            echo "::error::No common history with $UPSTREAM_URL. Customer-tier adoption requires a true fork of the upstream repository."
+            exit 1
+          fi
+          echo "Merge base with upstream: $MERGE_BASE"
+          for b in fork_upstream fork_integration; do
+            if git ls-remote --exit-code origin "refs/heads/$b" >/dev/null 2>&1; then
+              echo "Branch $b already exists - skipping"
+            else
+              git push origin "$MERGE_BASE:refs/heads/$b"
+              echo "Created $b at $MERGE_BASE"
+            fi
+          done
+
+      - name: Create system labels
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          labels=$(jq -r '.labels[] | @base64' .github/labels.json)
+          for label in $labels; do
+            _jq() {
+              echo ${label} | base64 --decode | jq -r ${1}
+            }
+            name=$(_jq '.name')
+            description=$(_jq '.description')
+            color=$(_jq '.color')
+            # --force updates an existing label instead of erroring, while a
+            # real failure (permissions, rate limit) still fails the step
+            # before adoption finalizes, keeping the run re-dispatchable.
+            gh label create "$name" --force \
+              --description "$description" \
+              --color "$color"
+          done
+
+      - name: Set repository variables
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          UPSTREAM_URL: ${{ steps.upstream.outputs.upstream_url }}
+        run: |
+          set -euo pipefail
+          gh variable set UPSTREAM_REPO_URL --body "$UPSTREAM_URL"
+          gh variable set SYNC_MODE --body "mirror"
+
+      - name: Apply branch rulesets
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          bash .github/scripts/settings-apply/setup-rulesets.sh "$GITHUB_REPOSITORY"
+
+      - name: Verify rulesets applied
+        run: |
+          # setup-rulesets.sh exits 0 on API failures and reports only through
+          # RULESET_SUCCESS (its settings-cadence contract). Adoption must not
+          # finalize with unprotected branches: the entry guard would then
+          # block the re-dispatch that could repair them.
+          if [ "${RULESET_SUCCESS:-}" != "true" ]; then
+            echo "::error::Ruleset reconciliation failed (see the step above). Fix the cause and re-dispatch; adoption has not finalized."
+            exit 1
+          fi
+
+      - name: Enable merge settings
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Cascade release PRs arm auto-merge with the merge-commit method.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY" \
+            -F allow_auto_merge=true -F allow_merge_commit=true > /dev/null
+          echo "Enabled auto-merge and merge commits"
+
+      - name: Enable security settings
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          if [ -f .github/security-on.json ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY" --input .github/security-on.json > /dev/null \
+              && echo "Security settings enabled" \
+              || echo "::warning::Could not enable security settings; enable secret scanning and push protection manually"
+          else
+            echo "::warning::.github/security-on.json not found - enable secret scanning and push protection manually"
+          fi
+
+      - name: Finalize adoption
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh variable set INITIALIZATION_COMPLETE --body "true"
+
+      - name: Write summary
+        env:
+          UPSTREAM_URL: ${{ steps.upstream.outputs.upstream_url }}
+        run: |
+          {
+            echo "## Fork adopted (customer tier)"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Upstream | \`$UPSTREAM_URL\` |"
+            echo "| Sync mode | \`mirror\` |"
+            echo "| Branches | \`fork_upstream\`, \`fork_integration\` at the fork point |"
+            echo "| Variables | \`UPSTREAM_REPO_URL\`, \`SYNC_MODE\`, \`INITIALIZATION_COMPLETE\` |"
+            echo "| Rulesets | default and integration branch protection |"
+            echo "| Settings | auto-merge and merge commits enabled |"
+            echo ""
+            echo "### Next steps"
+            echo ""
+            echo "1. Set build secrets if this is an OSDU Java service: \`GITLAB_TOKEN\`, \`OPENGROUP_MAVEN_USERNAME\`, \`OPENGROUP_MAVEN_TOKEN\`."
+            echo "2. Optionally set \`AZURE_API_KEY\`, \`AZURE_API_BASE\`, \`AZURE_API_VERSION\` for AI-enhanced PR descriptions."
+            echo "3. Replace or delete the inherited \`CODEOWNERS\` file."
+            echo "4. Dispatch the \`Sync Upstream\` workflow to pull the first mirror sync."
+          } >> "$GITHUB_STEP_SUMMARY"

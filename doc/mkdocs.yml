@@ -116,10 +116,12 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Three-Branch Strategy: architecture/three_branch_strategy.md
+      - Fork Tiers: architecture/fork_tiers.md
       - Workflow System: architecture/workflow_system.md
       - AI Integration: architecture/ai_integration.md
   - Workflows:
       - Initialization: workflows/initialization.md
+      - Adoption: workflows/adoption.md
       - Synchronization: workflows/synchronization.md
       - Cascade: workflows/cascade.md
       - Validation: workflows/validation.md

@@ -52,6 +52,7 @@ Decisions for synchronizing with upstream repositories and integrating changes:
 | [023](023-meta-commit-strategy-for-release-please.md) | **Meta Commit Strategy** | :material-trending-up: High |
 | [024](024-sync-workflow-duplicate-prevention-architecture.md) | **Duplicate Prevention Architecture** | :material-minus: Medium |
 | [038](038-upstream-filter-transform.md) | **Upstream Filter Transform** | :material-star: Critical |
+| [039](039-customer-tier-mirror-sync.md) | **Customer-Tier Mirror Sync** | :material-trending-up: High |
 
 ### :material-label-outline: State Management & Tracking
 

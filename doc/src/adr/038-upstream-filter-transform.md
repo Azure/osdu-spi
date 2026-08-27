@@ -131,6 +131,7 @@ Re-enabling `cascade-monitor` lets `cascade.yml`'s already-merged check pick up 
 
 ### Neutral
 
+- Customer-tier forks consume the already filtered `main` of a service repository and mirror it verbatim (ADR-039). The filter runs exactly once per change, at this tier.
 - `<svc>-acceptance-test` is unaffected. It declares no `<parent>` and belongs to no root pom profile.
 - `testing/<svc>-test-azure` depends only on `testing/<svc>-test-core` plus published artifacts in every service surveyed, so the kept pair is self-contained.
 - `pom.xml` and `testing/pom.xml` stay upstream-owned. Making them fork-owned would end the injection problem but cut off upstream's `dependencyManagement`, plugin, and Java-version updates.

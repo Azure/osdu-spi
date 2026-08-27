@@ -7,6 +7,10 @@ on:
 
 jobs:
   sync:
+    # Customer-tier mirror forks receive workflow and configuration updates
+    # through the mirror of their parent repository, never directly from the
+    # template; a second delivery channel would oscillate against it (ADR-039).
+    if: vars.SYNC_MODE != 'mirror'
     runs-on: ubuntu-latest
     permissions:
       contents: write

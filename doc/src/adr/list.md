@@ -231,3 +231,8 @@ These Architecture Decision Records document the key design choices made in the 
 - Allow-list with halt-on-unknown (exit 2) strips non-Azure providers, `<svc>-core-plus`, all of `devops/`, non-Azure `testing/` modules, and `.gitlab-ci.yml` (274 of 421 files discarded on the partition reference fork; 88 remain on `fork_upstream`)
 - `provider/<svc>-azure` and `testing/<svc>-test-azure` are seeded once and become fork-owned (upstream is deleting them). The root pom `azure` profile and `testing/pom.xml` module line are filter-injected each sync, while the cascade stamps the fork-owned poms on `fork_integration` under a post-condition: no pre-bump upstream version string survives
 
+**Customer-Tier Forks and Mirror-Mode Sync (ADR-039)**
+- A second fork tier: a consumer org's true GitHub fork of a service repository (fork network required for contribution PRs) live-syncs the parent's already-filtered `main` verbatim; the `SYNC_MODE=mirror` repository variable selects the tier because file presence cannot (the filter config itself arrives through the mirror)
+- Mirror generation reuses the generate-not-merge plumbing (verbatim upstream tree, merge-shaped commit, `Upstream-Sha` trailer, sentinel `Filter-Rev: mirror`); the filter engine never runs, and the cascade's fork-owned-path assertion and pom stamp plus the entire template sync are gated off (one delivery channel: the mirror)
+- The shipped `Adopt Fork` workflow replaces initialization for forks of forks: branches at the fork point, labels, rulesets, merge settings, and variables via the consumer's own GitHub App, refusing wherever `INITIALIZATION_COMPLETE` is already true
+

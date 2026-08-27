@@ -291,22 +291,24 @@ jobs:
           generate_coverage: ${{ github.event_name == 'pull_request' }}
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
           # core is activeByDefault, so a bare profile flag would drop it; MAVEN_PROFILE
-          # overrides for services that deviate (e.g. indexer-queue). fork_upstream builds
-          # core only: it is a provider-less tree whose azure profile points at fork-owned
-          # directories that exist only after the cascade merge.
-          maven_profile: ${{ (github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
+          # overrides for services that deviate (e.g. indexer-queue). In filter mode
+          # fork_upstream builds core only: it is a provider-less tree whose azure profile
+          # points at fork-owned directories that exist only after the cascade merge. In
+          # mirror mode (ADR-039) fork_upstream carries provider/, so the full profile runs.
+          maven_profile: ${{ ((github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && vars.SYNC_MODE != 'mirror') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
 
   docker-build:
     # Validate-only worker. NOT the required check — the required "🐳 Docker Build" context is the
     # summary job below (docker-build-required), which reports once even when this job is skipped.
-    # Skipped for fork_upstream targets: that branch builds core only, so the Azure JAR the
-    # Dockerfile packages does not exist there.
+    # Skipped for filter-mode fork_upstream targets: that branch builds core only, so the Azure
+    # JAR the Dockerfile packages does not exist there. In mirror mode (ADR-039) fork_upstream
+    # carries provider/ and java-build produced the JAR, so the image is validated too.
     name: "🐳 Docker Build (validate)"
     needs: [check-initialization, check-repo-state, java-build]
     if: |
       needs.java-build.outputs.build_result == 'success' &&
-      github.base_ref != 'fork_upstream' &&
-      github.ref_name != 'fork_upstream'
+      (vars.SYNC_MODE == 'mirror' ||
+       (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream'))
     runs-on: ubuntu-latest
     permissions:
       contents: read          # no packages: write — runs untrusted Dockerfile content
