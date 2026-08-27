@@ -7,7 +7,7 @@
 
 The cascade workflow needs to be triggered when upstream changes are merged into the `fork_upstream` branch. However, experience has shown that automatic triggering creates reliability and usability issues:
 
-1. **Event Trigger Limitations**: `pull_request_target` events require workflows to exist on the target branch (`fork_upstream`), but this branch is a pure mirror without workflow files
+1. **Event Trigger Limitations**: `pull_request_target` events require workflows to exist on the target branch (`fork_upstream`), but this branch is a generated upstream tree without workflow files
 2. **Human Control**: Teams want explicit control over when integration happens, not automatic triggering
 3. **Timing Control**: Humans may want to batch multiple changes or time integrations appropriately
 4. **Visibility Requirements**: Clear audit trails and progress tracking are needed throughout the cascade lifecycle

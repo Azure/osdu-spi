@@ -11,6 +11,10 @@
 # Usage:
 #   generate-branch.sh <base_sha> <upstream_sha> <config_path> <out_file>
 #
+# An empty <base_sha> is the first generation: no fork_upstream tip exists yet,
+# so the no-change comparison is skipped and the commit carries the upstream
+# tip as its only parent. Every later generation is merge-shaped as above.
+#
 # Writes key=value lines to <out_file>:
 #   filter_rev=<engine version + config hash>
 #   report=<path to the engine's JSON report>
@@ -72,12 +76,17 @@ TREE=$(GIT_INDEX_FILE="$SCRATCH" git write-tree)
   echo "tree=$TREE"
 } > "$OUT"
 
-if [ "$TREE" = "$(git rev-parse "${BASE_SHA}^{tree}")" ]; then
+if [ -n "$BASE_SHA" ] && [ "$TREE" = "$(git rev-parse "${BASE_SHA}^{tree}")" ]; then
   echo "has_changes=false" >> "$OUT"
   exit 0
 fi
 
-COMMIT=$(git commit-tree "$TREE" -p "$BASE_SHA" -p "$UPSTREAM_SHA" \
+PARENTS=()
+if [ -n "$BASE_SHA" ]; then
+  PARENTS+=(-p "$BASE_SHA")
+fi
+PARENTS+=(-p "$UPSTREAM_SHA")
+COMMIT=$(git commit-tree "$TREE" "${PARENTS[@]}" \
   -m "chore: generate filtered upstream tree" \
   -m "Upstream-Sha: $UPSTREAM_SHA
 Filter-Rev: $FILTER_REV")

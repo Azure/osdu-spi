@@ -3,6 +3,8 @@
 ## Status
 **Accepted** - 2025-10-01
 
+**Amended by [ADR-038](038-upstream-filter-transform.md)** - 2026-08-27: `fork_upstream` is no longer a verbatim mirror. It is a generated tree containing only the shared upstream code the Azure SPI consumes, filtered from its first generation at initialization.
+
 ## Context
 When maintaining a long-lived fork of an upstream repository, teams need to balance staying current with upstream changes while preserving their own modifications. Traditional forking approaches often lead to complex merge conflicts, difficulty tracking upstream changes, and challenges in maintaining a stable release branch.
 
@@ -17,14 +19,14 @@ The system needs to support:
 Implement a three-branch strategy for fork management:
 
 1. **`main`** - Stable production branch containing successfully integrated changes
-2. **`fork_upstream`** - Tracks the upstream repository's main branch exactly
+2. **`fork_upstream`** - Tracks the upstream repository's main branch (since ADR-038, as a generated tree filtered to the shared code the fork consumes)
 3. **`fork_integration`** - Validation workspace for conflict resolution and comprehensive testing of upstream changes
 
 ## Rationale
 
 ### Branch Purposes
 - **`main`**: Protected branch that only receives changes through PRs, ensuring stability
-- **`fork_upstream`**: Clean tracking of upstream without local modifications, enabling clear diff analysis
+- **`fork_upstream`**: Upstream-owned content without local modifications, enabling clear diff analysis
 - **`fork_integration`**: Dedicated space for conflict resolution and comprehensive validation (build, test, lint) without affecting stable branches
 
 ### Workflow Benefits

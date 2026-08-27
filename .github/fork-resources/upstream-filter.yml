@@ -1,0 +1,83 @@
+# Per-service upstream filter config (ADR-038), planted at fork initialization
+# with <service> substituted from the upstream repository name.
+# Every upstream top-level entry, testing/ entry, root pom profile, and
+# .fossa.yml module must appear here: the engine halts rather than guess.
+# Entries absent from a given upstream tree are inert, so this file carries the
+# superset of the conventional OSDU service shape. A service that deviates
+# maintains its own copy of this file on the fork's main branch.
+service: <service>
+
+top_level:
+  .dockerignore: keep
+  .editorconfig: keep
+  .fossa.yml: keep
+  .gitattributes: keep
+  .gitignore: keep
+  .gitlab-ci.yml: strip
+  .mvn: keep
+  LICENSE: keep
+  NOTICE: keep
+  README.md: keep
+  docs: keep
+  pom.xml: keep
+  <service>-acceptance-test: keep
+  <service>-core: keep
+  <service>-core-plus: strip
+
+testing:
+  INTEGRATION-TESTS.md: keep
+  README.md: keep
+  maven: keep
+  pom.xml: keep
+  <service>-test-core: keep
+  <service>-test-azure: fork
+  <service>-test-aws: strip
+  <service>-test-baremetal: strip
+  <service>-test-core-plus: strip
+  <service>-test-gc: strip
+  <service>-test-gcp: strip
+  <service>-test-ibm: strip
+
+profiles:
+  Default: keep
+  core: keep
+  azure: inject
+  aws: strip
+  gc: strip
+  gcp: strip
+  ibm: strip
+
+fossa_modules:
+  <service>: keep
+  <service>-core: keep
+  <service>-core-plus: strip
+  <service>-azure: strip
+  <service>-aws: strip
+  <service>-gc: strip
+  <service>-gcp: strip
+  <service>-ibm: strip
+
+expected_kept:
+  - pom.xml
+  - <service>-core
+  - testing/<service>-test-core
+
+expected_absent:
+  - provider
+  - devops
+  - <service>-core-plus
+  - .gitlab-ci.yml
+  - testing/<service>-test-azure
+  - testing/<service>-test-aws
+  - testing/<service>-test-core-plus
+
+inject_root_pom_azure_profile: |
+      <profile>
+        <id>azure</id>
+        <modules>
+          <module>provider/<service>-azure</module>
+        </modules>
+      </profile>
+
+inject_testing_pom_azure_module: |
+      <module><service>-test-azure</module>

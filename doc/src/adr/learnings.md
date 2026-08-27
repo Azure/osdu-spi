@@ -36,7 +36,7 @@ graph LR
 
 | Branch | Purpose | Can Break? | Team Impact |
 |--------|---------|------------|-------------|
-| `fork_upstream` | Pure mirror | No | Zero - accumulates until you're ready |
+| `fork_upstream` | Generated upstream tree | No | Zero - accumulates until you're ready |
 | `fork_integration` | Validation workspace | Yes | Zero - isolated from production |
 | `main` | Protected production | Never | Zero - only receives validated changes |
 

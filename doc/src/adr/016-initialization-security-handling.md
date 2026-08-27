@@ -38,20 +38,10 @@ REPO_SETTINGS=$(gh api "/repos/${{ github.repository }}")
 PUSH_PROTECTION_STATUS=$(echo "$REPO_SETTINGS" | jq -r '.security_and_analysis.secret_scanning_push_protection.status // "unknown"')
 ```
 
-### 2. Alternative Push Strategy
-When the initial push fails due to push protection:
-```bash
-# Create a minimal branch first
-git checkout -b temp_upstream upstream/$DEFAULT_BRANCH
-git reset --soft HEAD~1000 2>/dev/null || git reset --soft $(git rev-list --max-parents=0 HEAD)
-git commit -m "chore: initial upstream reference"
+### 2. Retry Through the Filter Engine
+When the initial push fails due to push protection, resolution is allowlist plus retry: after the reported secrets are allowlisted, commenting on the initialization issue re-runs the workflow, which regenerates `fork_upstream` through the upstream filter engine (ADR-038) and pushes again. An existing partial branch becomes the base of an ordinary incremental generation, so the retry converges.
 
-if git push -u origin temp_upstream; then
-  # Try to update to full history
-  git checkout -b fork_upstream upstream/$DEFAULT_BRANCH
-  git push -u origin fork_upstream --force
-fi
-```
+`fork_upstream` must never be recreated directly from `upstream/$DEFAULT_BRANCH`: a manual push of the verbatim upstream ref would silently undo the filtered model.
 
 ### 3. Enhanced Error Handling
 When push protection cannot be bypassed:
@@ -71,7 +61,7 @@ When push protection cannot be bypassed:
 ### Negative
 - More complex implementation
 - May require manual intervention for organization-level protection
-- Alternative push strategy might not work in all cases
+- Push protection resolution may require manual allowlisting before a retry succeeds
 
 ### Security Considerations
 - The temporary disable only affects the initialization process

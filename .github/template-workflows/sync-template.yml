@@ -404,9 +404,27 @@ jobs:
               git add -f ".vscode/" || true
             fi
           fi
-          
+
+          # Plant the upstream filter config if the fork lacks one. Create-if-missing
+          # only, and outside the changed-guard above: the file is fork-owned after
+          # planting, so a sync must never overwrite it, but a fork without one
+          # should receive it regardless of what changed this cycle.
+          if [ ! -f ".github/upstream-filter.yml" ] && git show refs/remotes/template/main:".github/fork-resources/upstream-filter.yml" >/dev/null 2>&1; then
+            UPSTREAM_URL="${{ vars.UPSTREAM_REPO_URL }}"
+            if [ -n "$UPSTREAM_URL" ]; then
+              SERVICE_SLUG=$(basename "${UPSTREAM_URL%.git}")
+              SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
+              echo "Planting upstream filter config for service: $SERVICE_SLUG"
+              git show refs/remotes/template/main:".github/fork-resources/upstream-filter.yml" | \
+                sed "s|<service>|$SERVICE_ESCAPED|g" > ".github/upstream-filter.yml"
+              git add ".github/upstream-filter.yml"
+            else
+              echo "::warning::UPSTREAM_REPO_URL is not set; skipping upstream filter config planting"
+            fi
+          fi
+
           # Note: fork-resources directory should NOT be copied to the fork repository
-          
+
           # Always sync the configuration file itself
           echo "Syncing sync configuration file"
           git show refs/remotes/template/main:.github/sync-config.json > .github/sync-config.json

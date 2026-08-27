@@ -4,7 +4,7 @@ Your fork management repository is now ready! Here is what was set up:
 
 ✅ **Branch Structure:**
 - `main` - Your stable development branch (protected by Default Branch Protection ruleset)
-- `fork_upstream` - Tracks upstream changes (protected by Integration Branch Protection ruleset)
+- `fork_upstream` - Generated, filtered upstream tree (protected by Integration Branch Protection ruleset)
 - `fork_integration` - Integration and conflict resolution (protected by Integration Branch Protection ruleset)
 
 ✅ **Upstream Connection:** Connected to `{UPSTREAM_REPO}`

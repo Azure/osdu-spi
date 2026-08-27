@@ -120,6 +120,13 @@ Copies `provider/<service>-azure` and `testing/<service>-test-azure` from
 them) into the checkout. Halts if a source tree is missing or lacks a
 `pom.xml`, or if a target already exists.
 
+`seed-source.sh` materializes that checkout: it resolves each tree
+independently (upstream can delete them in different commits), preferring the
+ref's tip and otherwise walking the deletion commit's parents, because
+simplified history returns nothing for a path deleted through a merge. It
+composes both trees into one directory through a scratch index and reports the
+per-tree source commits.
+
 ## Halt codes
 
 | Code | Raised when |
@@ -187,6 +194,12 @@ Fork-owned, seeded at init from `.github/fork-resources/` with `<service>`
 substitution, then maintained by ordinary PR on the fork's `main`. `main` is its
 only durable home: `integration-cleanup.yml` resets `fork_integration` after
 every release, so a copy there is derived, not durable.
+
+Initialization prefers a config already present on the fork's `main` over the
+template: committing a complete `.github/upstream-filter.yml` before replying
+to the initialization issue is the escape hatch for services whose module
+prefix or layout deviates from the conventional shape. `sync-template.yml`
+plants the file on forks that lack one and never overwrites an existing copy.
 
 Each category is a single mapping from name to verdict. A name appears exactly
 once, so keep and strip can never disagree.
