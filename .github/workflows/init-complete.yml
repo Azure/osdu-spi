@@ -276,6 +276,13 @@ jobs:
           if git ls-files -- "provider/${SERVICE_SLUG}-azure" | grep -q . \
             && git ls-files -- "testing/${SERVICE_SLUG}-test-azure" | grep -q .; then
             echo "::notice::Fork-owned trees already present; skipping seed"
+            # A resumed run can find the trees without the config; the survival
+            # assertion below requires all three, so plant it here too.
+            cp "$FILTER_CONFIG" .github/upstream-filter.yml
+            git add .github/upstream-filter.yml
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: plant upstream filter config"
+            fi
           else
             bash .github/actions/upstream-filter/seed-source.sh \
               "upstream/$DEFAULT_BRANCH" "$SERVICE_SLUG" "$RUNNER_TEMP/seed-source.env"
