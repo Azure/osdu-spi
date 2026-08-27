@@ -182,6 +182,7 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
         PR_LABELS: ${{ inputs.labels }}
         HEAD_BRANCH: ${{ inputs.head-branch }}
         BASE_BRANCH: ${{ inputs.base-branch }}
