@@ -25,6 +25,10 @@ runs:
   using: "composite"
   steps:
     - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      if: |
+        github.event_name != 'pull_request_target' ||
+        github.event.pull_request.base.ref != 'fork_upstream' ||
+        !startsWith(github.event.pull_request.head.ref, 'sync/')
       with:
         # On pull_request_target a ref-less checkout would silently replace the PR
         # head the calling workflow checked out with the base branch.
@@ -122,4 +126,4 @@ runs:
       with:
         name: coverage-report
         path: '**/target/site/jacoco/'
-        retention-days: 2 
+        retention-days: 2
