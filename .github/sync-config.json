@@ -101,6 +101,10 @@
         {
           "path": ".github/template-workflows/settings-apply.yml",
           "description": "Per-fork settings reconciliation: idempotent rulesets + required-variable check + GHCR visibility"
+        },
+        {
+          "path": ".github/template-workflows/adopt-fork.yml",
+          "description": "Customer-tier fork adoption bootstrap (ADR-039)"
         }
       ],
       "template_only": [

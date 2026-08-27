@@ -291,10 +291,11 @@ jobs:
           generate_coverage: ${{ github.event_name == 'pull_request' }}
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
           # core is activeByDefault, so a bare profile flag would drop it; MAVEN_PROFILE
-          # overrides for services that deviate (e.g. indexer-queue). fork_upstream builds
-          # core only: it is a provider-less tree whose azure profile points at fork-owned
-          # directories that exist only after the cascade merge.
-          maven_profile: ${{ (github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
+          # overrides for services that deviate (e.g. indexer-queue). In filter mode
+          # fork_upstream builds core only: it is a provider-less tree whose azure profile
+          # points at fork-owned directories that exist only after the cascade merge. In
+          # mirror mode (ADR-039) fork_upstream carries provider/, so the full profile runs.
+          maven_profile: ${{ ((github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && vars.SYNC_MODE != 'mirror') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
 
   docker-build:
     # Validate-only worker. NOT the required check — the required "🐳 Docker Build" context is the

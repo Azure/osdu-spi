@@ -128,10 +128,15 @@ jobs:
         if: steps.sync-state.outputs.should_create_pr == 'true' || steps.sync-state.outputs.should_update_branch == 'true'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          # mirror = customer tier (ADR-039): generate-branch.sh takes the
+          # upstream tip verbatim and never runs the filter engine.
+          SYNC_MODE: ${{ vars.SYNC_MODE }}
           AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
           AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
         run: |
+          echo "Sync mode: ${SYNC_MODE:-filter}"
+
           # Generate branch names with timestamp for uniqueness or use existing branch
           DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
 

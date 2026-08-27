@@ -321,9 +321,18 @@ jobs:
       - name: Check for filter config
         id: filter-config
         if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        env:
+          SYNC_MODE: ${{ vars.SYNC_MODE }}
         run: |
           # The assertion and stamp steps below are inert until the fork carries a config.
-          if [ -f ".github/upstream-filter.yml" ]; then
+          # In mirror mode (ADR-039) the config arrives through the mirror and describes
+          # the upstream repository, not this fork: there is no ownership split here, and
+          # a stamp rewrite would permanently diverge upstream-owned pom lines. Both
+          # steps stay off regardless of file presence.
+          if [ "${SYNC_MODE:-}" = "mirror" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Mirror mode - skipping fork-owned path assertion and pom stamp"
+          elif [ -f ".github/upstream-filter.yml" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT

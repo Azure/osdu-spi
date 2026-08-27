@@ -15,9 +15,14 @@
 # so the no-change comparison is skipped and the commit carries the upstream
 # tip as its only parent. Every later generation is merge-shaped as above.
 #
+# SYNC_MODE=mirror (customer tier, ADR-039) produces the verbatim upstream
+# tree instead: no extraction, no engine, no report. <config_path> is accepted
+# but never read, filter_rev is the literal sentinel "mirror", and the report=
+# line is omitted from <out_file>. All commit plumbing is shared.
+#
 # Writes key=value lines to <out_file>:
-#   filter_rev=<engine version + config hash>
-#   report=<path to the engine's JSON report>
+#   filter_rev=<engine version + config hash, or "mirror">
+#   report=<path to the engine's JSON report>  (omitted in mirror mode)
 #   tree=<generated tree sha>
 #   has_changes=true|false
 #   commit=<generated commit sha>          (only when has_changes=true)
@@ -33,6 +38,7 @@ BASE_SHA="$1"
 UPSTREAM_SHA="$2"
 CONFIG="$3"
 OUT="$4"
+MODE="${SYNC_MODE:-filter}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -n "${RUNNER_TEMP:-}" ]; then
@@ -53,26 +59,37 @@ REPORT="$WORKDIR/upstream-filter-report.json"
 rm -rf "$GEN" "$SCRATCH"
 mkdir -p "$GEN"
 
-# git archive would honor export-ignore/export-subst attributes from the
-# upstream tree; read-tree + checkout-index materializes every tracked file
-# byte for byte.
-GIT_INDEX_FILE="$SCRATCH" git read-tree "$UPSTREAM_SHA"
-GIT_INDEX_FILE="$SCRATCH" git checkout-index -a -f --prefix="$GEN/"
+if [ "$MODE" = "mirror" ]; then
+  # Verbatim mirror: the upstream tip is already the finished product, so the
+  # tree is taken as-is. Remove any lingering report from a prior filter run
+  # so failure handlers never read stale halt data.
+  rm -f "$REPORT"
+  FILTER_REV="mirror"
+  TREE=$(git rev-parse "${UPSTREAM_SHA}^{tree}")
+else
+  # git archive would honor export-ignore/export-subst attributes from the
+  # upstream tree; read-tree + checkout-index materializes every tracked file
+  # byte for byte.
+  GIT_INDEX_FILE="$SCRATCH" git read-tree "$UPSTREAM_SHA"
+  GIT_INDEX_FILE="$SCRATCH" git checkout-index -a -f --prefix="$GEN/"
 
-python3 "$HERE/upstream_filter.py" \
-  --mode generate --config "$CONFIG" --checkout "$GEN" --report "$REPORT"
-FILTER_REV=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['filter_rev'])" "$REPORT")
+  python3 "$HERE/upstream_filter.py" \
+    --mode generate --config "$CONFIG" --checkout "$GEN" --report "$REPORT"
+  FILTER_REV=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['filter_rev'])" "$REPORT")
 
-GITDIR="$(git rev-parse --absolute-git-dir)"
-# --force: the extraction contains upstream's own .gitignore, and the runner may
-# carry a core.excludesfile; every extracted file was tracked upstream and must
-# reach the tree regardless of what any ignore rule says.
-(cd "$GEN" && GIT_INDEX_FILE="$SCRATCH" git --git-dir="$GITDIR" --work-tree="$GEN" add -A --force)
-TREE=$(GIT_INDEX_FILE="$SCRATCH" git write-tree)
+  GITDIR="$(git rev-parse --absolute-git-dir)"
+  # --force: the extraction contains upstream's own .gitignore, and the runner may
+  # carry a core.excludesfile; every extracted file was tracked upstream and must
+  # reach the tree regardless of what any ignore rule says.
+  (cd "$GEN" && GIT_INDEX_FILE="$SCRATCH" git --git-dir="$GITDIR" --work-tree="$GEN" add -A --force)
+  TREE=$(GIT_INDEX_FILE="$SCRATCH" git write-tree)
+fi
 
 {
   echo "filter_rev=$FILTER_REV"
-  echo "report=$REPORT"
+  if [ "$MODE" != "mirror" ]; then
+    echo "report=$REPORT"
+  fi
   echo "tree=$TREE"
 } > "$OUT"
 
@@ -86,8 +103,13 @@ if [ -n "$BASE_SHA" ]; then
   PARENTS+=(-p "$BASE_SHA")
 fi
 PARENTS+=(-p "$UPSTREAM_SHA")
+if [ "$MODE" = "mirror" ]; then
+  MSG="chore: mirror upstream tree"
+else
+  MSG="chore: generate filtered upstream tree"
+fi
 COMMIT=$(git commit-tree "$TREE" "${PARENTS[@]}" \
-  -m "chore: generate filtered upstream tree" \
+  -m "$MSG" \
   -m "Upstream-Sha: $UPSTREAM_SHA
 Filter-Rev: $FILTER_REV")
 
