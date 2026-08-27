@@ -67,6 +67,8 @@ jobs:
     needs: [check-initialization, release-please]
     if: needs.check-initialization.outputs.initialized == 'true' && needs.release-please.outputs.release_created
     runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
     permissions:
       contents: write
 
