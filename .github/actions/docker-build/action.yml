@@ -143,7 +143,10 @@ runs:
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
         cache-from: type=gha
-        cache-to: type=gha,mode=max
+        # ignore-error: two runs of the same PR build an identical image, so their
+        # content-addressed cache keys collide and the loser cannot reserve them.
+        # A cache write must never fail an image that built successfully.
+        cache-to: type=gha,mode=max,ignore-error=true
 
     - name: "Verify package visibility"
       if: ${{ inputs.push == 'true' && steps.build.outcome == 'success' }}

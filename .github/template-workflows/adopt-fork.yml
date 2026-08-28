@@ -28,6 +28,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 jobs:
   adopt:
@@ -181,6 +182,40 @@ jobs:
             echo "::warning::.github/security-on.json not found - enable secret scanning and push protection manually"
           fi
 
+      - name: Enable fork-disabled workflows
+        # GITHUB_TOKEN, not the App token: enabling a workflow needs the App's
+        # Actions permission, which is distinct from Workflows (that one only
+        # covers editing workflow files) and is not in the permission set the
+        # adoption guide asks customers to grant.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Forking sets every schedule-triggered workflow to disabled_fork, which
+          # also suppresses workflow_dispatch. Sync Upstream is the customer tier's
+          # only delivery channel and CodeQL is a required check on main, so both
+          # must come back on. sync-template.yml stays off (ADR-039 gates template
+          # sync off in mirror mode); scorecard.yml is inert outside the template.
+          KEEP_DISABLED="sync-template.yml scorecard.yml"
+
+          DISABLED=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows" \
+            --jq '.workflows[] | select(.state == "disabled_fork") | "\(.id) \(.path)"')
+
+          if [ -z "$DISABLED" ]; then
+            echo "No fork-disabled workflows found"
+            exit 0
+          fi
+
+          while read -r id path; do
+            [ -n "$id" ] || continue
+            base="${path##*/}"
+            case " $KEEP_DISABLED " in
+              *" $base "*) echo "Leaving $base disabled"; continue ;;
+            esac
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$id/enable" > /dev/null
+            echo "Enabled $base"
+          done <<< "$DISABLED"
+
       - name: Finalize adoption
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -202,6 +237,7 @@ jobs:
             echo "| Variables | \`UPSTREAM_REPO_URL\`, \`SYNC_MODE\`, \`INITIALIZATION_COMPLETE\` |"
             echo "| Rulesets | default and integration branch protection |"
             echo "| Settings | auto-merge and merge commits enabled |"
+            echo "| Workflows | fork-disabled workflows re-enabled |"
             echo ""
             echo "### Next steps"
             echo ""
