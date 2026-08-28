@@ -12,7 +12,7 @@ The validation workflow activates automatically across multiple scenarios to mai
 - **Direct pushes** to protected branches - Validates changes that bypass the PR process (when permitted)
 - **Manual trigger** for post-initialization validation - Allows on-demand quality checks during setup or troubleshooting
 
-Mirror-mode sync PRs can emit both `pull_request` and `pull_request_target`. Only the trusted `pull_request_target` run performs their Java, coverage, and container work; the unfiltered `pull_request` run remains a lightweight fallback for the required Docker summary.
+Same-repository mirror-mode sync PRs can emit both `pull_request` and `pull_request_target`. Only the trusted `pull_request_target` run performs their Java, coverage, and container work; the unfiltered `pull_request` run remains a lightweight fallback for the required Docker summary.
 
 ## What Gets Validated
 

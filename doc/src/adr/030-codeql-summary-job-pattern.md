@@ -120,7 +120,7 @@ Remove the `code_scanning` rule from `.github/rulesets/default-branch.json`:
 3. **Standard Pattern**: Widely used in GitHub Actions for exactly this use case
 4. **Flexibility**: Can add more checks in the future without changing ruleset
 
-This summary-job pattern is the engineering system's general mechanism for any required status check whose workflow is path-filtered or has conditional jobs. It is reused by the `🐳 Docker Build` required check in `validate.yml` (the `docker-build-required` summary job). Regular `pull_request_target` runs suppress the summary, while sync runs report it so their sole heavy build is reflected; the unfiltered `pull_request` run remains the path-filter-proof fallback.
+This summary-job pattern is the engineering system's general mechanism for any required status check whose workflow is path-filtered or has conditional jobs. It is reused by the `🐳 Docker Build` required check in `validate.yml` (the `docker-build-required` summary job). Regular `pull_request_target` runs suppress the summary, while same-repository sync runs report it so their sole heavy build is reflected; the unfiltered `pull_request` run remains the path-filter-proof fallback.
 
 ### Why Remove Code Scanning Rule
 

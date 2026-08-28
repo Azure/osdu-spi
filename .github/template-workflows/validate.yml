@@ -224,6 +224,7 @@ jobs:
       needs.check-paths.outputs.should_run == 'true' &&
       github.actor != 'dependabot[bot]' &&
       (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name != github.repository ||
        !startsWith(github.event.pull_request.head.ref, 'sync/'))
     runs-on: ubuntu-latest
     outputs:
@@ -379,6 +380,7 @@ jobs:
       always() &&
       needs.check-initialization.outputs.initialized == 'true' &&
       (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name != github.repository ||
        !startsWith(github.event.pull_request.head.ref, 'sync/'))
     runs-on: ubuntu-latest
     steps:
@@ -540,7 +542,8 @@ jobs:
     if: |
       always() &&
       (github.event_name != 'pull_request_target' ||
-       startsWith(github.event.pull_request.head.ref, 'sync/'))
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        startsWith(github.event.pull_request.head.ref, 'sync/')))
     runs-on: ubuntu-latest
     steps:
       - name: "Report Docker Build Status"
