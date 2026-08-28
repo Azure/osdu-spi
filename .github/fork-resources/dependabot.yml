@@ -7,13 +7,16 @@ updates:
   # - PATCHES ONLY: Major and minor updates are ignored for stability
   # - GROUPED: Spring, logging, jackson, and Azure SDK patches are grouped
   # - INDIVIDUAL: All other patches get individual PRs
-  # - EXCLUDED: Non-Azure providers and build tools are ignored entirely
+  # - EXCLUDED: Build tools are ignored entirely
 
   - package-ecosystem: "maven"
     directories:
       - "/"
       - "/*-core"
+      - "/*-acceptance-test"
       - "/provider/*-azure"
+      - "/testing"
+      - "/testing/*-test-core"
       - "/testing/*-test-azure"
     schedule:
       interval: "daily"
@@ -21,15 +24,6 @@ updates:
     target-branch: "main"
     labels:
       - "dependencies"
-    exclude-paths:
-      - "provider/*-aws/**"
-      - "provider/*-gcp/**"
-      - "provider/*-gc/**"
-      - "provider/*-ibm/**"
-      - "provider/*-jdbc/**"
-      - "testing/*-test-core/**"
-      - "testing/*-test-aws/**"
-      - "*-acceptance-test/**"
     ignore:
       # Only allow patch updates for stability
       - dependency-name: "*"
