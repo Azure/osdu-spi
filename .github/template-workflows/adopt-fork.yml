@@ -162,9 +162,12 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Cascade release PRs arm auto-merge with the merge-commit method.
+          # GitHub creates forks with has_issues=false; sync tracking issues
+          # (ADR-022), cascade escalation (ADR-019), and the human-required
+          # label workflow (ADR-020) all depend on Issues being enabled.
           gh api --method PATCH "repos/$GITHUB_REPOSITORY" \
-            -F allow_auto_merge=true -F allow_merge_commit=true > /dev/null
-          echo "Enabled auto-merge and merge commits"
+            -F allow_auto_merge=true -F allow_merge_commit=true -F has_issues=true > /dev/null
+          echo "Enabled auto-merge, merge commits, and Issues"
 
       - name: Enable security settings
         env:
