@@ -7,6 +7,8 @@ on:
       - '!main'     # Exclude main branch
       - '!fork_integration'  # Exclude fork_integration as it's covered by validate
       - '!fork_upstream'     # Exclude fork_upstream as it's covered by validate
+      - '!sync/**'            # Sync PRs are covered by validate
+      - '!dependabot/**'      # Dependency PRs are covered by dependabot-validation
     paths-ignore:
       - '.github/workflows/**'
       - '.github/template-workflows/**'
@@ -23,28 +25,6 @@ on:
       - '**.txt'
       - 'LICENSE'
       - 'NOTICE'
-  pull_request:
-    branches:
-      - main
-      - fork_integration
-      - fork_upstream
-    paths-ignore:
-      - '.github/workflows/**'
-      - '.github/template-workflows/**'
-      - '.github/ISSUE_TEMPLATE/**'
-      - '.github/actions/**'
-      - '.github/*.md'
-      - '.github/*.json'
-      - '.github/*.yml'
-      - '.github/*.yaml'
-      - '.github/.template-sync-commit'
-      - '.vscode/**'
-      - 'docs/**'
-      - '**.md'
-      - '**.txt'
-      - 'LICENSE'
-      - 'NOTICE'
-
 permissions:
   contents: read
   pull-requests: write

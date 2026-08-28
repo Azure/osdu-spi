@@ -80,6 +80,45 @@ jobs:
             exit 1
           fi
           echo "✅ All YAML files are valid"
+
+      - name: Validate CI de-duplication invariants
+        run: |
+          set -euo pipefail
+
+          assert_yq() {
+            local expression="$1"
+            local file="$2"
+            local message="$3"
+            if ! yq --exit-status "$expression" "$file" > /dev/null; then
+              echo "::error file=$file::$message"
+              exit 1
+            fi
+          }
+
+          BUILD=".github/template-workflows/build.yml"
+          VALIDATE=".github/template-workflows/validate.yml"
+          DEPENDABOT=".github/template-workflows/dependabot-validation.yml"
+
+          assert_yq '.on.pull_request == null' "$BUILD" \
+            "Build workflow must not duplicate protected-branch PR validation"
+          assert_yq '.on.push.branches | any_c(. == "!sync/**")' "$BUILD" \
+            "Sync branches must use the Validation workflow"
+          assert_yq '.on.push.branches | any_c(. == "!dependabot/**")' "$BUILD" \
+            "Dependabot branches must use the Dependabot Validation workflow"
+
+          assert_yq ".jobs.\"java-build\".if | contains(\"github.event_name != 'pull_request'\")" "$VALIDATE" \
+            "The pull_request run must not duplicate the sync Java build"
+          assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.generate_coverage | contains("pull_request_target")' "$VALIDATE" \
+            "The pull_request_target sync build must generate coverage"
+          assert_yq ".jobs.\"docker-build-required\".if | contains(\"startsWith(github.event.pull_request.head.ref, 'sync/')\")" "$VALIDATE" \
+            "Sync pull_request_target runs must report the Docker summary"
+
+          assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.maven_profile | contains("core,azure")' "$DEPENDABOT" \
+            "Dependabot must produce the Azure JAR used by Docker"
+          assert_yq '.jobs."docker-build".needs == "java-build"' "$DEPENDABOT" \
+            "Dependabot Docker validation must consume its Java build"
+          assert_yq '.jobs."docker-build".steps[] | select(.name == "Docker Build (validate-only)") | .with.push == "false"' "$DEPENDABOT" \
+            "Dependabot Docker validation must never push an image"
           
       - name: Validate JSON Configuration
         run: |
