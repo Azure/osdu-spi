@@ -92,6 +92,8 @@ jobs:
     needs: validate_and_setup
     if: needs.validate_and_setup.outputs.should_proceed == 'true'
     runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
     permissions:
       contents: write
       actions: write
