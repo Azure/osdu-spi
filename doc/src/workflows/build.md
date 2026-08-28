@@ -9,7 +9,8 @@ Unlike the more comprehensive validation workflow, the build workflow is optimiz
 The build workflow activates during active development to provide continuous feedback:
 
 - **Feature branch pushes** - Triggers on every commit to non-protected branches during development
-- **Pull request updates** - Runs for PRs targeting `main`, `fork_integration`, or `fork_upstream`
+- **One build per update** - Pull request events are handled by `validate.yml`, so the same commit does not start a second Build and Test run
+- **Automation exclusions** - `sync/**` and `dependabot/**` branches use their dedicated validation workflows instead
 
 Markdown/text-only changes (for example `**/*.md`, `**/*.txt`) and selected repository-metadata paths (for example `.github/**` and `docs/**`) are excluded.
 
@@ -114,7 +115,8 @@ When present, `.mvn/community-maven.settings.xml` supplies the OSDU dependency r
 ## Integration
 
 ### With Other Workflows
-- **Validation workflow** - Runs its own Java build, then builds the service image with the canonical `build/Dockerfile`; trusted events publish it to public GHCR
+- **Validation workflow** - Handles protected-branch PR events, generates their coverage, and builds the service image with the canonical `build/Dockerfile`; trusted events publish it to public GHCR
+- **Dependabot validation** - Builds dependency updates with coverage and validates their service image without publishing it
 - **Release workflow** - Retags the release commit's existing GHCR image with the released version
 
 ### Artifact Handling
