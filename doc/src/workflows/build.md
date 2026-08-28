@@ -11,6 +11,7 @@ The build workflow activates during active development to provide continuous fee
 - **Feature branch pushes** - Triggers on every commit to non-protected branches during development
 - **One build per update** - Pull request events are handled by `validate.yml`, so the same commit does not start a second Build and Test run
 - **Automation exclusions** - `sync/**` and `dependabot/**` branches use their dedicated validation workflows instead
+- **Fork contributions** - A fork's branch produces no push event in the upstream repository, so `validate.yml` is the only build a contribution PR gets; its Java build generates the same coverage report
 
 Markdown/text-only changes (for example `**/*.md`, `**/*.txt`) and selected repository-metadata paths (for example `.github/**` and `docs/**`) are excluded.
 

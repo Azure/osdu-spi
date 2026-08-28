@@ -101,7 +101,10 @@ jobs:
             '["❌ Dependency Update Build Failed"]' }}
 
   docker-build:
-    name: "🐳 Docker Build (validate)"
+    # Name must differ from validate.yml's "🐳 Docker Build (validate)", which also reports
+    # (skipped) on these PRs. Advisory: the required summary passes Dependabot through, so a
+    # failure here shows as this red context plus the issue below, not as a merge block.
+    name: "🐳 Dependabot Docker Build (validate)"
     needs: java-build
     if: needs.java-build.outputs.build_result == 'success'
     runs-on: ubuntu-latest
@@ -123,7 +126,8 @@ jobs:
     if: |
       always() &&
       needs.check-repo-state.outputs.is_java_repo == 'true' &&
-      (needs.java-build.result != 'success' || needs.docker-build.result != 'success')
+      (needs.java-build.result == 'failure' || needs.java-build.result == 'cancelled' ||
+       needs.docker-build.result == 'failure' || needs.docker-build.result == 'cancelled')
     runs-on: ubuntu-latest
     steps:
       - name: "Create Required Labels"

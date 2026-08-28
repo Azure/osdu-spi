@@ -1,30 +1,15 @@
 name: Validation
 
 on:
-  # No paths-ignore here: validate.yml must always trigger on PRs to a protected branch so the
-  # required "🐳 Docker Build" summary check always reports (a path-skipped workflow stays Pending
-  # and wedges the PR; a path-skipped heavy job is gated below via check-paths instead). ADR-030.
+  # No paths-ignore on either PR trigger: validate.yml must always trigger on PRs to a protected
+  # branch so the required "🐳 Docker Build" summary check always reports (a path-skipped workflow
+  # stays Pending and wedges the PR; a path-skipped heavy job is gated below via check-paths
+  # instead). ADR-030. check-initialization routes each PR to exactly one of the two lanes.
   pull_request:
     branches: [main, fork_integration, fork_upstream]
   pull_request_target:
     branches: [main, fork_integration, fork_upstream]
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - '.github/workflows/**'
-      - '.github/template-workflows/**'
-      - '.github/ISSUE_TEMPLATE/**'
-      - '.github/actions/**'
-      - '.github/*.md'
-      - '.github/*.json'
-      - '.github/*.yml'
-      - '.github/*.yaml'
-      - '.github/.template-sync-commit'
-      - '.vscode/**'
-      - 'docs/**'
-      - '**.md'
-      - '**.txt'
-      - 'LICENSE'
-      - 'NOTICE'
   push:
     branches: [main, fork_integration, fork_upstream]
     paths-ignore:
@@ -63,12 +48,16 @@ permissions:
 jobs:
   check-initialization:
     name: "🔍 Check Initialization Status"
-    # Skip automatic runs during initialization - only run on manual trigger or PR
-    # pull_request_target is only needed for same-repo sync branches whose target may not contain
-    # this workflow; the regular pull_request run handles every other PR.
+    # Skip automatic runs during initialization - only run on manual trigger or PR.
+    # Each PR belongs to exactly one lane. Same-repo sync/ PRs belong to pull_request_target:
+    # mirror mode carries this workflow on fork_upstream so both events fire, and only the target
+    # lane reads this file from the default branch, which filter mode's fork_upstream lacks.
+    # Every other PR - including a fork-owned branch merely named sync/ - belongs to pull_request.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request' &&
+       !(github.event.pull_request.head.repo.full_name == github.repository &&
+         startsWith(github.event.pull_request.head.ref, 'sync/'))) ||
       (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        startsWith(github.event.pull_request.head.ref, 'sync/')) ||
@@ -216,16 +205,12 @@ jobs:
     name: "🔨 Java Build"
     needs: [check-initialization, check-repo-state, check-paths]
     # Skip java-build for Dependabot PRs (handled by dependabot-validation.yml)
-    # and for docs/config-only PRs (check-paths.should_run == 'false'). Mirror-mode
-    # sync PRs emit both PR events; only the trusted pull_request_target run builds.
+    # and for docs/config-only PRs (check-paths.should_run == 'false').
     if: |
       needs.check-repo-state.outputs.is_initialized == 'true' &&
       needs.check-repo-state.outputs.is_java_repo == 'true' &&
       needs.check-paths.outputs.should_run == 'true' &&
-      github.actor != 'dependabot[bot]' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name != github.repository ||
-       !startsWith(github.event.pull_request.head.ref, 'sync/'))
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
@@ -291,7 +276,7 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.OPENGROUP_MAVEN_USERNAME }}
           MAVEN_TOKEN: ${{ secrets.OPENGROUP_MAVEN_TOKEN }}
         with:
-          generate_coverage: ${{ github.event_name == 'pull_request' || (github.event_name == 'pull_request_target' && startsWith(github.event.pull_request.head.ref, 'sync/')) }}
+          generate_coverage: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
           # core is activeByDefault, so a bare profile flag would drop it; MAVEN_PROFILE
           # overrides for services that deviate (e.g. indexer-queue). In filter mode
@@ -378,10 +363,7 @@ jobs:
     needs: [check-initialization, check-repo-state, check-paths, java-build]
     if: |
       always() &&
-      needs.check-initialization.outputs.initialized == 'true' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name != github.repository ||
-       !startsWith(github.event.pull_request.head.ref, 'sync/'))
+      needs.check-initialization.outputs.initialized == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Code"
@@ -535,12 +517,16 @@ jobs:
     # Required branch-protection check "🐳 Docker Build" (ADR-030 summary-job pattern, mirrors the
     # CodeQL summary job). Consolidates the validate-only build into one always-reporting context so
     # the required check never wedges (config-only/non-Java/dependabot/uninitialized all pass) and a
-    # real build failure blocks. Sync pull_request_target runs also report so their sole heavy build
-    # is reflected; the pull_request run remains as the path-filter-proof required-check fallback.
+    # real build failure blocks. always() defeats the lane routing in check-initialization, so the
+    # same routing is repeated here: the lane that did not build must not report a green standing
+    # for no build.
     name: "🐳 Docker Build"
     needs: [check-initialization, check-repo-state, check-paths, java-build, docker-build]
     if: |
       always() &&
+      (github.event_name != 'pull_request' ||
+       !(github.event.pull_request.head.repo.full_name == github.repository &&
+         startsWith(github.event.pull_request.head.ref, 'sync/'))) &&
       (github.event_name != 'pull_request_target' ||
        (github.event.pull_request.head.repo.full_name == github.repository &&
         startsWith(github.event.pull_request.head.ref, 'sync/')))

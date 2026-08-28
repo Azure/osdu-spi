@@ -1,5 +1,8 @@
 name: Build and Test
 
+# Push-only. PR events belong to validate.yml (and dependabot-validation.yml), whose java-build
+# generates the same coverage report, so a same-repo branch is not built twice for one commit. A
+# fork-head PR produces no push event here at all; validate.yml is its only build.
 on:
   push:
     branches: 
@@ -7,8 +10,8 @@ on:
       - '!main'     # Exclude main branch
       - '!fork_integration'  # Exclude fork_integration as it's covered by validate
       - '!fork_upstream'     # Exclude fork_upstream as it's covered by validate
-      - '!sync/**'            # Sync PRs are covered by validate
-      - '!dependabot/**'      # Dependency PRs are covered by dependabot-validation
+      - '!sync/**'           # Sync branches are covered by validate
+      - '!dependabot/**'     # Dependency branches are covered by dependabot-validation
     paths-ignore:
       - '.github/workflows/**'
       - '.github/template-workflows/**'
