@@ -12,7 +12,7 @@ The validation workflow activates automatically across multiple scenarios to mai
 - **Direct pushes** to protected branches - Validates changes that bypass the PR process (when permitted)
 - **Manual trigger** for post-initialization validation - Allows on-demand quality checks during setup or troubleshooting
 
-Both pull request triggers fire for every PR, so the workflow assigns each one a single lane. Same-repository `sync/` branches belong to `pull_request_target`, which reads the workflow from the default branch — filter mode's `fork_upstream` carries no workflows of its own, and mirror mode's carries a copy that would otherwise run the whole pipeline twice. Every other PR, including a fork-owned branch merely named `sync/`, belongs to `pull_request`. The lane that stands down reports its checks as skipped, so exactly one `🐳 Docker Build` context reflects a real build.
+The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `🐳 Docker Build` context reflects a real build.
 
 ## What Gets Validated
 
@@ -112,7 +112,7 @@ All protected branches use the same validation rules, with exemptions for specif
 - **Relaxed commit standards** - Upstream commits may not follow conventions
 - **Conflict handling** - Automatically creates resolution guidance
 - **AI enhancement** - Generates PR descriptions when possible
-- **Single heavy run** - `pull_request_target` supplies trusted local actions and owns Java, coverage, and image validation
+- **Single lane** - `pull_request_target` owns sync PRs and supplies trusted local actions; it builds `core` only in filter mode, and the full profile set with image validation in mirror mode
 
 ### Emergency Fixes
 - **Override capability** - Admin can bypass non-critical checks

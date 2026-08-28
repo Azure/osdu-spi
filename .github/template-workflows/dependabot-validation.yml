@@ -101,9 +101,8 @@ jobs:
             '["❌ Dependency Update Build Failed"]' }}
 
   docker-build:
-    # Name must differ from validate.yml's "🐳 Docker Build (validate)", which also reports
-    # (skipped) on these PRs. Advisory: the required summary passes Dependabot through, so a
-    # failure here shows as this red context plus the issue below, not as a merge block.
+    # Name must differ from validate.yml's "🐳 Docker Build (validate)", which also reports on
+    # these PRs. Advisory only: the required summary passes Dependabot through.
     name: "🐳 Dependabot Docker Build (validate)"
     needs: java-build
     if: needs.java-build.outputs.build_result == 'success'

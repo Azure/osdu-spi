@@ -1,10 +1,9 @@
 name: Validation
 
 on:
-  # No paths-ignore on either PR trigger: validate.yml must always trigger on PRs to a protected
-  # branch so the required "🐳 Docker Build" summary check always reports (a path-skipped workflow
-  # stays Pending and wedges the PR; a path-skipped heavy job is gated below via check-paths
-  # instead). ADR-030. check-initialization routes each PR to exactly one of the two lanes.
+  # No paths-ignore on either PR trigger: the required "🐳 Docker Build" summary check must always
+  # report (a path-skipped workflow stays Pending and wedges the PR; heavy jobs are gated below via
+  # check-paths instead). ADR-030. check-initialization routes each PR to exactly one lane.
   pull_request:
     branches: [main, fork_integration, fork_upstream]
   pull_request_target:
@@ -49,10 +48,8 @@ jobs:
   check-initialization:
     name: "🔍 Check Initialization Status"
     # Skip automatic runs during initialization - only run on manual trigger or PR.
-    # Each PR belongs to exactly one lane. Same-repo sync/ PRs belong to pull_request_target:
-    # mirror mode carries this workflow on fork_upstream so both events fire, and only the target
-    # lane reads this file from the default branch, which filter mode's fork_upstream lacks.
-    # Every other PR - including a fork-owned branch merely named sync/ - belongs to pull_request.
+    # One lane per PR: same-repo sync/ PRs take pull_request_target, which reads this file from the
+    # default branch (filter mode's fork_upstream has none). Every other PR takes pull_request.
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
@@ -517,9 +514,8 @@ jobs:
     # Required branch-protection check "🐳 Docker Build" (ADR-030 summary-job pattern, mirrors the
     # CodeQL summary job). Consolidates the validate-only build into one always-reporting context so
     # the required check never wedges (config-only/non-Java/dependabot/uninitialized all pass) and a
-    # real build failure blocks. always() defeats the lane routing in check-initialization, so the
-    # same routing is repeated here: the lane that did not build must not report a green standing
-    # for no build.
+    # real build failure blocks. always() bypasses check-initialization's routing, so it is repeated
+    # here: the lane that did not build must not report green.
     name: "🐳 Docker Build"
     needs: [check-initialization, check-repo-state, check-paths, java-build, docker-build]
     if: |

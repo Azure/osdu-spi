@@ -1,8 +1,7 @@
 name: Build and Test
 
-# Push-only. PR events belong to validate.yml (and dependabot-validation.yml), whose java-build
-# generates the same coverage report, so a same-repo branch is not built twice for one commit. A
-# fork-head PR produces no push event here at all; validate.yml is its only build.
+# Push-only: PR events belong to validate.yml and dependabot-validation.yml, whose builds
+# generate the same coverage, so one commit is never built twice.
 on:
   push:
     branches: 
