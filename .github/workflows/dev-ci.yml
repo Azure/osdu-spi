@@ -80,7 +80,85 @@ jobs:
             exit 1
           fi
           echo "✅ All YAML files are valid"
-          
+
+      - name: Validate CI de-duplication invariants
+        run: |
+          set -euo pipefail
+
+          BUILD=".github/template-workflows/build.yml"
+          VALIDATE=".github/template-workflows/validate.yml"
+          DEPENDABOT=".github/template-workflows/dependabot-validation.yml"
+
+          assert_yq() {
+            if ! yq --exit-status "$1" "$2" > /dev/null; then
+              echo "::error file=$2::$3"
+              exit 1
+            fi
+          }
+
+          assert_contains() {
+            case "$1" in *"$2"*) return 0 ;; esac
+            echo "::error::$3"
+            exit 1
+          }
+
+          # build.yml is push-only; PR events belong to the validation workflows.
+          assert_yq '.on.pull_request == null' "$BUILD" \
+            "Build workflow must not duplicate protected-branch PR validation"
+          assert_yq '.on.push.branches | contains(["!sync/**"])' "$BUILD" \
+            "Sync branches must use the Validation workflow"
+          assert_yq '.on.push.branches | contains(["!dependabot/**"])' "$BUILD" \
+            "Dependabot branches must use the Dependabot Validation workflow"
+
+          # Neither PR trigger may be path-filtered, or the required Docker summary stops
+          # reporting and wedges the PR (ADR-030).
+          assert_yq '.on.pull_request | has("paths-ignore") | not' "$VALIDATE" \
+            "pull_request must stay unfiltered so the required summary always reports"
+          assert_yq '.on.pull_request_target | has("paths-ignore") | not' "$VALIDATE" \
+            "pull_request_target owns sync PRs and must stay unfiltered"
+
+          # Exactly one lane per PR. check-initialization routes; docker-build-required repeats
+          # the routing because always() bypasses it.
+          SYNC_HEAD="github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'sync/')"
+          CHECK_INIT_IF=$(yq -r '.jobs."check-initialization".if | sub("\s+"; " ")' "$VALIDATE")
+          SUMMARY_IF=$(yq -r '.jobs."docker-build-required".if | sub("\s+"; " ")' "$VALIDATE")
+
+          assert_contains "$CHECK_INIT_IF" "(github.event_name == 'pull_request' && !($SYNC_HEAD))" \
+            "The pull_request lane must stand down for same-repository sync PRs"
+          assert_contains "$CHECK_INIT_IF" "(github.event_name == 'pull_request_target' && $SYNC_HEAD)" \
+            "The pull_request_target lane must own same-repository sync PRs, and only those"
+          assert_contains "$SUMMARY_IF" "(github.event_name != 'pull_request' || !($SYNC_HEAD))" \
+            "The lane that did not build must not report the required Docker summary"
+          assert_contains "$SUMMARY_IF" "(github.event_name != 'pull_request_target' || ($SYNC_HEAD))" \
+            "The sync lane must report the required Docker summary"
+
+          # Routing lives in check-initialization alone; per-job copies drift apart from it.
+          assert_yq '.jobs."java-build".if | contains("head.repo.full_name") | not' "$VALIDATE" \
+            "Lane routing belongs in check-initialization, not in java-build"
+          assert_yq '.jobs."code-validation".if | contains("head.repo.full_name") | not' "$VALIDATE" \
+            "Lane routing belongs in check-initialization, not in code-validation"
+          assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.generate_coverage | contains("pull_request_target")' "$VALIDATE" \
+            "The sync pull_request_target build must generate coverage"
+
+          # Dependabot owns one build plus one image validation, under its own check name.
+          assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.maven_profile | contains("core,azure")' "$DEPENDABOT" \
+            "Dependabot must produce the Azure JAR used by Docker"
+          assert_yq '.jobs."docker-build".needs == "java-build"' "$DEPENDABOT" \
+            "Dependabot Docker validation must consume its Java build"
+          assert_yq '.jobs."docker-build".name | contains("Dependabot")' "$DEPENDABOT" \
+            "Dependabot Docker validation needs a check name distinct from validate.yml's"
+          assert_yq '.jobs."docker-build".steps[] | select(.name == "Docker Build (validate-only)") | .with.push == "false"' "$DEPENDABOT" \
+            "Dependabot Docker validation must never push an image"
+
+          ISSUE_IF=$(yq -r '.jobs."create-issue-on-failure".if | sub("\s+"; " ")' "$DEPENDABOT")
+          case "$ISSUE_IF" in
+            *"!= 'success'"*)
+              echo "::error file=$DEPENDABOT::A skipped prerequisite is not a Dependabot build failure"
+              exit 1 ;;
+          esac
+
+          echo "✅ CI de-duplication invariants hold"
+
       - name: Validate JSON Configuration
         run: |
           echo "Validating JSON configuration files..."

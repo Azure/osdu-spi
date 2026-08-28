@@ -12,6 +12,8 @@ The validation workflow activates automatically across multiple scenarios to mai
 - **Direct pushes** to protected branches - Validates changes that bypass the PR process (when permitted)
 - **Manual trigger** for post-initialization validation - Allows on-demand quality checks during setup or troubleshooting
 
+The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `🐳 Docker Build` context reflects a real build.
+
 ## What Gets Validated
 
 The workflow performs comprehensive validation across three key areas to ensure both code quality and process compliance:
@@ -23,7 +25,7 @@ The system verifies that code compiles, dependencies resolve, and tests pass. Pu
 Beyond code quality, the workflow validates semantic PR titles for ordinary PRs to `main`, detects whitespace/conflict-marker errors, and verifies that PR branches are up to date.
 
 ### Security and Dependency Analysis
-CodeQL runs in its own workflow and supplies the required `CodeQL` status. Dependabot PRs use `dependabot-validation.yml`; they do not run the regular Java and container jobs in this workflow.
+CodeQL runs in its own workflow and supplies the required `CodeQL` status. Dependabot PRs use `dependabot-validation.yml` for one Java build with coverage followed by validate-only container construction; they do not run the regular Java and container jobs in this workflow.
 
 ## Validation Results
 
@@ -110,6 +112,7 @@ All protected branches use the same validation rules, with exemptions for specif
 - **Relaxed commit standards** - Upstream commits may not follow conventions
 - **Conflict handling** - Automatically creates resolution guidance
 - **AI enhancement** - Generates PR descriptions when possible
+- **Single lane** - `pull_request_target` owns sync PRs and supplies trusted local actions; it builds `core` only in filter mode, and the full profile set with image validation in mirror mode
 
 ### Emergency Fixes
 - **Override capability** - Admin can bypass non-critical checks
@@ -126,7 +129,7 @@ The integration-branch ruleset does not currently require status checks.
 ### Check Exemptions
 - **Sync PRs**: Build `core` only and skip image validation
 - **Release and automation PRs**: Skip semantic PR-title validation
-- **Dependabot PRs**: Build through `dependabot-validation.yml`
+- **Dependabot PRs**: Build with coverage and validate the image through `dependabot-validation.yml`
 - **Docs/config-only PRs**: Skip Java and container work while summary checks still report
 
 ## Troubleshooting

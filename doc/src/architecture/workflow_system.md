@@ -122,9 +122,9 @@ graph TD
 
     ---
 
-    Dedicated build validation and failure tracking for Dependabot pull requests
+    Dedicated build and image validation with failure tracking for Dependabot pull requests
 
-    - **Automation**: Runs the reusable Java build with coverage
+    - **Automation**: Runs one reusable Java build with coverage, then validates the service image
     - **Feedback**: Posts the build result to the pull request
     - **Failure Handling**: Labels the PR and opens a `human-required` issue
     - **Integration**: Keeps automated dependency updates out of the regular validation build lane

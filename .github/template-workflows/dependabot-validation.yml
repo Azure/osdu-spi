@@ -88,7 +88,8 @@ jobs:
         with:
           generate_coverage: true
           gitlab_token: ${{ secrets.GITLAB_TOKEN }}
-      
+          maven_profile: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
+
       - name: "Post Build Status Comment"
         uses: ./.github/actions/pr-status
         with:
@@ -99,10 +100,33 @@ jobs:
             '["✅ Dependency Update Build Successful"]' || 
             '["❌ Dependency Update Build Failed"]' }}
 
+  docker-build:
+    # Name must differ from validate.yml's "🐳 Docker Build (validate)", which also reports on
+    # these PRs. Advisory only: the required summary passes Dependabot through.
+    name: "🐳 Dependabot Docker Build (validate)"
+    needs: java-build
+    if: needs.java-build.outputs.build_result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+
+      - name: "Docker Build (validate-only)"
+        uses: ./.github/actions/docker-build
+        with:
+          push: 'false'
+          image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
+
   create-issue-on-failure:
     name: "🔔 Notify Failed Dependabot Build"
-    needs: [check-repo-state, java-build]
-    if: needs.check-repo-state.outputs.is_java_repo == 'true' && needs.java-build.result != 'success'
+    needs: [check-repo-state, java-build, docker-build]
+    if: |
+      always() &&
+      needs.check-repo-state.outputs.is_java_repo == 'true' &&
+      (needs.java-build.result == 'failure' || needs.java-build.result == 'cancelled' ||
+       needs.docker-build.result == 'failure' || needs.docker-build.result == 'cancelled')
     runs-on: ubuntu-latest
     steps:
       - name: "Create Required Labels"
