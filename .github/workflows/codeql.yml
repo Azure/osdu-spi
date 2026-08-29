@@ -1,0 +1,85 @@
+name: CodeQL Analysis
+
+# Advanced setup rather than code scanning default setup: default setup does not
+# analyze pull requests from forks, which leaves the required "CodeQL" check
+# permanently absent on fork PRs and unmergeable (the ruleset has no bypass).
+# See issue #138.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Mondays at 6 AM UTC
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # actions is the point of this repository: 35 of its 46 YAML files are
+        # workflows or composite actions. python covers the upstream filter engine.
+        language: [actions, python]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Setup Python
+        if: matrix.language == 'python'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.x'
+
+      - name: Initialize CodeQL
+        # Commit SHA, not the v4.30.8 annotated-tag object SHA: the tag object is not a
+        # commit, so the REST commits API cannot resolve it and Dependabot cannot bump it.
+        uses: github/codeql-action/init@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+          build-mode: none
+          config: |
+            paths-ignore:
+              - '.github/local-actions/upstream-filter-tests/fixtures/**'
+              - 'doc/src/javascripts/**'
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
+        with:
+          category: "/language:${{matrix.language}}"
+
+  # Summary job reporting as "CodeQL" to satisfy the required status check
+  # (ADR-030). always() so the context reports even when the matrix does not
+  # complete; a required check that never arrives wedges the PR.
+  CodeQL:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    needs: [analyze]
+    if: always()
+    steps:
+      - name: Report CodeQL Status
+        run: |
+          case "${{ needs.analyze.result }}" in
+            success)
+              echo "✅ CodeQL analysis passed"
+              ;;
+            skipped)
+              echo "✅ CodeQL analysis skipped"
+              ;;
+            *)
+              echo "❌ CodeQL analysis ${{ needs.analyze.result }}"
+              exit 1
+              ;;
+          esac
