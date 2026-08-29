@@ -58,24 +58,30 @@ jobs:
             exit 0
           fi
 
-          # Check if any changed files are NOT in the ignore list
+          # Skip only when every changed file is Markdown. Markdown is not an
+          # analyzed language, so this can never hide a finding.
+          #
+          # The previous pattern anchored its alternation with $, so the
+          # .github/, .mvn/, devops/ and docs/ branches only matched those exact
+          # bare strings and never a real path. .github/** was ignored purely by
+          # the ^\..* dotfile catch-all, so a PR that rewrote workflows reported
+          # a green CodeQL with nothing analyzed at all (#142).
           SHOULD_RUN=false
           while IFS= read -r file; do
-            # Skip if file matches ignore patterns
-            if echo "$file" | grep -qE '^(\.github/|\.mvn/|devops/|docs/|\..*|.*\.md)$'; then
-              continue
-            fi
-            # Found a file that should trigger CodeQL
+            [ -z "$file" ] && continue
+            case "$file" in
+              *.md) continue ;;
+            esac
             SHOULD_RUN=true
             break
           done <<< "$CHANGED_FILES"
 
           if [ "$SHOULD_RUN" = "true" ]; then
             echo "should-run=true" >> $GITHUB_OUTPUT
-            echo "Running CodeQL: Code changes detected"
+            echo "Running CodeQL: non-documentation changes detected"
           else
             echo "should-run=false" >> $GITHUB_OUTPUT
-            echo "Skipping CodeQL: Only ignored paths changed (.github/, .mvn/, devops/, docs/, dotfiles, *.md)"
+            echo "Skipping CodeQL: only Markdown files changed"
           fi
 
   detect-languages:
@@ -126,13 +132,18 @@ jobs:
             LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["go"]')
           fi
 
-          # Default to java-kotlin if nothing detected (OSDU is primarily Java)
+          # Default to java-kotlin if no source language detected (OSDU is primarily Java)
           if [ "$LANGUAGES" = "[]" ]; then
             LANGUAGES='["java-kotlin"]'
           fi
 
+          # actions is always analyzed. Every fork ships .github/workflows/, so
+          # detection would be pointless -- the answer is always yes -- and
+          # workflow YAML is precisely what this analysis exists to review (#142).
+          LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["actions"]')
+
           echo "languages=$LANGUAGES" >> $GITHUB_OUTPUT
-          echo "Detected languages: $LANGUAGES"
+          echo "Analyzing languages: $LANGUAGES"
 
   analyze:
     name: Analyze Code
@@ -213,9 +224,9 @@ jobs:
             exit 1
           fi
 
-          # If should-run is false, all checks passed (config-only changes)
+          # Analysis is legitimately unnecessary only for documentation-only changes
           if [ "${{ needs.check-paths.outputs.should-run }}" = "false" ]; then
-            echo "✅ CodeQL skipped - only configuration files changed"
+            echo "✅ CodeQL skipped - only documentation changed"
             exit 0
           fi
 
@@ -225,15 +236,11 @@ jobs:
             exit 1
           fi
 
-          # Check analyze job result:
-          # - "success": analysis completed for at least one detected language
-          # - "skipped": can occur if (a) should-run is false (handled above), or (b) no languages were detected
-          # - "failure"/"cancelled": actual analysis errors
-
-          # If analyze is skipped when should-run is true, no languages were detected - this should fail
+          # actions is always in the language list, so it can never be empty.
+          # A skipped analyze at this point means the job never started, which
+          # is an infrastructure fault and must not be reported as a pass.
           if [ "${{ needs.analyze.result }}" = "skipped" ]; then
-            echo "❌ CodeQL analysis skipped - no languages detected in repository"
-            echo "This indicates a configuration issue or repository with no analyzable code"
+            echo "❌ CodeQL analysis did not run despite non-documentation changes"
             exit 1
           fi
 
