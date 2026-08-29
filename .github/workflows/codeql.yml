@@ -34,16 +34,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
       - name: Setup Python
         if: matrix.language == 'python'
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.x'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@caa5102941e77fe39b460490c70318beb68c5c25  # v4
+        # Commit SHA, not the v4.30.8 annotated-tag object SHA: the tag object is not a
+        # commit, so the REST commits API cannot resolve it and Dependabot cannot bump it.
+        uses: github/codeql-action/init@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
@@ -54,7 +56,7 @@ jobs:
               - 'doc/src/javascripts/**'
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@caa5102941e77fe39b460490c70318beb68c5c25  # v4
+        uses: github/codeql-action/analyze@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
         with:
           category: "/language:${{matrix.language}}"
 
