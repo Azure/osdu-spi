@@ -51,23 +51,23 @@ if [[ -n "$SYNC_BRANCHES" ]]; then
       if [[ "$BRANCH_TIME" -lt "$CLEANUP_THRESHOLD" ]] && [[ "$BRANCH_TIME" -gt "0" ]]; then
         # Check if there's an associated open PR with proper error handling
         echo "   Checking for associated PR for branch: $branch"
-        ASSOCIATED_PR=$(gh pr list --head "$branch" --state open --json number 2>/dev/null | jq -r '.[0].number // empty' 2>/dev/null || echo "")
-        GH_EXIT_CODE=$?
-
-        if [[ $GH_EXIT_CODE -ne 0 ]]; then
-          echo "   ⚠️ Warning: gh command failed for branch $branch (exit code: $GH_EXIT_CODE)"
-          echo "   Skipping cleanup for safety - manual intervention may be required"
-        elif [[ -z "$ASSOCIATED_PR" ]]; then
-          AGE_SECONDS=$((CURRENT_TIME - BRANCH_TIME))
-          echo "   ⚠️ Found abandoned branch: $branch (age: $AGE_SECONDS seconds)"
-          echo "   Deleting abandoned branch..."
-          if git push origin --delete "$branch" 2>/dev/null; then
-            echo "   ✅ Deleted branch: $branch"
+        if ASSOCIATED_PR=$(gh pr list --head "$branch" --state open --json number 2>/dev/null | jq -r '.[0].number // empty' 2>/dev/null); then
+          if [[ -z "$ASSOCIATED_PR" ]]; then
+            AGE_SECONDS=$((CURRENT_TIME - BRANCH_TIME))
+            echo "   ⚠️ Found abandoned branch: $branch (age: $AGE_SECONDS seconds)"
+            echo "   Deleting abandoned branch..."
+            if git push origin --delete "$branch" 2>/dev/null; then
+              echo "   ✅ Deleted branch: $branch"
+            else
+              echo "   ⚠️ Failed to delete branch (may not exist or permissions issue)"
+            fi
           else
-            echo "   ⚠️ Failed to delete branch (may not exist or permissions issue)"
+            echo "   ✅ Branch $branch has associated PR #$ASSOCIATED_PR - keeping"
           fi
         else
-          echo "   ✅ Branch $branch has associated PR #$ASSOCIATED_PR - keeping"
+          GH_EXIT_CODE=$?
+          echo "   ⚠️ Warning: gh command failed for branch $branch (exit code: $GH_EXIT_CODE)"
+          echo "   Skipping cleanup for safety - manual intervention may be required"
         fi
       fi
     fi
