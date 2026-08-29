@@ -28,6 +28,9 @@ jobs:
       - name: Run harness
         run: bash .github/local-actions/upstream-filter-tests/run-tests.sh
 
+      - name: Run sync state harness
+        run: bash .github/local-actions/sync-state-manager-tests/run-tests.sh
+
   validate:
     name: Validate Template
     runs-on: ubuntu-latest

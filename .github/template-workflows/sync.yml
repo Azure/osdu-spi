@@ -158,7 +158,18 @@ jobs:
           git fetch origin fork_upstream
           BEFORE_SHA=$(git rev-parse origin/fork_upstream)
           UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
+          if [[ ! "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Resolved upstream SHA is not a full lowercase commit ID: $UPSTREAM_SHA"
+            exit 1
+          fi
+          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
           echo "Captured pre-sync state: $BEFORE_SHA"
+
+          # Export sync identity before generation so no-change updates can still
+          # persist the upstream SHA and avoid repeating the same comparison.
+          echo "SYNC_BRANCH=$SYNC_BRANCH" >> "$GITHUB_ENV"
+          echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_ENV"
+          echo "UPSTREAM_VERSION=$UPSTREAM_VERSION" >> "$GITHUB_ENV"
 
           GEN_OUT="$RUNNER_TEMP/generate-branch.env"
           bash .github/actions/upstream-filter/generate-branch.sh \
@@ -170,9 +181,6 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
             exit 0
           fi
-
-          # Upstream version for the commit message and PR description (SHA when untagged)
-          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
 
           # Disposable worktree: aipr needs a checked-out tree for its diff context,
           # and the primary working tree stays on main.
@@ -241,11 +249,9 @@ jobs:
           FALLBACK_DESCRIPTION="Automated PR to sync with upstream repository changes."$'\n\n'"### Changes from upstream:"$'\n'"${CHANGES}"
 
           # Set environment variables for subsequent steps
-          echo "SYNC_BRANCH=$SYNC_BRANCH" >> $GITHUB_ENV
-          echo "UPSTREAM_VERSION=$UPSTREAM_VERSION" >> $GITHUB_ENV
-          echo "FALLBACK_DESCRIPTION<<EOF" >> $GITHUB_ENV
-          echo "$FALLBACK_DESCRIPTION" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          echo "FALLBACK_DESCRIPTION<<EOF" >> "$GITHUB_ENV"
+          echo "$FALLBACK_DESCRIPTION" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
 
       - name: Detect LLM provider
         id: llm-detect
@@ -485,7 +491,7 @@ jobs:
         run: |
           PR_URL="${{ steps.create-pr.outputs.pr-url }}"
           PR_NUMBER="${{ steps.create-pr.outputs.pr-number }}"
-          # UPSTREAM_VERSION and SYNC_BRANCH are available via $GITHUB_ENV
+          # UPSTREAM_VERSION, UPSTREAM_SHA, and SYNC_BRANCH are available via $GITHUB_ENV
 
           # Get commit count for the notification
           COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH)
@@ -535,7 +541,7 @@ jobs:
             "---" \
             "**Timeline**" \
             "- **Sync detected**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`" \
-            "- **Current status**: Awaiting PR review and merge"
+            "- **Current status**: Awaiting PR review and merge"$'\n\n'"<!-- upstream-sha: $UPSTREAM_SHA -->"
 
           # Create the issue with the complete body in a single call
           printf '%s\n' "$NOTIFICATION_BODY" > /tmp/issue_body.txt
@@ -549,13 +555,12 @@ jobs:
           echo "Created notification issue #$ISSUE_NUMBER: $ISSUE_URL"
 
       - name: Update issue description with current sync status
-        if: steps.sync-state.outputs.sync_decision == 'add_reminder' || steps.sync-state.outputs.sync_decision == 'update_existing'
+        if: steps.sync-state.outputs.sync_decision == 'update_existing'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
-          PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
-          # UPSTREAM_VERSION and SYNC_BRANCH are available via $GITHUB_ENV
+          # UPSTREAM_VERSION, UPSTREAM_SHA, and SYNC_BRANCH are available via $GITHUB_ENV
 
           # Guard: skip if no tracking issue exists (issue may have been closed by cascade)
           if [ -z "$ISSUE_NUMBER" ]; then
@@ -567,7 +572,7 @@ jobs:
 
           echo "Updating issue description for issue #$ISSUE_NUMBER"
           echo "Repository: $GH_REPO"
-          echo "Parameters: UPSTREAM_VERSION=$UPSTREAM_VERSION, SYNC_BRANCH=$SYNC_BRANCH"
+          echo "Parameters: UPSTREAM_VERSION=$UPSTREAM_VERSION, UPSTREAM_SHA=$UPSTREAM_SHA, SYNC_BRANCH=$SYNC_BRANCH"
           
           # Get current issue body using GitHub API (avoids argument parsing issues)
           echo "Fetching current issue body..."
@@ -582,42 +587,34 @@ jobs:
           if [ -n "$SYNC_BRANCH" ] && git rev-parse --verify "$SYNC_BRANCH" >/dev/null 2>&1; then
             COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH 2>/dev/null || echo "0")
           else
-            # For reminder case, get count from existing PR branch or use stored value
+            # Filtered no-change updates do not create a local branch ref, so
+            # count the commits from the existing remote sync branch instead.
             COMMIT_COUNT=$(git rev-list --count fork_upstream..origin/$SYNC_BRANCH 2>/dev/null || echo "0")
           fi
           
           echo "Calculated commit count: $COMMIT_COUNT"
           
-          # Update the Sync Summary section with current values using awk (more reliable than sed with backticks)
-          echo "$CURRENT_BODY" > /tmp/current_body.txt
-          
-          # Use awk to update the three key fields
-          awk -v upstream="$UPSTREAM_VERSION" -v count="$COMMIT_COUNT" -v branch="$SYNC_BRANCH" '
-          {
-            # Update Upstream Version
-            gsub(/\*\*Upstream Version\*\*: `[^`]*`/, "**Upstream Version**: `" upstream "`")
-            
-            # Update Changes count
-            gsub(/\*\*Changes\*\*: [0-9]+ new commits from upstream/, "**Changes**: " count " new commits from upstream")
-            
-            # Update Branch
-            gsub(/\*\*Branch\*\*: `[^`]*` → `fork_upstream`/, "**Branch**: `" branch "` → `fork_upstream`")
-            
-            print
-          }' /tmp/current_body.txt > /tmp/updated_body.txt
-          
-          # Replace the original file with the updated version
-          mv /tmp/updated_body.txt /tmp/current_body.txt
+          # Update the display fields and canonical machine-readable SHA marker.
+          printf '%s\n' "$CURRENT_BODY" > /tmp/current_body.txt
+
+          bash .github/actions/sync-state-manager/update-issue-body.sh \
+            /tmp/current_body.txt \
+            /tmp/updated_body.txt \
+            "$UPSTREAM_VERSION" \
+            "$UPSTREAM_SHA" \
+            "$COMMIT_COUNT" \
+            "$SYNC_BRANCH"
           
           # Update the issue description using the file
           echo "Updating issue description..."
-          gh issue edit "$ISSUE_NUMBER" --body-file /tmp/current_body.txt
+          gh issue edit "$ISSUE_NUMBER" --body-file /tmp/updated_body.txt
           
           # Clean up
-          rm -f /tmp/current_body.txt
+          rm -f /tmp/current_body.txt /tmp/updated_body.txt
           
           echo "✅ Updated issue description with current sync status:"
           echo "  - Upstream Version: $UPSTREAM_VERSION"
+          echo "  - Upstream SHA: $UPSTREAM_SHA"
           echo "  - Changes: $COMMIT_COUNT new commits"
           echo "  - Branch: $SYNC_BRANCH"
 
@@ -644,11 +641,6 @@ jobs:
               echo "The updated PR can be reviewed and merged to integrate upstream changes."
               ;;
             "add_reminder")
-              if [ "$ISSUE_DESCRIPTION_UPDATE_SKIPPED" = "true" ]; then
-                echo "⚠️ Issue description update skipped (tracking issue was closed)"
-              else
-                echo "✅ Issue description updated with current sync status"
-              fi
               echo "No new changes from upstream - existing PR is still current"
               ;;
             "no_action")

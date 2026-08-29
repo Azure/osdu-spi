@@ -32,7 +32,7 @@ The workflow uses intelligent state management to avoid creating duplicate sync 
 | Situation | Action Taken |
 |-----------|-------------|
 | **No existing PR + upstream changed** | Creates new PR and tracking issue |
-| **Existing PR + upstream unchanged** | Adds reminder comment to existing PR |
+| **Existing PR + upstream unchanged** | Keeps the existing PR and issue unchanged |
 | **Existing PR + upstream changed** | Updates existing PR with new changes |
 | **No existing PR + upstream unchanged** | No action - exits cleanly |
 

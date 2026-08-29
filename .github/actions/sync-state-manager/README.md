@@ -21,12 +21,16 @@ The action orchestrates 6 scripts in sequence:
 5. **cleanup-abandoned-branches.sh** - Removes old sync branches without PRs
 6. **make-sync-decision.sh** - Applies decision matrix to determine action
 
+The workflow stores the canonical 40-character upstream SHA in a hidden
+`<!-- upstream-sha: ... -->` marker at the end of the active tracking issue.
+The visible **Upstream Version** remains a tag or short SHA for readers.
+
 ## Decision Matrix
 
 | Existing PR | Upstream Changed | Decision |
 |-------------|------------------|----------|
 | No | Yes | **Create new PR and issue** |
-| Yes | No | **Add reminder comment** |
+| Yes | No | **Keep existing PR and issue unchanged** |
 | Yes | Yes | **Update existing branch/PR** |
 | No | No | **No action needed** |
 
@@ -48,7 +52,7 @@ The action orchestrates 6 scripts in sequence:
 | `existing_pr_number` | Existing PR number if found |
 | `existing_issue_number` | Existing issue number if found |
 | `existing_branch_name` | Existing sync branch name if found |
-| `sync_decision` | Decision reason (create_new, add_reminder, update_existing, no_action) |
+| `sync_decision` | Decision reason (`add_reminder` is retained for compatibility when the existing PR is current) |
 
 ## Usage in Workflows
 
@@ -76,7 +80,13 @@ The action orchestrates 6 scripts in sequence:
 
 ## Local Testing
 
-### Prerequisites
+Run the complete regression harness from the repository root:
+
+```bash
+bash .github/local-actions/sync-state-manager-tests/run-tests.sh
+```
+
+### Prerequisites for Live Script Testing
 
 ```bash
 # Install gh CLI and authenticate
@@ -123,7 +133,7 @@ cd .github/actions/sync-state-manager
 # Reading sync state from existing issue description...
 # Found existing issue #123, parsing state from description...
 # Parsed from issue:
-#   Last upstream SHA: def4567890123
+#   Last upstream SHA: def4567890123456789012345678901234567890
 #   Issue number: 123
 #   Last sync: 2025-01-29T10:00:00Z
 ```
@@ -181,7 +191,7 @@ cd .github/actions/sync-state-manager
 # should_create_issue=true
 # sync_decision=create_new
 
-# Scenario 2: Existing PR, no change -> add reminder
+# Scenario 2: Existing PR, no change -> keep existing artifacts unchanged
 ./make-sync-decision.sh \
   "abc123" \    # current_sha
   "abc123" \    # last_sha (same)
@@ -192,7 +202,7 @@ cd .github/actions/sync-state-manager
   "sync/upstream-20250129-100000"
 
 # Expected output:
-# 📝 Decision: Add reminder comment (upstream unchanged, existing PR)
+# ✅ Decision: Existing PR remains current (upstream unchanged)
 # should_create_pr=false
 # should_update_branch=false
 # sync_decision=add_reminder
@@ -235,18 +245,16 @@ cd .github/actions/sync-state-manager
 
 ```
 sync-state-manager/
-├── action.yml                      # Orchestrates 6 steps (85 lines)
-├── get-upstream-sha.sh             # Simple SHA retrieval (35 lines)
-├── detect-existing-issues.sh       # gh issue list queries (50 lines)
-├── check-stored-state.sh           # Awk parsing from issue (66 lines)
-├── detect-existing-prs.sh          # gh pr list queries (56 lines)
-├── cleanup-abandoned-branches.sh   # Complex cleanup logic (78 lines)
-├── make-sync-decision.sh           # Decision matrix (132 lines)
+├── action.yml                      # Orchestrates state discovery and decisions
+├── get-upstream-sha.sh             # Simple SHA retrieval
+├── detect-existing-issues.sh       # gh issue list queries
+├── check-stored-state.sh           # Full-SHA marker parsing
+├── detect-existing-prs.sh          # gh pr list queries
+├── cleanup-abandoned-branches.sh   # Fail-closed branch cleanup
+├── make-sync-decision.sh           # Decision matrix
+├── update-issue-body.sh            # Canonical issue marker and display updates
 └── README.md                       # This file
 ```
-
-**Total**: 501 lines (vs 270 lines in original monolithic action.yml)
-**Reduction**: action.yml went from 270 → 85 lines (**68% reduction**)
 
 ### Key Features
 
@@ -271,6 +279,9 @@ All scripts use `set -euo pipefail` for strict error handling:
 - `-e`: Exit on error
 - `-u`: Exit on undefined variable
 - `-o pipefail`: Exit on pipe failure
+
+Abandoned-branch cleanup separates the `gh` lookup from JSON parsing and skips
+deletion if either operation fails.
 
 ### Platform Compatibility
 

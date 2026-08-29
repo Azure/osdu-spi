@@ -7,7 +7,7 @@
 #
 # Decision Matrix:
 #   1. No PR + Upstream Changed    -> Create new PR and issue
-#   2. Existing PR + No Change     -> Add reminder comment
+#   2. Existing PR + No Change     -> Keep existing artifacts unchanged
 #   3. Existing PR + Upstream Changed -> Update existing branch/PR
 #   4. No PR + No Change           -> No action
 #
@@ -79,15 +79,16 @@ if [[ "$HAS_EXISTING_PR" = "false" ]] && [[ "$UPSTREAM_CHANGED" = "true" ]]; the
   echo "🆕 Decision: Create new PR and issue (upstream changed, no existing PR)"
 
 elif [[ "$HAS_EXISTING_PR" = "true" ]] && [[ "$UPSTREAM_CHANGED" = "false" ]]; then
-  # Scenario 2: Existing PR, upstream unchanged -> Add reminder comment
+  # Scenario 2: Existing PR, upstream unchanged -> Keep existing artifacts unchanged
   SHOULD_CREATE_PR="false"
   SHOULD_CREATE_ISSUE="false"
   SHOULD_UPDATE_BRANCH="false"
   OUT_PR_NUMBER="$EXISTING_PR_NUMBER"
   OUT_ISSUE_NUMBER="$EXISTING_ISSUE_NUMBER"
   OUT_BRANCH_NAME="$EXISTING_PR_BRANCH"
+  # Retain the historical output value for compatibility with deployed workflows.
   SYNC_DECISION="add_reminder"
-  echo "📝 Decision: Add reminder comment (upstream unchanged, existing PR)"
+  echo "✅ Decision: Existing PR remains current (upstream unchanged)"
 
 elif [[ "$HAS_EXISTING_PR" = "true" ]] && [[ "$UPSTREAM_CHANGED" = "true" ]]; then
   # Scenario 3: Existing PR, upstream changed -> Update existing branch and PR

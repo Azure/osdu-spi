@@ -51,13 +51,22 @@ if [[ -n "$SYNC_BRANCHES" ]]; then
       if [[ "$BRANCH_TIME" -lt "$CLEANUP_THRESHOLD" ]] && [[ "$BRANCH_TIME" -gt "0" ]]; then
         # Check if there's an associated open PR with proper error handling
         echo "   Checking for associated PR for branch: $branch"
-        ASSOCIATED_PR=$(gh pr list --head "$branch" --state open --json number 2>/dev/null | jq -r '.[0].number // empty' 2>/dev/null || echo "")
-        GH_EXIT_CODE=$?
+        GH_EXIT_CODE=0
+        PR_LIST=$(gh pr list --head "$branch" --state open --json number 2>/dev/null) || GH_EXIT_CODE=$?
 
         if [[ $GH_EXIT_CODE -ne 0 ]]; then
           echo "   ⚠️ Warning: gh command failed for branch $branch (exit code: $GH_EXIT_CODE)"
           echo "   Skipping cleanup for safety - manual intervention may be required"
-        elif [[ -z "$ASSOCIATED_PR" ]]; then
+          continue
+        fi
+
+        if ! ASSOCIATED_PR=$(jq -r '.[0].number // empty' <<< "$PR_LIST" 2>/dev/null); then
+          echo "   ⚠️ Warning: failed to parse PR lookup response for branch $branch"
+          echo "   Skipping cleanup for safety - manual intervention may be required"
+          continue
+        fi
+
+        if [[ -z "$ASSOCIATED_PR" ]]; then
           AGE_SECONDS=$((CURRENT_TIME - BRANCH_TIME))
           echo "   ⚠️ Found abandoned branch: $branch (age: $AGE_SECONDS seconds)"
           echo "   Deleting abandoned branch..."

@@ -35,11 +35,20 @@ echo "Reading sync state from existing issue description..."
 if [[ -n "$EXISTING_ISSUE_NUMBER" ]]; then
   echo "Found existing issue #$EXISTING_ISSUE_NUMBER, parsing state from description..."
 
-  # Get issue body and extract upstream version SHA
+  # Get issue body and extract the machine-readable upstream SHA
   ISSUE_BODY=$(gh issue view "$EXISTING_ISSUE_NUMBER" --json body --jq '.body')
 
-  # Extract SHA from "Upstream Version" field using awk for robust parsing
-  LAST_UPSTREAM_SHA=$(echo "$ISSUE_BODY" | awk '/Upstream Version/ {match($0, /`[^`]+`/); if (RSTART > 0) print substr($0, RSTART+1, RLENGTH-2)}' | head -1)
+  LAST_UPSTREAM_SHA=$(awk '
+    /<!-- upstream-sha: [0-9a-f]+ -->/ {
+      sha = $0
+      sub(/^.*<!-- upstream-sha: /, "", sha)
+      sub(/ -->.*$/, "", sha)
+      if (length(sha) == 40 && sha ~ /^[0-9a-f]+$/) {
+        print sha
+        exit
+      }
+    }
+  ' <<< "$ISSUE_BODY")
 
   # Extract timestamp from issue creation/update
   LAST_SYNC_TIMESTAMP=$(gh issue view "$EXISTING_ISSUE_NUMBER" --json updatedAt --jq '.updatedAt')
@@ -56,9 +65,11 @@ fi
 
 # Output to GITHUB_OUTPUT if running in GitHub Actions
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-  echo "last_upstream_sha=$LAST_UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
-  echo "current_issue_number=$EXISTING_ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
-  echo "last_sync_timestamp=$LAST_SYNC_TIMESTAMP" >> "$GITHUB_OUTPUT"
+  {
+    echo "last_upstream_sha=$LAST_UPSTREAM_SHA"
+    echo "current_issue_number=$EXISTING_ISSUE_NUMBER"
+    echo "last_sync_timestamp=$LAST_SYNC_TIMESTAMP"
+  } >> "$GITHUB_OUTPUT"
 fi
 
 # Also output to stdout for local testing
