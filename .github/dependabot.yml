@@ -35,6 +35,8 @@ updates:
           - "minor"
           - "patch"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
 
   # Docker base image - Canonical service Dockerfile (Engineering System, ADR-037)
   # Template-only: bumps the digest pinned in build/Dockerfile; template-sync then propagates the
