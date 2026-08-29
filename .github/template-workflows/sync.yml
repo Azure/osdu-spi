@@ -179,6 +179,9 @@ jobs:
           if [ "$has_changes" = "false" ]; then
             echo "No changes to sync from upstream"
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            # Recorded only here: on the has_changes=true path a later failure
+            # would leave state claiming this SHA was handled with no PR to show.
+            bash .github/actions/sync-state-manager/record-evaluated-sha.sh "$UPSTREAM_SHA"
             exit 0
           fi
 

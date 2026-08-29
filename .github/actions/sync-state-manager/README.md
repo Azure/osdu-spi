@@ -16,7 +16,7 @@ The action orchestrates 6 scripts in sequence:
 
 1. **get-upstream-sha.sh** - Gets current upstream commit SHA
 2. **detect-existing-issues.sh** - Finds open sync issues
-3. **check-stored-state.sh** - Parses last sync SHA from issue description
+3. **check-stored-state.sh** - Reads the last sync SHA from the tracking issue, or from `SYNC_LAST_EVALUATED_SHA` when no issue is open
 4. **detect-existing-prs.sh** - Finds open sync PRs
 5. **cleanup-abandoned-branches.sh** - Removes old sync branches without PRs
 6. **make-sync-decision.sh** - Applies decision matrix to determine action
@@ -24,6 +24,11 @@ The action orchestrates 6 scripts in sequence:
 The workflow stores the canonical 40-character upstream SHA in a hidden
 `<!-- upstream-sha: ... -->` marker at the end of the active tracking issue.
 The visible **Upstream Version** remains a tag or short SHA for readers.
+
+When filtering produces no fork-visible change no issue is opened, so
+`record-evaluated-sha.sh` writes the SHA to the `SYNC_LAST_EVALUATED_SHA`
+repository variable instead. An open tracking issue always outranks the
+variable: reading it mid-cycle would strand an open sync PR at an older tree.
 
 ## Decision Matrix
 
@@ -253,6 +258,7 @@ sync-state-manager/
 ├── cleanup-abandoned-branches.sh   # Fail-closed branch cleanup
 ├── make-sync-decision.sh           # Decision matrix
 ├── update-issue-body.sh            # Canonical issue marker and display updates
+├── record-evaluated-sha.sh         # Durable no-op state between sync cycles
 └── README.md                       # This file
 ```
 

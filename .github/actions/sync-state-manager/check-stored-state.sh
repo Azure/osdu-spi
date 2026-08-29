@@ -2,8 +2,10 @@
 #
 # Check Stored State Script
 #
-# Reads sync state from existing issue description using awk parsing.
-# Extracts the last upstream SHA and timestamp from issue body.
+# Reads sync state for the current sync cycle. When a tracking issue exists its
+# hidden marker is authoritative, so an open cycle keeps driving branch updates.
+# With no tracking issue the durable repository variable is consulted instead,
+# which is what stops a filtered no-op SHA from being re-generated (ADR-024).
 #
 # Arguments:
 #   $1 - Existing issue number (can be empty if no issue exists)
@@ -21,6 +23,8 @@
 #   ./check-stored-state.sh "123"
 
 set -euo pipefail
+
+STATE_VARIABLE="SYNC_LAST_EVALUATED_SHA"
 
 if [[ $# -ne 1 ]]; then
   echo "Error: Missing required argument"
@@ -58,8 +62,18 @@ if [[ -n "$EXISTING_ISSUE_NUMBER" ]]; then
   echo "  Issue number: $EXISTING_ISSUE_NUMBER"
   echo "  Last sync: $LAST_SYNC_TIMESTAMP"
 else
-  echo "No existing sync issue found, treating as first sync"
-  LAST_UPSTREAM_SHA=""
+  echo "No existing sync issue found, reading durable evaluated-SHA state..."
+
+  STORED_SHA=$(gh variable get "$STATE_VARIABLE" 2>/dev/null || echo "")
+
+  if [[ "$STORED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+    LAST_UPSTREAM_SHA="$STORED_SHA"
+    echo "  Last evaluated upstream SHA: $LAST_UPSTREAM_SHA"
+  else
+    LAST_UPSTREAM_SHA=""
+    echo "  No durable state recorded, treating as first sync"
+  fi
+
   LAST_SYNC_TIMESTAMP=""
 fi
 

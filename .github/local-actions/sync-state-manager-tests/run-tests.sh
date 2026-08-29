@@ -15,6 +15,7 @@ CLEANUP="$ACTION_DIR/cleanup-abandoned-branches.sh"
 CHECK_STATE="$ACTION_DIR/check-stored-state.sh"
 DECIDE="$ACTION_DIR/make-sync-decision.sh"
 UPDATE_BODY="$ACTION_DIR/update-issue-body.sh"
+RECORD="$ACTION_DIR/record-evaluated-sha.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -28,6 +29,26 @@ mkdir -p "$BIN"
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+if [[ "${1:-}" == "variable" ]]; then
+  case "${2:-}" in
+    set)
+      printf '%s\n' "$*" >> "$GH_VARIABLE_LOG"
+      if [[ "${GH_VARIABLE_SET_FAILS:-}" == "true" ]]; then
+        exit 7
+      fi
+      exit 0
+      ;;
+    get)
+      if [[ -z "${GH_STORED_VARIABLE:-}" ]]; then
+        exit 1
+      fi
+      printf '%s\n' "$GH_STORED_VARIABLE"
+      exit 0
+      ;;
+  esac
+  exit 64
+fi
 
 case "${GH_MODE:-}" in
   cleanup-fail)
@@ -203,6 +224,54 @@ DECISION=$("$DECIDE" "$SHA" "$SHA" true false 10 "" sync/upstream-test)
 grep -q "sync_decision=add_reminder" <<< "$DECISION" || die "existing PR without issue changed compatibility decision"
 ok "missing tracking issue does not require a reminder side effect"
 
+note "durable state: malformed SHAs are never recorded"
+export GH_VARIABLE_LOG="$TMP/variable.log"
+: > "$GH_VARIABLE_LOG"
+if PATH="$BIN:$PATH" "$RECORD" "not-a-sha" >/dev/null 2>&1; then
+  die "a malformed SHA was recorded"
+fi
+[[ ! -s "$GH_VARIABLE_LOG" ]] || die "a rejected SHA still reached gh variable set"
+ok "malformed SHA is rejected before any write"
+
+note "durable state: a no-op evaluation records the full SHA"
+PATH="$BIN:$PATH" "$RECORD" "$SHA" >/dev/null
+grep -Fq "variable set SYNC_LAST_EVALUATED_SHA --body $SHA" "$GH_VARIABLE_LOG" ||
+  die "evaluated SHA was not written to the durable variable"
+ok "no-op evaluation persists the evaluated SHA"
+
+note "durable state: a failed write degrades instead of failing the sync"
+GH_VARIABLE_SET_FAILS=true PATH="$BIN:$PATH" "$RECORD" "$SHA" > "$TMP/record-fail.log" ||
+  die "a failed variable write failed the sync run"
+grep -q "next run will re-evaluate" "$TMP/record-fail.log" || die "failed write was not reported"
+ok "unwritable state costs a repeat, not a red run"
+
+read_durable_sha() {
+  GH_STORED_VARIABLE="$1" PATH="$BIN:$PATH" "$CHECK_STATE" "" |
+    awk -F= '$1 == "last_upstream_sha" { print $2; exit }'
+}
+
+note "durable state: with no tracking issue the variable supplies the last SHA"
+[[ "$(read_durable_sha "$SHA")" == "$SHA" ]] || die "durable variable was not consulted"
+ok "no-issue runs read durable state"
+
+note "durable state: an unusable stored value degrades to empty"
+[[ -z "$(read_durable_sha "deadbeef")" ]] || die "a short SHA was accepted as state"
+[[ -z "$(read_durable_sha "")" ]] || die "an unset variable produced a false SHA"
+ok "invalid durable state compares as changed"
+
+note "durable state: an open tracking issue outranks the variable"
+printf '%s\n' "Summary" "<!-- upstream-sha: $OLD_SHA -->" > "$TMP/active-cycle.md"
+ACTIVE=$(GH_MODE=issue ISSUE_BODY_FILE="$TMP/active-cycle.md" GH_STORED_VARIABLE="$SHA" \
+  PATH="$BIN:$PATH" "$CHECK_STATE" 42 | awk -F= '$1 == "last_upstream_sha" { print $2; exit }')
+[[ "$ACTIVE" == "$OLD_SHA" ]] || die "durable state hijacked an active sync cycle"
+ok "active cycle keeps driving from the issue marker"
+
+note "decision: a re-evaluated no-op SHA takes no action at all"
+DECISION=$("$DECIDE" "$SHA" "$SHA" false false "" "" "")
+grep -q "sync_decision=no_action" <<< "$DECISION" || die "repeat no-op SHA did not select no_action"
+grep -q "should_create_pr=false" <<< "$DECISION" || die "repeat no-op SHA would regenerate a branch"
+ok "repeat no-op SHA skips generation"
+
 note "workflow: order-dependent state exports and marker placement stay pinned"
 EXPORT_LINE=$(grep -nF 'echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_ENV"' "$WORKFLOW" | cut -d: -f1)
 EARLY_EXIT_LINE=$(grep -nF 'if [ "$has_changes" = "false" ]; then' "$WORKFLOW" | cut -d: -f1)
@@ -217,6 +286,11 @@ if grep -Fq -- '- name: Add reminder to existing sync issue' "$WORKFLOW"; then
   die "add_reminder posts recurring issue notifications"
 fi
 grep -Fq '"add_reminder")' "$WORKFLOW" || die "compatibility decision is not logged"
+
+RECORD_LINE=$(grep -nF 'record-evaluated-sha.sh "$UPSTREAM_SHA"' "$WORKFLOW" | cut -d: -f1)
+WORKTREE_LINE=$(grep -nF 'SYNC_WORKTREE="$RUNNER_TEMP/sync-worktree"' "$WORKFLOW" | cut -d: -f1)
+[[ "$RECORD_LINE" -gt "$EARLY_EXIT_LINE" && "$RECORD_LINE" -lt "$WORKTREE_LINE" ]] ||
+  die "evaluated SHA is not recorded inside the no-change exit"
 ok "workflow invariants hold"
 
 printf '\nAll sync-state-manager tests passed\n'
