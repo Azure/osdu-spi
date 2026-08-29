@@ -26,7 +26,15 @@ Generate a private key, and install the App on your organization (covering the f
 
 Fork the service repository into your organization through GitHub (keep "Copy the default branch only" checked). It must be a true GitHub fork: contribution PRs can only be opened from within the parent's fork network, and adoption auto-detects your upstream from the fork's parent.
 
-After forking, open the fork's **Actions** tab and enable workflows (GitHub disables inherited workflows on new forks until a person enables them).
+After forking, open the fork's **Actions** tab and enable workflows. The bulk enable leaves schedule-triggered workflows disabled. Open each active workflow's own page from the Actions sidebar and enable it explicitly:
+
+- `sync.yml`
+- `cascade-monitor.yml`
+- `settings-apply.yml`
+- `codeql.yml`
+- `ghcr-retention.yml`
+- `sync-template.yml`: leave this disabled at the customer tier. Template sync is gated off per ADR-039 because the mirror is the single delivery channel.
+- `scorecard.yml`: no action is needed. As noted in [Gotchas](#gotchas), it is inert on a fork.
 
 ### 3. Set the required secrets
 
