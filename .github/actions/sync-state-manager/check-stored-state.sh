@@ -31,8 +31,8 @@ STATE_VARIABLE="SYNC_LAST_EVALUATED_SHA"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ $# -ne 1 ]]; then
-  echo "Error: Missing required argument"
-  echo "Usage: $0 <existing_issue_number>"
+  echo "Error: Missing required argument" >&2
+  echo "Usage: $0 <existing_issue_number>" >&2
   exit 1
 fi
 

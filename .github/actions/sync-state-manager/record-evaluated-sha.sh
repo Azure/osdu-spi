@@ -27,8 +27,8 @@ set -euo pipefail
 STATE_VARIABLE="SYNC_LAST_EVALUATED_SHA"
 
 if [[ $# -ne 1 ]]; then
-  echo "Error: Missing required argument"
-  echo "Usage: $0 <upstream_sha>"
+  echo "Error: Missing required argument" >&2
+  echo "Usage: $0 <upstream_sha>" >&2
   exit 1
 fi
 
@@ -38,7 +38,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # A malformed value would compare unequal forever and silently disable the
 # optimization, so reject it here rather than storing it.
 if [[ ! "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "Error: Upstream SHA must be a 40-character lowercase hexadecimal value"
+  echo "Error: Upstream SHA must be a 40-character lowercase hexadecimal value" >&2
   exit 1
 fi
 

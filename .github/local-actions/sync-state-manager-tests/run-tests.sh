@@ -250,11 +250,13 @@ ok "revision tracks filter config, engine, and sync mode"
 note "durable state: malformed SHAs are never recorded"
 export GH_VARIABLE_LOG="$TMP/variable.log"
 : > "$GH_VARIABLE_LOG"
-if PATH="$BIN:$PATH" "$RECORD" "not-a-sha" >/dev/null 2>&1; then
+if PATH="$BIN:$PATH" "$RECORD" "not-a-sha" > "$TMP/record-err.out" 2>"$TMP/record-err.err"; then
   die "a malformed SHA was recorded"
 fi
 [[ ! -s "$GH_VARIABLE_LOG" ]] || die "a rejected SHA still reached gh variable set"
-ok "malformed SHA is rejected before any write"
+[[ ! -s "$TMP/record-err.out" ]] || die "a fatal error was written to stdout"
+grep -q "Error:" "$TMP/record-err.err" || die "the fatal error never reached stderr"
+ok "malformed SHA is rejected before any write, on stderr"
 
 note "durable state: a no-op evaluation records the SHA and its revision"
 PATH="$BIN:$PATH" "$RECORD" "$SHA" >/dev/null
