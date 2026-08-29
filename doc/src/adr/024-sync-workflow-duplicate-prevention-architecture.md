@@ -47,7 +47,7 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 - Keep the human-facing **Upstream Version** as a tag or short SHA
 - Discover active PRs, issues, and branches by label on every run
 - Treat legacy issues without a marker as changed, then backfill the marker on update
-- Record the evaluated SHA in `SYNC_LAST_EVALUATED_SHA` when filtering yields no fork-visible change
+- Record `<sha>:<generation-rev>` in `SYNC_LAST_EVALUATED_SHA` when filtering yields no fork-visible change and no sync PR is open
 
 Repository variables were originally rejected here as requiring additional
 tokens. The GitHub App authentication of ADR-029 removed that cost, and the
@@ -122,16 +122,30 @@ but it produces only workflow logging. It does not mutate the PR or issue.
 
 *Between cycles* - repository variable:
 
-- `SYNC_LAST_EVALUATED_SHA`: Last upstream SHA whose filtered tree matched `fork_upstream` exactly
+- `SYNC_LAST_EVALUATED_SHA`: `<upstream sha>:<generation revision>` for the last upstream commit whose generated tree matched `fork_upstream` exactly
 
 An open tracking issue always wins. Reading the variable while a cycle is
 active would report an advanced upstream as already handled and leave the open
 sync PR stranded at an older tree.
 
-The variable is written only on the no-change path, where the run is already
-complete. Recording it alongside a generated branch would let a later failure
-in PR creation leave state claiming the SHA was handled with nothing to show
-for it, and the next run would take no action.
+The variable is written only when all three hold:
+
+- the generated tree matched `fork_upstream`, so the run is already complete
+- no sync PR is open, because an open PR carries a tree the comparison never
+  saw; an upstream commit that reverts it generates a no-op while the stale
+  branch is still queued for merge
+- the SHA is a full 40-character lowercase hash
+
+Recording alongside a generated branch would instead let a later failure in PR
+creation leave state claiming the SHA was handled with nothing to show for it,
+and the next run would take no action.
+
+The generation revision is what makes the cached result safe to reuse. The
+generated tree depends on `.github/upstream-filter.yml`, the filter engine, and
+`SYNC_MODE` as much as on the upstream commit, so `generation-rev.sh` hashes
+those inputs and the value is discarded when they change. Without it, editing a
+filter rule after a no-op was recorded would leave `fork_upstream` unable to
+receive the new tree until upstream happened to advance.
 
 **Persistence:** The marker lasts as long as the tracking issue; the variable persists indefinitely
 
@@ -178,7 +192,7 @@ for it, and the next run would take no action.
 - **Pre-sync validation step** checks for existing sync PRs/issues
 - **Upstream SHA comparison** tracks last synced state
 - **Branch update logic** updates existing branches instead of creating new ones
-- **State persistence** stores the full SHA in the active tracking issue, and in `SYNC_LAST_EVALUATED_SHA` once no issue is opened
+- **State persistence** stores the full SHA in the active tracking issue, and in `SYNC_LAST_EVALUATED_SHA` once neither an issue nor a PR is open
 - **Unchanged path** leaves the existing PR and issue untouched while retaining the historical `add_reminder` output value
 - **Cleanup logic** removes abandoned sync branches
 
@@ -188,6 +202,7 @@ for it, and the next run would take no action.
 - **Cleanup Lookup Failures:** Skip destructive branch deletion when PR state or JSON cannot be read
 - **State Corruption:** Missing or malformed markers and variable values compare as changed and are repaired on the next write
 - **Durable State Writes:** A failed variable write costs one repeated evaluation, never a failed sync run
+- **Durable State Reads:** Only an absent variable degrades to empty; an authentication, rate-limit, or transient failure fails the run rather than reading as first sync
 - **Backwards Compatibility:** Legacy issue bodies require no migration step
 
 ## Consequences
@@ -205,6 +220,7 @@ for it, and the next run would take no action.
 ### Negative
 
 - ⚠️ **State lives in two places** - The issue marker and the repository variable must agree on precedence
+- ⚠️ **The durable cache key spans several files** - Filter config, engine, and sync mode all invalidate it
 - ⚠️ **Added complexity** in sync workflow - More decision logic
 - ⚠️ **Potential edge cases** in decision logic - Requires thorough testing
 
@@ -228,6 +244,9 @@ The template CI runs `.github/local-actions/sync-state-manager-tests/run-tests.s
 - A no-change evaluation records the evaluated SHA, and an unwritable variable does not fail the run
 - A run with no tracking issue reads the variable, and unusable values compare as changed
 - An open tracking issue outranks the variable
+- A stale generation revision invalidates the cache, and the revision tracks config, engine, and sync mode
+- An unreadable variable fails the run instead of reading as first sync
+- Durable state is not recorded while a sync PR is open
 - A re-evaluated no-op SHA reaches `no_action` before branch generation
 - Workflow ordering keeps state exports before the filtered no-change exit
 

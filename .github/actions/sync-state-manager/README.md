@@ -25,10 +25,16 @@ The workflow stores the canonical 40-character upstream SHA in a hidden
 `<!-- upstream-sha: ... -->` marker at the end of the active tracking issue.
 The visible **Upstream Version** remains a tag or short SHA for readers.
 
-When filtering produces no fork-visible change no issue is opened, so
-`record-evaluated-sha.sh` writes the SHA to the `SYNC_LAST_EVALUATED_SHA`
-repository variable instead. An open tracking issue always outranks the
-variable: reading it mid-cycle would strand an open sync PR at an older tree.
+When filtering produces no fork-visible change and no sync PR is open,
+`record-evaluated-sha.sh` writes `<sha>:<generation-rev>` to the
+`SYNC_LAST_EVALUATED_SHA` repository variable instead. The revision half comes
+from `generation-rev.sh` and covers the filter config, the engine, and
+`SYNC_MODE`, so changing any of them discards the cached result rather than
+pinning `fork_upstream` until upstream advances.
+
+An open tracking issue always outranks the variable: reading it mid-cycle would
+strand an open sync PR at an older tree. Only an absent variable reads as empty
+— any other API failure fails the run.
 
 ## Decision Matrix
 
@@ -259,6 +265,7 @@ sync-state-manager/
 ├── make-sync-decision.sh           # Decision matrix
 ├── update-issue-body.sh            # Canonical issue marker and display updates
 ├── record-evaluated-sha.sh         # Durable no-op state between sync cycles
+├── generation-rev.sh               # Cache key over filter config, engine, and mode
 └── README.md                       # This file
 ```
 

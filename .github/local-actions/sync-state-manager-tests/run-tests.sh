@@ -16,6 +16,7 @@ CHECK_STATE="$ACTION_DIR/check-stored-state.sh"
 DECIDE="$ACTION_DIR/make-sync-decision.sh"
 UPDATE_BODY="$ACTION_DIR/update-issue-body.sh"
 RECORD="$ACTION_DIR/record-evaluated-sha.sh"
+GEN_REV="$ACTION_DIR/generation-rev.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -30,24 +31,29 @@ cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "${1:-}" == "variable" ]]; then
-  case "${2:-}" in
-    set)
-      printf '%s\n' "$*" >> "$GH_VARIABLE_LOG"
-      if [[ "${GH_VARIABLE_SET_FAILS:-}" == "true" ]]; then
-        exit 7
-      fi
-      exit 0
+if [[ "${1:-}" == "variable" && "${2:-}" == "set" ]]; then
+  printf '%s\n' "$*" >> "$GH_VARIABLE_LOG"
+  if [[ "${GH_VARIABLE_SET_FAILS:-}" == "true" ]]; then
+    exit 7
+  fi
+  exit 0
+fi
+
+if [[ "${1:-}" == "api" && "$*" == *"/actions/variables/"* ]]; then
+  case "${GH_VARIABLE_READ:-notfound}" in
+    notfound)
+      echo "gh: Not Found (HTTP 404)" >&2
+      exit 1
       ;;
-    get)
-      if [[ -z "${GH_STORED_VARIABLE:-}" ]]; then
-        exit 1
-      fi
-      printf '%s\n' "$GH_STORED_VARIABLE"
+    denied)
+      echo "gh: Bad credentials (HTTP 401)" >&2
+      exit 1
+      ;;
+    *)
+      printf '%s\n' "$GH_VARIABLE_READ"
       exit 0
       ;;
   esac
-  exit 64
 fi
 
 case "${GH_MODE:-}" in
@@ -82,16 +88,19 @@ case "${GH_MODE:-}" in
 esac
 EOF
 
-cat > "$BIN/git" <<'EOF'
+REAL_GIT="$(command -v git)"
+cat > "$BIN/git" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$1" == "branch" && "${2:-}" == "-r" ]]; then
+# Only the branch listing and destructive push are faked; everything else is
+# real git so scripts that hash or resolve files still work under the stub.
+if [[ "\$1" == "branch" && "\${2:-}" == "-r" ]]; then
   printf '  origin/sync/upstream-20200101-000000\n'
-elif [[ "$1" == "push" ]]; then
-  printf '%s\n' "$*" >> "$GIT_CALL_LOG"
+elif [[ "\$1" == "push" ]]; then
+  printf '%s\n' "\$*" >> "\$GIT_CALL_LOG"
 else
-  exit 64
+  exec "$REAL_GIT" "\$@"
 fi
 EOF
 
@@ -224,6 +233,20 @@ DECISION=$("$DECIDE" "$SHA" "$SHA" true false 10 "" sync/upstream-test)
 grep -q "sync_decision=add_reminder" <<< "$DECISION" || die "existing PR without issue changed compatibility decision"
 ok "missing tracking issue does not require a reminder side effect"
 
+note "durable state: the generation revision reflects its inputs"
+REV_NOW="$("$GEN_REV")"
+[[ -n "$REV_NOW" ]] || die "generation revision is empty"
+[[ "$(SYNC_MODE=mirror "$GEN_REV")" == "mirror" ]] || die "mirror mode did not short-circuit the revision"
+[[ "$(SYNC_MODE=mirror "$GEN_REV")" != "$REV_NOW" ]] || die "mirror and filter share a revision"
+mkdir -p "$TMP/fixture/.github/actions/upstream-filter"
+printf 'service: demo\n' > "$TMP/fixture/.github/upstream-filter.yml"
+printf 'ENGINE_VERSION = "1.0.0"\n' > "$TMP/fixture/.github/actions/upstream-filter/upstream_filter.py"
+REV_A="$("$GEN_REV" "$TMP/fixture")"
+printf 'service: demo\ntop_level:\n  docs: keep\n' > "$TMP/fixture/.github/upstream-filter.yml"
+REV_B="$("$GEN_REV" "$TMP/fixture")"
+[[ "$REV_A" != "$REV_B" ]] || die "a filter config change did not change the revision"
+ok "revision tracks filter config, engine, and sync mode"
+
 note "durable state: malformed SHAs are never recorded"
 export GH_VARIABLE_LOG="$TMP/variable.log"
 : > "$GH_VARIABLE_LOG"
@@ -233,11 +256,11 @@ fi
 [[ ! -s "$GH_VARIABLE_LOG" ]] || die "a rejected SHA still reached gh variable set"
 ok "malformed SHA is rejected before any write"
 
-note "durable state: a no-op evaluation records the full SHA"
+note "durable state: a no-op evaluation records the SHA and its revision"
 PATH="$BIN:$PATH" "$RECORD" "$SHA" >/dev/null
-grep -Fq "variable set SYNC_LAST_EVALUATED_SHA --body $SHA" "$GH_VARIABLE_LOG" ||
-  die "evaluated SHA was not written to the durable variable"
-ok "no-op evaluation persists the evaluated SHA"
+grep -Fq "variable set SYNC_LAST_EVALUATED_SHA --body $SHA:$REV_NOW" "$GH_VARIABLE_LOG" ||
+  die "evaluated state was not written as <sha>:<revision>"
+ok "no-op evaluation persists SHA and generation revision"
 
 note "durable state: a failed write degrades instead of failing the sync"
 GH_VARIABLE_SET_FAILS=true PATH="$BIN:$PATH" "$RECORD" "$SHA" > "$TMP/record-fail.log" ||
@@ -246,22 +269,33 @@ grep -q "next run will re-evaluate" "$TMP/record-fail.log" || die "failed write 
 ok "unwritable state costs a repeat, not a red run"
 
 read_durable_sha() {
-  GH_STORED_VARIABLE="$1" PATH="$BIN:$PATH" "$CHECK_STATE" "" |
+  GH_REPO=owner/repo GH_VARIABLE_READ="$1" PATH="$BIN:$PATH" "$CHECK_STATE" "" |
     awk -F= '$1 == "last_upstream_sha" { print $2; exit }'
 }
 
 note "durable state: with no tracking issue the variable supplies the last SHA"
-[[ "$(read_durable_sha "$SHA")" == "$SHA" ]] || die "durable variable was not consulted"
+[[ "$(read_durable_sha "$SHA:$REV_NOW")" == "$SHA" ]] || die "durable variable was not consulted"
 ok "no-issue runs read durable state"
 
+note "durable state: a stale generation revision invalidates the cache"
+[[ -z "$(read_durable_sha "$SHA:filter-0000000000-0000000000")" ]] ||
+  die "state from a different filter revision was trusted"
+ok "filter or engine changes force re-evaluation"
+
 note "durable state: an unusable stored value degrades to empty"
-[[ -z "$(read_durable_sha "deadbeef")" ]] || die "a short SHA was accepted as state"
-[[ -z "$(read_durable_sha "")" ]] || die "an unset variable produced a false SHA"
-ok "invalid durable state compares as changed"
+[[ -z "$(read_durable_sha "deadbeef:$REV_NOW")" ]] || die "a short SHA was accepted as state"
+[[ -z "$(read_durable_sha "notfound")" ]] || die "an unset variable produced a false SHA"
+ok "invalid or absent durable state compares as changed"
+
+note "durable state: an unreadable variable fails rather than reading as first sync"
+if GH_REPO=owner/repo GH_VARIABLE_READ=denied PATH="$BIN:$PATH" "$CHECK_STATE" "" >/dev/null 2>&1; then
+  die "an API failure was silently treated as no stored state"
+fi
+ok "denied variable reads fail closed"
 
 note "durable state: an open tracking issue outranks the variable"
 printf '%s\n' "Summary" "<!-- upstream-sha: $OLD_SHA -->" > "$TMP/active-cycle.md"
-ACTIVE=$(GH_MODE=issue ISSUE_BODY_FILE="$TMP/active-cycle.md" GH_STORED_VARIABLE="$SHA" \
+ACTIVE=$(GH_MODE=issue ISSUE_BODY_FILE="$TMP/active-cycle.md" GH_VARIABLE_READ="$SHA:$REV_NOW" \
   PATH="$BIN:$PATH" "$CHECK_STATE" 42 | awk -F= '$1 == "last_upstream_sha" { print $2; exit }')
 [[ "$ACTIVE" == "$OLD_SHA" ]] || die "durable state hijacked an active sync cycle"
 ok "active cycle keeps driving from the issue marker"
@@ -291,6 +325,11 @@ RECORD_LINE=$(grep -nF 'record-evaluated-sha.sh "$UPSTREAM_SHA"' "$WORKFLOW" | c
 WORKTREE_LINE=$(grep -nF 'SYNC_WORKTREE="$RUNNER_TEMP/sync-worktree"' "$WORKFLOW" | cut -d: -f1)
 [[ "$RECORD_LINE" -gt "$EARLY_EXIT_LINE" && "$RECORD_LINE" -lt "$WORKTREE_LINE" ]] ||
   die "evaluated SHA is not recorded inside the no-change exit"
+
+GATE_LINE=$(grep -nF 'if [ "${{ steps.sync-state.outputs.should_create_pr }}" = "true" ]; then' "$WORKFLOW" | cut -d: -f1 || true)
+[[ -n "$GATE_LINE" && "$GATE_LINE" -lt "$RECORD_LINE" ]] ||
+  die "durable state is recorded while a sync PR may still be open"
+grep -Fq 'sync_mode: ${{ vars.SYNC_MODE }}' "$WORKFLOW" || die "sync mode is not passed to the state manager"
 ok "workflow invariants hold"
 
 printf '\nAll sync-state-manager tests passed\n'
