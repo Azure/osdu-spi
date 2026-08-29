@@ -28,7 +28,19 @@ Fork the service repository into your organization through GitHub (keep "Copy th
 
 After forking, open the fork's **Actions** tab and enable workflows (GitHub disables inherited workflows on new forks until a person enables them). Nothing runs until you do, including adoption itself.
 
-That bulk enable does not reach workflows carrying a `schedule:` trigger: those stay in state `disabled_fork`, which suppresses manual dispatch as well. Enabling them one by one is not necessary, because adoption re-enables them for you. Two stay off deliberately: `sync-template.yml`, which ADR-039 gates off at this tier because the mirror is the single delivery channel for workflow and configuration updates, and `scorecard.yml`, which is inert on a fork as noted under [Gotchas](#gotchas).
+That bulk enable does not reach workflows carrying a `schedule:` trigger. On a new fork they stay in state `disabled_fork`, which suppresses manual dispatch as well.
+
+In this repository, those are:
+
+- `sync.yml`
+- `cascade-monitor.yml`
+- `settings-apply.yml`
+- `codeql.yml`
+- `ghcr-retention.yml`
+- `sync-template.yml`
+- `scorecard.yml`
+
+Adoption re-enables the fork-disabled workflows for you, but it deliberately leaves `sync-template.yml` disabled (ADR-039 gates template sync off at this tier because the mirror is the single delivery channel for workflow and configuration updates) and `scorecard.yml` disabled (it is inert on a fork as noted under [Gotchas](#gotchas)).
 
 ### 3. Set the required secrets
 
