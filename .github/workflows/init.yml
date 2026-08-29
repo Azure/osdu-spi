@@ -22,7 +22,7 @@ jobs:
       is_template: ${{ steps.check.outputs.is_template }}
     steps:
       - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
       - name: Check repository type
         id: check
@@ -53,7 +53,7 @@ jobs:
       already_initialized: ${{ steps.check.outputs.already_initialized }}
     steps:
       - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
           fetch-depth: 0
 
@@ -102,7 +102,7 @@ jobs:
       issue-url: ${{ steps.create-issue.outputs.ISSUE_URL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
       - name: Configure Git
         uses: ./.github/local-actions/configure-git
