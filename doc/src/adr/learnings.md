@@ -352,7 +352,7 @@ upstream-sync → cascade-active → validated → (closed when merged to main)
 !!! quote ":material-lightbulb-outline: Learning"
     State persistence between workflow runs prevents duplicate work and notification fatigue.
 
-**Storage Mechanism**: Git config provides lightweight, reliable storage for workflow state.
+**Storage Mechanism**: Durable GitHub issue metadata stores the canonical upstream SHA, while labels identify the active sync artifacts.
 
 **Capabilities Enabled:**
 
@@ -585,4 +585,3 @@ Based on accumulated learnings, these areas show promise for continued evolution
 **Pattern**: Ask "could someone need this to work differently?" when making design decisions. If yes, make it configurable.
 
 **Impact**: Template serves diverse scenarios without forking or modification, dramatically increasing reusability.
-
