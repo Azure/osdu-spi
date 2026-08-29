@@ -98,14 +98,6 @@ if [[ -d ".github/fork-resources/ISSUE_TEMPLATE" ]]; then
   git add ".github/ISSUE_TEMPLATE/"
 fi
 
-# Copy copilot setup steps workflow
-if [[ -f ".github/fork-resources/copilot-setup-steps.yml" ]]; then
-  echo "Installing GitHub Copilot setup steps workflow..."
-  mkdir -p ".github/workflows"
-  cp ".github/fork-resources/copilot-setup-steps.yml" ".github/workflows/copilot-setup-steps.yml"
-  git add ".github/workflows/copilot-setup-steps.yml"
-fi
-
 # Clean up fork-resources directory after copying
 if [[ -d ".github/fork-resources" ]]; then
   echo "Removing fork-resources directory after copying..."

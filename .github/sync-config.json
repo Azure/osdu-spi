@@ -105,6 +105,10 @@
         {
           "path": ".github/template-workflows/adopt-fork.yml",
           "description": "Customer-tier fork adoption bootstrap (ADR-039)"
+        },
+        {
+          "path": ".github/template-workflows/copilot-setup-steps.yml",
+          "description": "GitHub Copilot agent environment setup"
         }
       ],
       "template_only": [

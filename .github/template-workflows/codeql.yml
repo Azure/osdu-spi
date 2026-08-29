@@ -22,7 +22,7 @@ jobs:
       should-run: ${{ steps.filter.outputs.should-run }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
           fetch-depth: 0
 
@@ -87,7 +87,7 @@ jobs:
       languages: ${{ steps.detect.outputs.languages }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
       - name: Detect languages
         id: detect
@@ -148,11 +148,11 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
       - name: Setup Java
         if: matrix.language == 'java-kotlin'
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -160,19 +160,21 @@ jobs:
 
       - name: Setup Python
         if: matrix.language == 'python'
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.x'
 
       - name: Setup Node.js
         if: matrix.language == 'javascript-typescript'
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
           node-version: '18'
           cache: 'npm'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@caa5102941e77fe39b460490c70318beb68c5c25  # v4
+        # Commit SHA, not the v4.30.8 annotated-tag object SHA: the tag object is not a
+        # commit, so the REST commits API cannot resolve it and Dependabot cannot bump it.
+        uses: github/codeql-action/init@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
@@ -191,7 +193,7 @@ jobs:
               - '**/.mypy_cache/**'
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@caa5102941e77fe39b460490c70318beb68c5c25  # v4
+        uses: github/codeql-action/analyze@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
         with:
           category: "/language:${{matrix.language}}"
 
