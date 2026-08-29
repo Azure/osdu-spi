@@ -158,6 +158,10 @@ jobs:
           git fetch origin fork_upstream
           BEFORE_SHA=$(git rev-parse origin/fork_upstream)
           UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
+          if [[ ! "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Resolved upstream SHA is not a full lowercase commit ID: $UPSTREAM_SHA"
+            exit 1
+          fi
           UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
           echo "Captured pre-sync state: $BEFORE_SHA"
 
@@ -509,7 +513,7 @@ jobs:
             "> **Note**: If not triggered manually, the automated monitor will start the cascade process within 6 hours." \
             "---" \
             "**Sync Summary**" \
-            "- **Upstream Version**: \`$UPSTREAM_VERSION\`"$'\n'"<!-- upstream-sha: $UPSTREAM_SHA -->" \
+            "- **Upstream Version**: \`$UPSTREAM_VERSION\`" \
             "- **Changes**: $COMMIT_COUNT new commits from upstream" \
             "- **Branch**: \`$SYNC_BRANCH\` → \`fork_upstream\`" \
             "---" \
@@ -537,7 +541,7 @@ jobs:
             "---" \
             "**Timeline**" \
             "- **Sync detected**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`" \
-            "- **Current status**: Awaiting PR review and merge"
+            "- **Current status**: Awaiting PR review and merge"$'\n\n'"<!-- upstream-sha: $UPSTREAM_SHA -->"
 
           # Create the issue with the complete body in a single call
           printf '%s\n' "$NOTIFICATION_BODY" > /tmp/issue_body.txt
@@ -550,13 +554,26 @@ jobs:
           ISSUE_NUMBER=$(basename "$ISSUE_URL")
           echo "Created notification issue #$ISSUE_NUMBER: $ISSUE_URL"
 
+      - name: Add reminder to existing sync issue
+        if: steps.sync-state.outputs.sync_decision == 'add_reminder'
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
+          PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
+
+          gh issue comment "$ISSUE_NUMBER" --body "📝 **Upstream Sync Reminder**
+
+          No new upstream changes were detected. Sync PR #$PR_NUMBER is still current and awaiting review.
+
+          **Checked at**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
+
       - name: Update issue description with current sync status
         if: steps.sync-state.outputs.sync_decision == 'update_existing'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
-          PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
           # UPSTREAM_VERSION, UPSTREAM_SHA, and SYNC_BRANCH are available via $GITHUB_ENV
 
           # Guard: skip if no tracking issue exists (issue may have been closed by cascade)
@@ -584,55 +601,30 @@ jobs:
           if [ -n "$SYNC_BRANCH" ] && git rev-parse --verify "$SYNC_BRANCH" >/dev/null 2>&1; then
             COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH 2>/dev/null || echo "0")
           else
-            # For reminder case, get count from existing PR branch or use stored value
+            # Filtered no-change updates do not create a local branch ref, so
+            # count the commits from the existing remote sync branch instead.
             COMMIT_COUNT=$(git rev-list --count fork_upstream..origin/$SYNC_BRANCH 2>/dev/null || echo "0")
           fi
           
           echo "Calculated commit count: $COMMIT_COUNT"
           
-          # Update the Sync Summary section with current values using awk (more reliable than sed with backticks)
-          echo "$CURRENT_BODY" > /tmp/current_body.txt
-          
-          # Use awk to update the state marker and three display fields. The
-          # first pass detects legacy issues that do not have a marker yet.
-          awk -v upstream="$UPSTREAM_VERSION" -v sha="$UPSTREAM_SHA" -v count="$COMMIT_COUNT" -v branch="$SYNC_BRANCH" '
-          NR == FNR {
-            if ($0 ~ /<!-- upstream-sha: [0-9A-Fa-f]* -->/) {
-              has_sha_marker = 1
-            }
-            next
-          }
-          {
-            upstream_version_line = ($0 ~ /\*\*Upstream Version\*\*: `[^`]*`/)
+          # Update the display fields and canonical machine-readable SHA marker.
+          printf '%s\n' "$CURRENT_BODY" > /tmp/current_body.txt
 
-            # Update Upstream Version
-            gsub(/\*\*Upstream Version\*\*: `[^`]*`/, "**Upstream Version**: `" upstream "`")
-
-            # Update the machine-readable source SHA
-            gsub(/<!-- upstream-sha: [0-9A-Fa-f]* -->/, "<!-- upstream-sha: " sha " -->")
-
-            # Update Changes count
-            gsub(/\*\*Changes\*\*: [0-9]+ new commits from upstream/, "**Changes**: " count " new commits from upstream")
-            
-            # Update Branch
-            gsub(/\*\*Branch\*\*: `[^`]*` → `fork_upstream`/, "**Branch**: `" branch "` → `fork_upstream`")
-            
-            print
-            if (upstream_version_line && !has_sha_marker) {
-              print "<!-- upstream-sha: " sha " -->"
-              has_sha_marker = 1
-            }
-          }' /tmp/current_body.txt /tmp/current_body.txt > /tmp/updated_body.txt
-          
-          # Replace the original file with the updated version
-          mv /tmp/updated_body.txt /tmp/current_body.txt
+          bash .github/actions/sync-state-manager/update-issue-body.sh \
+            /tmp/current_body.txt \
+            /tmp/updated_body.txt \
+            "$UPSTREAM_VERSION" \
+            "$UPSTREAM_SHA" \
+            "$COMMIT_COUNT" \
+            "$SYNC_BRANCH"
           
           # Update the issue description using the file
           echo "Updating issue description..."
-          gh issue edit "$ISSUE_NUMBER" --body-file /tmp/current_body.txt
+          gh issue edit "$ISSUE_NUMBER" --body-file /tmp/updated_body.txt
           
           # Clean up
-          rm -f /tmp/current_body.txt
+          rm -f /tmp/current_body.txt /tmp/updated_body.txt
           
           echo "✅ Updated issue description with current sync status:"
           echo "  - Upstream Version: $UPSTREAM_VERSION"

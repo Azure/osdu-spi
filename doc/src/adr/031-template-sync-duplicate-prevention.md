@@ -197,7 +197,7 @@ Despite the implementation difference, the pattern remains consistent:
 | **Implementation** | Dedicated action (`sync-state-manager`) | Inline detection logic |
 | **Label** | `upstream-sync` | `template-sync` |
 | **Base Branch** | `fork_upstream` | `main` |
-| **State Tracking** | Git config + issue lifecycle | PR detection only |
+| **State Tracking** | Full-SHA issue marker + PR/issue labels | PR detection only |
 | **Complexity** | Higher (cascade coordination) | Lower (PR-only) |
 | **Reusability** | Action reusable by other workflows | Workflow-specific logic |
 

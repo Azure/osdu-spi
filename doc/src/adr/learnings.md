@@ -360,7 +360,7 @@ upstream-sync → cascade-active → validated → (closed when merged to main)
 - Update existing branches when upstream advances
 - Clean up abandoned sync branches automatically
 
-**Pattern**: Workflows often need persistent state between runs; git config provides the perfect storage mechanism without external dependencies.
+**Pattern**: Workflow state that must survive GitHub-hosted runners belongs in durable GitHub metadata. Upstream sync stores its canonical SHA in the active tracking issue and discovers related artifacts by label.
 
 **Impact**: Smart decision-making eliminates duplicate PRs and unnecessary noise while keeping sync branches current.
 
@@ -585,5 +585,4 @@ Based on accumulated learnings, these areas show promise for continued evolution
 **Pattern**: Ask "could someone need this to work differently?" when making design decisions. If yes, make it configurable.
 
 **Impact**: Template serves diverse scenarios without forking or modification, dramatically increasing reusability.
-
 

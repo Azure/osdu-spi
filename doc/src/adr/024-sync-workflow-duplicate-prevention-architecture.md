@@ -26,9 +26,9 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 
 ### 1. Overall Strategy
 
-- **State-based duplicate detection** using git config persistence
+- **State-based duplicate detection** using active tracking issue metadata
 - **Smart decision matrix** for handling all duplicate scenarios
-- **Graceful degradation** to existing behavior when detection fails
+- **Fail-closed branch cleanup** when PR state cannot be read reliably
 - **Clean separation of concerns** via dedicated GitHub Action
 
 ### 2. State Persistence Pattern
@@ -37,14 +37,16 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 
 - GitHub variables (rejected - limited and requires additional tokens)
 - Git notes (rejected - complexity and merge conflicts)
+- Git config (rejected - GitHub-hosted runners do not preserve local config between runs)
 - External storage (rejected - dependency and complexity)
-- **Git config (chosen)** - simple, reliable, scoped to repository
+- **Tracking issue metadata (chosen)** - durable through GitHub APIs and aligned with the active sync lifecycle
 
 **Implementation:**
 
-- Track upstream SHA, PR/issue numbers, timestamps
-- Persist state between workflow runs
-- Automatic cleanup when PRs/issues are closed
+- Store the full upstream SHA in a hidden `<!-- upstream-sha: ... -->` marker
+- Keep the human-facing **Upstream Version** as a tag or short SHA
+- Discover active PRs, issues, and branches by label on every run
+- Treat legacy issues without a marker as changed, then backfill the marker on update
 
 ### 3. Branch Management Strategy
 
@@ -100,16 +102,18 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 
 ### State Management
 
-**Storage:** Git config variables scoped to repository
+**Storage:** GitHub issue and pull request metadata scoped to the active sync cycle
 
-- `sync.last-upstream-sha`: Last successfully processed upstream SHA
-- `sync.current-pr-number`: Active sync PR number (if any)
-- `sync.current-issue-number`: Active tracking issue number (if any)
-- `sync.last-sync-timestamp`: Timestamp of last sync attempt
+- `<!-- upstream-sha: <40-character SHA> -->`: Last upstream source commit represented by the active tracking issue
+- `upstream-sync` label: Identifies the active tracking issue and sync PR
+- PR head branch: Identifies the reusable sync branch
+- Issue `updatedAt`: Records the latest issue mutation
 
-**Persistence:** Automatic across workflow runs
+**Persistence:** Automatic while an active tracking issue exists
 
 **Cleanup:** Automatic when PRs/issues are closed or merged
+
+**Current boundary:** A filtered no-op run that creates no tracking issue does not yet persist its evaluated SHA. This separate optimization is tracked in [issue #147](https://github.com/Azure/osdu-spi/issues/147).
 
 ### Integration Points
 
@@ -125,7 +129,7 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 
 ### Technical Benefits
 
-- **Eliminates duplicate PRs/issues** across all scenarios
+- **Eliminates duplicate PRs/issues** throughout an active sync cycle
 - **Maintains clean repository state** with automatic cleanup
 - **Preserves human workflow continuity** with consistent URLs
 - **Better maintainability** with action pattern separation
@@ -152,30 +156,31 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 - **Pre-sync validation step** checks for existing sync PRs/issues
 - **Upstream SHA comparison** tracks last synced state
 - **Branch update logic** updates existing branches instead of creating new ones
-- **State persistence** stores sync state between runs via git config
+- **State persistence** stores the full SHA in the active tracking issue
+- **Reminder path** comments on the existing tracking issue without rewriting its stored SHA
 - **Cleanup logic** removes abandoned sync branches
 
 ### Error Handling
 
-- **GitHub API Failures:** Graceful degradation to create new PR/issue
-- **State Corruption:** Automatic state reset and fallback to normal workflow
-- **Branch Access Issues:** Skip branch cleanup if git operations fail
-- **Backwards Compatibility:** No changes to existing sync behavior if detection disabled
+- **GitHub API Failures:** State reads fail the workflow rather than guessing
+- **Cleanup Lookup Failures:** Skip destructive branch deletion when PR state or JSON cannot be read
+- **State Corruption:** Missing or malformed markers compare as changed and are repaired on the next update
+- **Backwards Compatibility:** Legacy issue bodies require no migration step
 
 ## Consequences
 
 ### Positive
 
-- ✅ **Eliminates duplicate PRs/issues** - Core problem solved
+- ✅ **Eliminates duplicate PRs/issues during active sync cycles** - Core problem solved
 - ✅ **Maintains clean repository state** - Automatic cleanup
 - ✅ **Preserves human workflow continuity** - Same URLs to track
 - ✅ **Better maintainability** - Action pattern follows best practices
 - ✅ **Reusable by other workflows** - State management available elsewhere
-- ✅ **Graceful degradation** - Fallback to existing behavior on failure
+- ✅ **Fail-closed cleanup** - Uncertain PR state cannot trigger branch deletion
 
 ### Negative
 
-- ⚠️ **Requires state persistence** between runs - Added complexity
+- ⚠️ **State follows the tracking issue lifecycle** - No issue currently means no persisted no-op SHA
 - ⚠️ **Added complexity** in sync workflow - More decision logic
 - ⚠️ **Potential edge cases** in decision logic - Requires thorough testing
 
@@ -187,13 +192,17 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 
 ## Testing Strategy
 
-Testing will be conducted through real-world scenarios by monitoring the behavior of daily sync workflows in production environments. The duplicate prevention logic will be validated by observing:
+The template CI runs `.github/local-actions/sync-state-manager-tests/run-tests.sh` to validate:
 
-- Proper detection of duplicate sync scenarios
-- Correct branch update behavior when upstream advances
-- State persistence across multiple sync runs
-- Cleanup of abandoned sync branches
-- Action reliability and graceful degradation
+- Failed and malformed PR lookups never delete branches
+- Successful empty lookups still delete abandoned branches
+- Active PR branches are retained
+- Legacy, current, and CRLF issue bodies round-trip the canonical SHA marker
+- Empty SHA values cannot overwrite stored state
+- Equal full SHAs select the reminder path
+- Workflow ordering keeps state exports before the filtered no-change exit
+
+Production monitoring remains responsible for validating end-to-end PR, issue, and cascade behavior.
 
 ## Rollout Plan
 
@@ -213,6 +222,9 @@ Testing will be conducted through real-world scenarios by monitoring the behavio
 ## References
 
 - [Issue #121: Fix: Prevent duplicate sync PRs and issues](https://github.com/azure/osdu-spi/issues/121)
+- [Issue #127: Fail closed when cleanup cannot read PR state](https://github.com/Azure/osdu-spi/issues/127)
+- [Issue #128: Persist the full upstream SHA](https://github.com/Azure/osdu-spi/issues/128)
+- [Issue #147: Persist filtered no-op sync state](https://github.com/Azure/osdu-spi/issues/147)
 - [ADR-001: Three-Branch Strategy](001-three-branch-strategy.md)
 - [ADR-020: Human-Required Labels](020-human-required-label-strategy.md)
 - [ADR-023: Meta Commit Strategy](023-meta-commit-strategy-for-release-please.md)
