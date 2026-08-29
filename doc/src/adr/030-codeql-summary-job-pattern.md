@@ -68,7 +68,7 @@ Implement a two-part solution:
 Add a summary job to the CodeQL workflow that:
 - **Named `"CodeQL"`**: Matches the required status check context exactly
 - **Always executes**: Uses `if: always()` to run regardless of previous job outcomes
-- **Smart validation**: Reports success for documentation-only changes, validates analysis results for everything else
+- **Smart validation**: Reports success for Markdown-only changes, validates analysis results for everything else
 - **Proper failure handling**: Fails if actual analysis fails or is cancelled
 
 ```yaml
@@ -85,9 +85,9 @@ CodeQL:
           exit 1
         fi
 
-        # Documentation-only changes: Report success
+        # Markdown-only changes: Report success
         if [ "${{ needs.check-paths.outputs.should-run }}" = "false" ]; then
-          echo "✅ CodeQL skipped - only documentation changed"
+          echo "✅ CodeQL skipped - only Markdown files changed"
           exit 0
         fi
 
@@ -106,10 +106,10 @@ Remove the `code_scanning` rule from `.github/rulesets/default-branch.json`:
 
 **Rationale**:
 - The rule requires SARIF upload for every PR
-- Documentation-only PRs appropriately skip analysis (no analyzable code)
+- Markdown-only PRs appropriately skip analysis (Markdown is not an analyzed language)
 - No SARIF uploaded → PR permanently blocked
 - Status checks provide sufficient validation
-- CodeQL still runs on every non-documentation change and reports findings
+- CodeQL still runs on every non-Markdown change and reports findings
 
 ## Rationale
 

@@ -78,7 +78,7 @@ jobs:
 
           if [ "$SHOULD_RUN" = "true" ]; then
             echo "should-run=true" >> $GITHUB_OUTPUT
-            echo "Running CodeQL: non-documentation changes detected"
+            echo "Running CodeQL: non-Markdown changes detected"
           else
             echo "should-run=false" >> $GITHUB_OUTPUT
             echo "Skipping CodeQL: only Markdown files changed"
@@ -224,9 +224,9 @@ jobs:
             exit 1
           fi
 
-          # Analysis is legitimately unnecessary only for documentation-only changes
+          # Analysis is legitimately unnecessary only when every change is Markdown
           if [ "${{ needs.check-paths.outputs.should-run }}" = "false" ]; then
-            echo "✅ CodeQL skipped - only documentation changed"
+            echo "✅ CodeQL skipped - only Markdown files changed"
             exit 0
           fi
 
@@ -240,7 +240,7 @@ jobs:
           # A skipped analyze at this point means the job never started, which
           # is an infrastructure fault and must not be reported as a pass.
           if [ "${{ needs.analyze.result }}" = "skipped" ]; then
-            echo "❌ CodeQL analysis did not run despite non-documentation changes"
+            echo "❌ CodeQL analysis did not run despite non-Markdown changes"
             exit 1
           fi
 
