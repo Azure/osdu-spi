@@ -554,20 +554,6 @@ jobs:
           ISSUE_NUMBER=$(basename "$ISSUE_URL")
           echo "Created notification issue #$ISSUE_NUMBER: $ISSUE_URL"
 
-      - name: Add reminder to existing sync issue
-        if: steps.sync-state.outputs.sync_decision == 'add_reminder'
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
-          PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
-
-          gh issue comment "$ISSUE_NUMBER" --body "📝 **Upstream Sync Reminder**
-
-          No new upstream changes were detected. Sync PR #$PR_NUMBER is still current and awaiting review.
-
-          **Checked at**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
-
       - name: Update issue description with current sync status
         if: steps.sync-state.outputs.sync_decision == 'update_existing'
         env:

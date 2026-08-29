@@ -97,8 +97,7 @@ sequenceDiagram
         S->>S: Add progress comment to existing issue
         S->>H: Update notification on existing issue
     else Duplicate detected (same upstream SHA)
-        S->>S: Add reminder comment to existing issue
-        S->>H: Gentle reminder notification
+        S->>S: Keep existing PR and issue unchanged
     else No changes detected
         S->>S: Exit - no action needed
     end

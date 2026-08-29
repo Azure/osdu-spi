@@ -30,7 +30,7 @@ The visible **Upstream Version** remains a tag or short SHA for readers.
 | Existing PR | Upstream Changed | Decision |
 |-------------|------------------|----------|
 | No | Yes | **Create new PR and issue** |
-| Yes | No | **Add reminder comment** |
+| Yes | No | **Keep existing PR and issue unchanged** |
 | Yes | Yes | **Update existing branch/PR** |
 | No | No | **No action needed** |
 
@@ -52,7 +52,7 @@ The visible **Upstream Version** remains a tag or short SHA for readers.
 | `existing_pr_number` | Existing PR number if found |
 | `existing_issue_number` | Existing issue number if found |
 | `existing_branch_name` | Existing sync branch name if found |
-| `sync_decision` | Decision reason (create_new, add_reminder, update_existing, no_action) |
+| `sync_decision` | Decision reason (`add_reminder` is retained for compatibility when the existing PR is current) |
 
 ## Usage in Workflows
 
@@ -191,7 +191,7 @@ cd .github/actions/sync-state-manager
 # should_create_issue=true
 # sync_decision=create_new
 
-# Scenario 2: Existing PR, no change -> add reminder
+# Scenario 2: Existing PR, no change -> keep existing artifacts unchanged
 ./make-sync-decision.sh \
   "abc123" \    # current_sha
   "abc123" \    # last_sha (same)
@@ -202,7 +202,7 @@ cd .github/actions/sync-state-manager
   "sync/upstream-20250129-100000"
 
 # Expected output:
-# 📝 Decision: Add reminder comment (upstream unchanged, existing PR)
+# ✅ Decision: Existing PR remains current (upstream unchanged)
 # should_create_pr=false
 # should_update_branch=false
 # sync_decision=add_reminder

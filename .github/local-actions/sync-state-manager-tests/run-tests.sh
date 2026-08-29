@@ -191,11 +191,17 @@ note "stored state: legacy bodies degrade to empty"
 [[ -z "$(read_stored_sha "$TMP/legacy.md")" ]] || die "legacy body produced a false SHA"
 ok "missing marker remains backward compatible"
 
-note "decision: equal full SHAs choose the reminder path"
+note "decision: equal full SHAs keep the existing PR unchanged"
 DECISION=$("$DECIDE" "$SHA" "$SHA" true true 10 20 sync/upstream-test)
 grep -q "Upstream changed: false" <<< "$DECISION" || die "equal SHAs were treated as changed"
 grep -q "sync_decision=add_reminder" <<< "$DECISION" || die "equal SHAs did not select add_reminder"
-ok "duplicate state selects add_reminder"
+grep -q "Existing PR remains current" <<< "$DECISION" || die "unchanged decision message is inaccurate"
+ok "duplicate state keeps existing artifacts unchanged"
+
+note "decision: an existing PR without an open issue remains non-mutating"
+DECISION=$("$DECIDE" "$SHA" "$SHA" true false 10 "" sync/upstream-test)
+grep -q "sync_decision=add_reminder" <<< "$DECISION" || die "existing PR without issue changed compatibility decision"
+ok "missing tracking issue does not require a reminder side effect"
 
 note "workflow: order-dependent state exports and marker placement stay pinned"
 EXPORT_LINE=$(grep -nF 'echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_ENV"' "$WORKFLOW" | cut -d: -f1)
@@ -207,8 +213,10 @@ STATUS_LINE=$(grep -nF -- '"- **Current status**: Awaiting PR review and merge"'
 [[ "$MARKER_LINE" == "$STATUS_LINE" ]] || die "new issue marker is not appended after the timeline"
 
 grep -Fq "if: steps.sync-state.outputs.sync_decision == 'update_existing'" "$WORKFLOW" || die "issue update is not limited to update_existing"
-grep -Fq -- '- name: Add reminder to existing sync issue' "$WORKFLOW" || die "add_reminder has no workflow action"
-grep -Fq 'gh issue comment "$ISSUE_NUMBER"' "$WORKFLOW" || die "reminder step does not comment on the issue"
+if grep -Fq -- '- name: Add reminder to existing sync issue' "$WORKFLOW"; then
+  die "add_reminder posts recurring issue notifications"
+fi
+grep -Fq '"add_reminder")' "$WORKFLOW" || die "compatibility decision is not logged"
 ok "workflow invariants hold"
 
 printf '\nAll sync-state-manager tests passed\n'

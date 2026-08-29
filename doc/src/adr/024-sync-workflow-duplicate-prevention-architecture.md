@@ -95,10 +95,13 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 | Existing PR | Upstream Changed | Action                    |
 |-------------|------------------|---------------------------|
 | No          | Yes              | Create new PR and issue   |
-| Yes         | No               | Add reminder comment      |
+| Yes         | No               | Keep existing artifacts unchanged |
 | Yes         | Yes              | Update existing branch    |
 | No          | No               | No action needed          |
 ```
+
+The historical `add_reminder` decision value is retained for compatibility,
+but it produces only workflow logging. It does not mutate the PR or issue.
 
 ### State Management
 
@@ -123,7 +126,7 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 
 **Smart PR Management:** Skip/update/create based on action outputs
 
-**Intelligent Issue Management:** Skip/comment/create based on action outputs
+**Intelligent Issue Management:** Skip/update/create based on action outputs
 
 ## Implementation Benefits
 
@@ -157,7 +160,7 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 - **Upstream SHA comparison** tracks last synced state
 - **Branch update logic** updates existing branches instead of creating new ones
 - **State persistence** stores the full SHA in the active tracking issue
-- **Reminder path** comments on the existing tracking issue without rewriting its stored SHA
+- **Unchanged path** leaves the existing PR and issue untouched while retaining the historical `add_reminder` output value
 - **Cleanup logic** removes abandoned sync branches
 
 ### Error Handling
