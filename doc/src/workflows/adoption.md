@@ -26,17 +26,9 @@ Generate a private key, and install the App on your organization (covering the f
 
 Fork the service repository into your organization through GitHub (keep "Copy the default branch only" checked). It must be a true GitHub fork: contribution PRs can only be opened from within the parent's fork network, and adoption auto-detects your upstream from the fork's parent.
 
-After forking, open the fork's **Actions** tab and enable workflows (GitHub disables inherited workflows on new forks until a person enables them). That bulk enable does not reach workflows carrying a `schedule:` trigger: those stay in state `disabled_fork` and need an explicit enable from their own page in the Actions sidebar.
+After forking, open the fork's **Actions** tab and enable workflows (GitHub disables inherited workflows on new forks until a person enables them). Nothing runs until you do, including adoption itself.
 
-Enable these individually:
-
-- `sync.yml` (**Sync Upstream**), which the next section tells you to dispatch
-- `cascade-monitor.yml`
-- `settings-apply.yml`
-- `codeql.yml`
-- `ghcr-retention.yml`
-
-Leave the other two disabled. `sync-template.yml` is gated off at the customer tier by ADR-039, because the mirror is the single delivery channel for workflow and configuration updates. `scorecard.yml` is inert on a fork, as noted under [Gotchas](#gotchas).
+That bulk enable does not reach workflows carrying a `schedule:` trigger: those stay in state `disabled_fork`, which suppresses manual dispatch as well. Enabling them one by one is not necessary, because adoption re-enables them for you. Two stay off deliberately: `sync-template.yml`, which ADR-039 gates off at this tier because the mirror is the single delivery channel for workflow and configuration updates, and `scorecard.yml`, which is inert on a fork as noted under [Gotchas](#gotchas).
 
 ### 3. Set the required secrets
 
@@ -67,7 +59,8 @@ What it does, in order:
 6. Applies the branch rulesets (the deploy and integration-test required checks are automatically stripped because the deploy-tier credentials are absent).
 7. Enables auto-merge and merge commits (the cascade's release PRs depend on both).
 8. Enables secret scanning and push protection (best effort; a warning tells you to enable them manually if the API declines).
-9. Sets `INITIALIZATION_COMPLETE=true`, last, and writes a summary.
+9. Re-enables the workflows that forking left disabled, apart from `sync-template.yml` and `scorecard.yml`.
+10. Sets `INITIALIZATION_COMPLETE=true`, last, and writes a summary.
 
 **Re-run semantics**: the completion variable is both the guard and the final step. If adoption fails partway, fix the cause and dispatch it again; completed steps skip or reconcile. After a fully successful run, re-dispatching refuses by design.
 
