@@ -24,10 +24,14 @@ runs:
     - name: Update issue state
       shell: bash
       run: |
-        ${{ github.action_path }}/update-issue-state.sh \
-          "${{ inputs.issue_number }}" \
-          "${{ inputs.upstream_version }}" \
-          "${{ inputs.sync_branch }}" \
-          "${{ inputs.commit_count }}"
+        "$GITHUB_ACTION_PATH/update-issue-state.sh" \
+          "$ISSUE_NUMBER" \
+          "$UPSTREAM_VERSION" \
+          "$SYNC_BRANCH" \
+          "$COMMIT_COUNT"
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
+        UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+        SYNC_BRANCH: ${{ inputs.sync_branch }}
+        COMMIT_COUNT: ${{ inputs.commit_count }}

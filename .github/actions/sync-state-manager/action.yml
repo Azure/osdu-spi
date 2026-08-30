@@ -45,14 +45,16 @@ runs:
     - name: "Get current upstream SHA"
       id: upstream_sha
       shell: bash
-      run: ${{ github.action_path }}/get-upstream-sha.sh "${{ inputs.default_branch }}"
+      env:
+        DEFAULT_BRANCH: ${{ inputs.default_branch }}
+      run: '"$GITHUB_ACTION_PATH/get-upstream-sha.sh" "$DEFAULT_BRANCH"'
 
     - name: "Detect existing sync issues"
       id: existing_issues
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: ${{ github.action_path }}/detect-existing-issues.sh
+      run: '"$GITHUB_ACTION_PATH/detect-existing-issues.sh"'
 
     - name: "Check stored sync state"
       id: stored_state
@@ -60,31 +62,40 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         SYNC_MODE: ${{ inputs.sync_mode }}
-      run: ${{ github.action_path }}/check-stored-state.sh "${{ steps.existing_issues.outputs.existing_issue_number }}"
+        EXISTING_ISSUE_NUMBER: ${{ steps.existing_issues.outputs.existing_issue_number }}
+      run: '"$GITHUB_ACTION_PATH/check-stored-state.sh" "$EXISTING_ISSUE_NUMBER"'
 
     - name: "Detect existing sync PRs"
       id: existing_prs
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: ${{ github.action_path }}/detect-existing-prs.sh
+      run: '"$GITHUB_ACTION_PATH/detect-existing-prs.sh"'
 
     - name: "Clean up abandoned sync branches"
       id: cleanup
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: ${{ github.action_path }}/cleanup-abandoned-branches.sh
+      run: '"$GITHUB_ACTION_PATH/cleanup-abandoned-branches.sh"'
 
     - name: "Make sync decision"
       id: decision
       shell: bash
+      env:
+        UPSTREAM_SHA: ${{ steps.upstream_sha.outputs.upstream_sha }}
+        LAST_UPSTREAM_SHA: ${{ steps.stored_state.outputs.last_upstream_sha }}
+        HAS_EXISTING_PR: ${{ steps.existing_prs.outputs.has_existing_pr }}
+        HAS_EXISTING_ISSUE: ${{ steps.existing_issues.outputs.has_existing_issue }}
+        EXISTING_PR_NUMBER: ${{ steps.existing_prs.outputs.existing_pr_number }}
+        EXISTING_ISSUE_NUMBER: ${{ steps.existing_issues.outputs.existing_issue_number }}
+        EXISTING_PR_BRANCH: ${{ steps.existing_prs.outputs.existing_pr_branch }}
       run: |
-        ${{ github.action_path }}/make-sync-decision.sh \
-          "${{ steps.upstream_sha.outputs.upstream_sha }}" \
-          "${{ steps.stored_state.outputs.last_upstream_sha }}" \
-          "${{ steps.existing_prs.outputs.has_existing_pr }}" \
-          "${{ steps.existing_issues.outputs.has_existing_issue }}" \
-          "${{ steps.existing_prs.outputs.existing_pr_number }}" \
-          "${{ steps.existing_issues.outputs.existing_issue_number }}" \
-          "${{ steps.existing_prs.outputs.existing_pr_branch }}"
+        "$GITHUB_ACTION_PATH/make-sync-decision.sh" \
+          "$UPSTREAM_SHA" \
+          "$LAST_UPSTREAM_SHA" \
+          "$HAS_EXISTING_PR" \
+          "$HAS_EXISTING_ISSUE" \
+          "$EXISTING_PR_NUMBER" \
+          "$EXISTING_ISSUE_NUMBER" \
+          "$EXISTING_PR_BRANCH"

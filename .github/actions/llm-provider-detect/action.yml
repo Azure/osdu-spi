@@ -15,7 +15,7 @@ runs:
     - name: Detect LLM provider
       id: detect
       shell: bash
-      run: ${{ github.action_path }}/detect-provider.sh
+      run: '"$GITHUB_ACTION_PATH/detect-provider.sh"'
       env:
         AZURE_API_KEY: ${{ env.AZURE_API_KEY }}
         AZURE_API_BASE: ${{ env.AZURE_API_BASE }}

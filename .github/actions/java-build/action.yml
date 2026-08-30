@@ -38,10 +38,12 @@ runs:
     - name: "Assert the PR head is checked out"
       if: github.event_name == 'pull_request_target'
       shell: bash
+      env:
+        EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         HEAD_SHA="$(git rev-parse HEAD)"
-        if [ "$HEAD_SHA" != "${{ github.event.pull_request.head.sha }}" ]; then
-          echo "::error::Workspace is at $HEAD_SHA, not the PR head ${{ github.event.pull_request.head.sha }}; validation would build the wrong revision"
+        if [ "$HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]; then
+          echo "::error::Workspace is at $HEAD_SHA, not the PR head $EXPECTED_HEAD_SHA; validation would build the wrong revision"
           exit 1
         fi
 
@@ -90,7 +92,7 @@ runs:
           MAVEN_CLI_OPTS="$MAVEN_CLI_OPTS -P $MAVEN_PROFILE"
         fi
 
-        if [[ "${{ inputs.generate_coverage }}" == "true" ]]; then
+        if [[ "$GENERATE_COVERAGE" == "true" ]]; then
           # Run build with coverage. Use `package` (not `test`) so the JARs are produced
           # alongside coverage — the docker-build job downloads build-artifacts on PR events.
           mvn $MAVEN_CLI_OPTS clean package org.jacoco:jacoco-maven-plugin:0.8.11:report
@@ -109,6 +111,7 @@ runs:
         MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
         COMMUNITY_MAVEN_TOKEN: ${{ inputs.gitlab_token }}
         MAVEN_PROFILE: ${{ inputs.maven_profile }}
+        GENERATE_COVERAGE: ${{ inputs.generate_coverage }}
 
     - name: "Upload Build Artifacts"
       if: steps.check_pom.outputs.has_pom == 'true'

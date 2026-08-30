@@ -78,8 +78,9 @@ runs:
       shell: bash
       env:
         AIPR_MODEL_NAME: ${{ inputs.aipr-model }}
+        LLM_MODEL_DETECTED: ${{ steps.detect-llm.outputs.llm_model }}
       run: |
-        LLM_MODEL="${{ steps.detect-llm.outputs.llm_model }}"
+        LLM_MODEL="$LLM_MODEL_DETECTED"
 
         # Map model names for aipr compatibility
         if [[ "$LLM_MODEL" == "azure" ]]; then
@@ -106,6 +107,8 @@ runs:
         FALLBACK_DESCRIPTION_B64: ${{ inputs.fallback-description-b64 }}
         FALLBACK_DESCRIPTION: ${{ inputs.fallback-description }}
         ADDITIONAL_DESCRIPTION: ${{ inputs.additional-description }}
+        USE_LLM: ${{ steps.detect-llm.outputs.use_llm }}
+        AIPR_MODEL: ${{ steps.map-model.outputs.aipr-model }}
       run: |
         # Validate that MAX_DIFF_LINES is numeric
         if [[ ! "$MAX_DIFF_LINES" =~ ^[0-9]+$ ]]; then
@@ -122,16 +125,16 @@ runs:
         fi
         echo "Diff contains $DIFF_LINES lines"
 
-        if [[ "${{ steps.detect-llm.outputs.use_llm }}" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
+        if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
           # Generate PR description using aipr
-          echo "Generating PR description using ${{ steps.map-model.outputs.aipr-model }}..."
+          echo "Generating PR description using $AIPR_MODEL..."
 
           TARGET_BRANCH="$TARGET_BRANCH_FOR_AIPR"
           if [[ -z "$TARGET_BRANCH" ]]; then
             TARGET_BRANCH="$BASE_BRANCH"
           fi
 
-          AIPR_FLAGS="-t $TARGET_BRANCH -m ${{ steps.map-model.outputs.aipr-model }} -s"
+          AIPR_FLAGS="-t $TARGET_BRANCH -m $AIPR_MODEL -s"
           if [[ "$USE_VULNS_FLAG" == "true" ]]; then
             AIPR_FLAGS="$AIPR_FLAGS --vulns"
           fi
@@ -139,7 +142,7 @@ runs:
           PR_DESCRIPTION=$(aipr pr $AIPR_FLAGS 2>/dev/null || echo "")
 
           if [[ -n "$PR_DESCRIPTION" ]]; then
-            echo "Generated enhanced PR description using ${{ steps.map-model.outputs.aipr-model }}"
+            echo "Generated enhanced PR description using $AIPR_MODEL"
             echo "used-aipr=true" >> $GITHUB_OUTPUT
           else
             echo "aipr generation failed, using fallback description"
@@ -172,10 +175,14 @@ runs:
           PR_DESCRIPTION="${PR_DESCRIPTION}"$'\n\n'"$ADDITIONAL_DESCRIPTION"
         fi
 
-        # Save description to environment (handle multiline properly)
-        echo "PR_DESCRIPTION<<EOF" >> $GITHUB_ENV
-        echo "$PR_DESCRIPTION" >> $GITHUB_ENV
-        echo "EOF" >> $GITHUB_ENV
+        # Randomized delimiter: a description quoting a heredoc would close the block early,
+        # and everything after it would be parsed as further env assignments.
+        PR_DESCRIPTION_DELIM="EOF_$(openssl rand -hex 16)"
+        {
+          echo "PR_DESCRIPTION<<$PR_DESCRIPTION_DELIM"
+          echo "$PR_DESCRIPTION"
+          echo "$PR_DESCRIPTION_DELIM"
+        } >> "$GITHUB_ENV"
 
     - name: Create PR
       id: create-pr
