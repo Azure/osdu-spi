@@ -35,11 +35,19 @@ runs:
   steps:
     - id: check
       shell: bash
+      env:
+        HAS_JAVA_BUILD: ${{ inputs.has_java_build }}
+        REUSABLE_IS_JAVA: ${{ inputs.reusable_is_java }}
+        REUSABLE_RESULT: ${{ inputs.reusable_result }}
+        DIRECT_IS_JAVA: ${{ inputs.direct_is_java }}
+        DIRECT_RESULT: ${{ inputs.direct_result }}
       run: |
-        if [[ "${{ inputs.has_java_build }}" == "true" ]]; then
-          echo "is_java=${{ inputs.reusable_is_java }}" >> $GITHUB_OUTPUT
-          echo "build_result=${{ inputs.reusable_result }}" >> $GITHUB_OUTPUT
+        if [[ "$HAS_JAVA_BUILD" == "true" ]]; then
+          IS_JAVA="$REUSABLE_IS_JAVA"
+          BUILD_RESULT="$REUSABLE_RESULT"
         else
-          echo "is_java=${{ inputs.direct_is_java }}" >> $GITHUB_OUTPUT
-          echo "build_result=${{ inputs.direct_result }}" >> $GITHUB_OUTPUT
-        fi 
+          IS_JAVA="$DIRECT_IS_JAVA"
+          BUILD_RESULT="$DIRECT_RESULT"
+        fi
+        echo "is_java=$IS_JAVA" >> "$GITHUB_OUTPUT"
+        echo "build_result=$BUILD_RESULT" >> "$GITHUB_OUTPUT" 

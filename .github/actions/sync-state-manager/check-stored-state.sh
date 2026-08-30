@@ -112,7 +112,12 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   } >> "$GITHUB_OUTPUT"
 fi
 
-# Also output to stdout for local testing
-echo "last_upstream_sha=$LAST_UPSTREAM_SHA"
-echo "current_issue_number=$EXISTING_ISSUE_NUMBER"
-echo "last_sync_timestamp=$LAST_SYNC_TIMESTAMP"
+# Also output to stdout for local testing. A consumer that stops reading after the
+# first line must not fail the run, so SIGPIPE is ignored for these writes; nothing
+# is spawned after this point, so no child inherits the disposition.
+trap '' PIPE
+{
+  echo "last_upstream_sha=$LAST_UPSTREAM_SHA"
+  echo "current_issue_number=$EXISTING_ISSUE_NUMBER"
+  echo "last_sync_timestamp=$LAST_SYNC_TIMESTAMP"
+} 2>/dev/null || true

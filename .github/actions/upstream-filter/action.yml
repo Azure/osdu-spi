@@ -31,16 +31,22 @@ runs:
     - name: Run upstream filter engine
       id: run
       shell: bash
+      env:
+        FILTER_MODE: ${{ inputs.mode }}
+        FILTER_CONFIG: ${{ inputs.config }}
+        FILTER_CHECKOUT: ${{ inputs.checkout }}
+        FILTER_SEED_SOURCE: ${{ inputs.seed_source }}
+        FILTER_REPORT: ${{ inputs.report }}
       run: |
         set -euo pipefail
-        REPORT="${{ inputs.report }}"
+        REPORT="$FILTER_REPORT"
         if [ -z "$REPORT" ]; then
           REPORT="$RUNNER_TEMP/upstream-filter-report.json"
         fi
-        ARGS=(--mode "${{ inputs.mode }}" --config "${{ inputs.config }}" --checkout "${{ inputs.checkout }}" --report "$REPORT")
-        if [ -n "${{ inputs.seed_source }}" ]; then
-          ARGS+=(--seed-source "${{ inputs.seed_source }}")
+        ARGS=(--mode "$FILTER_MODE" --config "$FILTER_CONFIG" --checkout "$FILTER_CHECKOUT" --report "$REPORT")
+        if [ -n "$FILTER_SEED_SOURCE" ]; then
+          ARGS+=(--seed-source "$FILTER_SEED_SOURCE")
         fi
-        python3 "${{ github.action_path }}/upstream_filter.py" "${ARGS[@]}"
+        python3 "$GITHUB_ACTION_PATH/upstream_filter.py" "${ARGS[@]}"
         FILTER_REV=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('filter_rev',''))" "$REPORT")
         echo "filter_rev=$FILTER_REV" >> "$GITHUB_OUTPUT"
