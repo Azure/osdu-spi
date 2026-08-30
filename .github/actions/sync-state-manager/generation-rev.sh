@@ -34,10 +34,14 @@ else
   REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 fi
 
+# Every input to the no-change comparison other than the upstream commit:
+# the config and engine decide what is kept, and generate-branch.sh decides how
+# the tree is extracted, serialized, and compared.
 REV="filter"
 for input in \
   "$REPO_ROOT/.github/upstream-filter.yml" \
-  "$REPO_ROOT/.github/actions/upstream-filter/upstream_filter.py"
+  "$REPO_ROOT/.github/actions/upstream-filter/upstream_filter.py" \
+  "$REPO_ROOT/.github/actions/upstream-filter/generate-branch.sh"
 do
   if [[ -f "$input" ]]; then
     REV="$REV-$(git hash-object "$input" | cut -c1-12)"
