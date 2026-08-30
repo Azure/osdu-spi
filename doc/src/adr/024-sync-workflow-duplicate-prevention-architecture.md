@@ -35,11 +35,11 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 
 **Options Considered:**
 
-- GitHub variables (rejected - limited and requires additional tokens)
 - Git notes (rejected - complexity and merge conflicts)
 - Git config (rejected - GitHub-hosted runners do not preserve local config between runs)
 - External storage (rejected - dependency and complexity)
-- **Tracking issue metadata (chosen)** - durable through GitHub APIs and aligned with the active sync lifecycle
+- **Tracking issue metadata (chosen for the active cycle)** - durable through GitHub APIs and aligned with the sync lifecycle
+- **Repository variable (chosen for what outlives the cycle)** - the only state that survives with no open issue or PR
 
 **Implementation:**
 
@@ -47,6 +47,12 @@ We implement a comprehensive duplicate prevention system for sync workflows with
 - Keep the human-facing **Upstream Version** as a tag or short SHA
 - Discover active PRs, issues, and branches by label on every run
 - Treat legacy issues without a marker as changed, then backfill the marker on update
+- Record `<sha>:<generation-rev>` in `SYNC_LAST_EVALUATED_SHA` when filtering yields no fork-visible change and no sync PR is open
+
+Repository variables were originally rejected here as requiring additional
+tokens. The GitHub App authentication of ADR-029 removed that cost, and the
+same App already writes `UPSTREAM_REPO_URL` and `SYNC_MODE` during
+initialization and adoption.
 
 ### 3. Branch Management Strategy
 
@@ -105,18 +111,55 @@ but it produces only workflow logging. It does not mutate the PR or issue.
 
 ### State Management
 
-**Storage:** GitHub issue and pull request metadata scoped to the active sync cycle
+**Storage:** Two tiers, read in that order.
+
+*Active cycle* - GitHub issue and pull request metadata:
 
 - `<!-- upstream-sha: <40-character SHA> -->`: Last upstream source commit represented by the active tracking issue
 - `upstream-sync` label: Identifies the active tracking issue and sync PR
 - PR head branch: Identifies the reusable sync branch
 - Issue `updatedAt`: Records the latest issue mutation
 
-**Persistence:** Automatic while an active tracking issue exists
+*Between cycles* - repository variable:
 
-**Cleanup:** Automatic when PRs/issues are closed or merged
+- `SYNC_LAST_EVALUATED_SHA`: `<upstream sha>:<generation revision>` for the last upstream commit whose generated tree matched `fork_upstream` exactly
 
-**Current boundary:** A filtered no-op run that creates no tracking issue does not yet persist its evaluated SHA. This separate optimization is tracked in [issue #147](https://github.com/Azure/osdu-spi/issues/147).
+An open tracking issue always wins. Reading the variable while a cycle is
+active would report an advanced upstream as already handled and leave the open
+sync PR stranded at an older tree.
+
+The variable is written only when all three hold:
+
+- the generated tree matched `fork_upstream`, so the run is already complete
+- no sync PR is open, because an open PR carries a tree the comparison never
+  saw; an upstream commit that reverts it generates a no-op while the stale
+  branch is still queued for merge
+- the SHA is a full 40-character lowercase hash
+
+Recording alongside a generated branch would instead let a later failure in PR
+creation leave state claiming the SHA was handled with nothing to show for it,
+and the next run would take no action.
+
+The generation revision is what makes the cached result safe to reuse. The
+cached fact is `filter(upstream_sha) == tree(fork_upstream)`, so the key has to
+cover every input to that comparison. `generation-rev.sh` hashes
+`.github/upstream-filter.yml`, the filter engine, and `generate-branch.sh` —
+which decides how the tree is extracted, serialized, and compared — and
+short-circuits to the sentinel `mirror` when `SYNC_MODE` selects the customer
+tier. Without this, editing a filter rule after a no-op was recorded would
+leave `fork_upstream` unable to receive the new tree until upstream happened to
+advance.
+
+The `fork_upstream` tip is deliberately *not* part of the key. Only a sync PR
+merge advances it, and a sync PR can only exist once upstream has moved past the
+stored SHA, so the merge always arrives with an upstream commit that already
+invalidates the cache. The residual case is a manual force-push to
+`fork_upstream`, whose recovery is deleting one repository variable — cheaper
+than resolving the branch on every state read.
+
+**Persistence:** The marker lasts as long as the tracking issue; the variable persists indefinitely
+
+**Cleanup:** Issue and PR state clears when they close or merge; the variable is overwritten in place
 
 ### Integration Points
 
@@ -159,7 +202,7 @@ but it produces only workflow logging. It does not mutate the PR or issue.
 - **Pre-sync validation step** checks for existing sync PRs/issues
 - **Upstream SHA comparison** tracks last synced state
 - **Branch update logic** updates existing branches instead of creating new ones
-- **State persistence** stores the full SHA in the active tracking issue
+- **State persistence** stores the full SHA in the active tracking issue, and in `SYNC_LAST_EVALUATED_SHA` once neither an issue nor a PR is open
 - **Unchanged path** leaves the existing PR and issue untouched while retaining the historical `add_reminder` output value
 - **Cleanup logic** removes abandoned sync branches
 
@@ -167,7 +210,9 @@ but it produces only workflow logging. It does not mutate the PR or issue.
 
 - **GitHub API Failures:** State reads fail the workflow rather than guessing
 - **Cleanup Lookup Failures:** Skip destructive branch deletion when PR state or JSON cannot be read
-- **State Corruption:** Missing or malformed markers compare as changed and are repaired on the next update
+- **State Corruption:** Missing or malformed markers and variable values compare as changed and are repaired on the next write
+- **Durable State Writes:** A failed variable write costs one repeated evaluation, never a failed sync run
+- **Durable State Reads:** Only an absent variable degrades to empty; an authentication, rate-limit, or transient failure fails the run rather than reading as first sync
 - **Backwards Compatibility:** Legacy issue bodies require no migration step
 
 ## Consequences
@@ -180,10 +225,12 @@ but it produces only workflow logging. It does not mutate the PR or issue.
 - ✅ **Better maintainability** - Action pattern follows best practices
 - ✅ **Reusable by other workflows** - State management available elsewhere
 - ✅ **Fail-closed cleanup** - Uncertain PR state cannot trigger branch deletion
+- ✅ **No repeated no-op work** - An upstream commit that only touches filtered paths is evaluated once
 
 ### Negative
 
-- ⚠️ **State follows the tracking issue lifecycle** - No issue currently means no persisted no-op SHA
+- ⚠️ **State lives in two places** - The issue marker and the repository variable must agree on precedence
+- ⚠️ **The durable cache key spans several files** - Filter config, engine, and sync mode all invalidate it
 - ⚠️ **Added complexity** in sync workflow - More decision logic
 - ⚠️ **Potential edge cases** in decision logic - Requires thorough testing
 
@@ -203,6 +250,14 @@ The template CI runs `.github/local-actions/sync-state-manager-tests/run-tests.s
 - Legacy, current, and CRLF issue bodies round-trip the canonical SHA marker
 - Empty SHA values cannot overwrite stored state
 - Equal full SHAs select the reminder path
+- Malformed SHAs never reach the durable variable
+- A no-change evaluation records the evaluated SHA, and an unwritable variable does not fail the run
+- A run with no tracking issue reads the variable, and unusable values compare as changed
+- An open tracking issue outranks the variable
+- A stale generation revision invalidates the cache, and the revision tracks config, engine, and sync mode
+- An unreadable variable fails the run instead of reading as first sync
+- Durable state is not recorded while a sync PR is open
+- A re-evaluated no-op SHA reaches `no_action` before branch generation
 - Workflow ordering keeps state exports before the filtered no-change exit
 
 Production monitoring remains responsible for validating end-to-end PR, issue, and cascade behavior.

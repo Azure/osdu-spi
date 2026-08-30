@@ -123,6 +123,7 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
           upstream_repo_url: ${{ vars.UPSTREAM_REPO_URL }}
           default_branch: ${{ env.DEFAULT_BRANCH }}
+          sync_mode: ${{ vars.SYNC_MODE }}
 
       - name: Sync upstream changes
         id: sync-changes
@@ -179,6 +180,15 @@ jobs:
           if [ "$has_changes" = "false" ]; then
             echo "No changes to sync from upstream"
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            # Recorded only here: on the has_changes=true path a later failure
+            # would leave state claiming this SHA was handled with no PR to show.
+            # An open sync PR carries a tree this comparison never saw, so its
+            # cycle must finish before any SHA is treated as fully evaluated.
+            if [ "${{ steps.sync-state.outputs.should_create_pr }}" = "true" ]; then
+              bash .github/actions/sync-state-manager/record-evaluated-sha.sh "$UPSTREAM_SHA"
+            else
+              echo "Existing sync PR is still open - not recording durable state"
+            fi
             exit 0
           fi
 

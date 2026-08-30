@@ -38,6 +38,13 @@ The workflow uses intelligent state management to avoid creating duplicate sync 
 
 This prevents PR proliferation and maintains a clear workflow where only one sync PR exists at a time.
 
+An upstream commit that touches only filtered paths — a non-Azure provider,
+`devops/`, `.gitlab-ci.yml` — advances the upstream tip without changing the
+fork's tree. That run opens nothing and records the evaluated commit in the
+`SYNC_LAST_EVALUATED_SHA` repository variable, so later runs skip it instead of
+regenerating an identical tree every night. While a sync PR is open its
+tracking issue remains the source of truth.
+
 ## Upstream Filter Transform
 
 The transform separates source ownership:

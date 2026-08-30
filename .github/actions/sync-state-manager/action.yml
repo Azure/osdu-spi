@@ -11,6 +11,10 @@ inputs:
   default_branch:
     description: 'Default branch name (main/master)'
     required: true
+  sync_mode:
+    description: 'Sync tier: "mirror" for customer forks (ADR-039), otherwise filter'
+    required: false
+    default: ''
 
 outputs:
   should_create_pr:
@@ -55,6 +59,7 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
+        SYNC_MODE: ${{ inputs.sync_mode }}
       run: ${{ github.action_path }}/check-stored-state.sh "${{ steps.existing_issues.outputs.existing_issue_number }}"
 
     - name: "Detect existing sync PRs"
