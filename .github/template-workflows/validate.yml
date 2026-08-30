@@ -269,12 +269,8 @@ jobs:
       - name: "Run Java Build"
         id: build
         uses: ./.github/actions/java-build
-        env:
-          MAVEN_USERNAME: ${{ secrets.OPENGROUP_MAVEN_USERNAME }}
-          MAVEN_TOKEN: ${{ secrets.OPENGROUP_MAVEN_TOKEN }}
         with:
           generate_coverage: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
-          gitlab_token: ${{ secrets.GITLAB_TOKEN }}
           # core is activeByDefault, so a bare profile flag would drop it; MAVEN_PROFILE
           # overrides for services that deviate (e.g. indexer-queue). In filter mode
           # fork_upstream builds core only: it is a provider-less tree whose azure profile

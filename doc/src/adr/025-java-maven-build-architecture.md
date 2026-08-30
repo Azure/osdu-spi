@@ -1,7 +1,7 @@
 # ADR-025: Java/Maven Build Architecture
 
 ## Status
-**Accepted** - 2025-10-01
+**Accepted** - 2025-10-01; amended 2026-08-30 to reflect public Maven read access
 
 ## Context
 
@@ -38,7 +38,7 @@ Implement **Java/Maven as the primary build architecture** with:
 ### Build Architecture Benefits
 
 1. **Dependency Caching**: Maven `.m2/repository` caching speeds up builds by 50-70%
-2. **Community Repository Access**: Automatic authentication with GitLab OSDU repositories
+2. **Community Repository Access**: Anonymous dependency resolution from the public GitLab OSDU repository
 3. **Standardized Structure**: Consistent `pom.xml` patterns across all services
 4. **Test Integration**: Native support for JUnit, TestNG, and other test frameworks
 5. **Security Scanning**: Integration with dependency vulnerability scanning tools
@@ -86,10 +86,8 @@ Implement **Java/Maven as the primary build architecture** with:
 # build.yml
 - uses: ./.github/actions/java-build
   with:
-    java-version: '17'
-    java-distribution: 'temurin'
-    maven-args: 'clean install'
-    community-maven-token: ${{ secrets.COMMUNITY_MAVEN_TOKEN }}
+    generate_coverage: true
+    maven_profile: core,azure
 ```
 
 ### Coverage Configuration
@@ -106,17 +104,18 @@ Implement **Java/Maven as the primary build architecture** with:
 ### Community Repository Access
 
 ```yaml
-# Automatic GitLab OSDU repository configuration
-settings.xml generated with:
-- Repository: https://community.opengroup.org/api/v4/projects/
-- Authentication: Bearer token from COMMUNITY_MAVEN_TOKEN
+repository_settings:
+  file: .mvn/community-maven.settings.xml
+  repository: https://community.opengroup.org/api/v4/groups/17/-/packages/maven
+  dependency_authentication: none  # Public read access
+  publication: outside these workflows; requires separate authentication
 ```
 
 ## Consequences
 
 ### Positive
 
-- **Zero Configuration**: Java projects work immediately after fork creation
+- **Zero-Credential Builds**: Java projects resolve public OSDU dependencies without registry secrets
 - **Fast Builds**: Dependency caching reduces build times significantly
 - **OSDU Compatible**: Seamless integration with OSDU ecosystem
 - **Coverage Reports**: Automatic test coverage tracking and reporting
@@ -140,7 +139,7 @@ settings.xml generated with:
 
 - Maven builds complete successfully in < 10 minutes for typical projects
 - JaCoCo coverage reports generated and accessible as artifacts
-- GitLab OSDU dependencies resolve without authentication errors
+- GitLab OSDU dependencies resolve through anonymous public read access
 - Build caching reduces subsequent build times by > 50%
 - Zero configuration required for standard OSDU Java projects
 - Coverage thresholds enforced (80% line, 75% branch coverage)
@@ -151,9 +150,8 @@ For existing repositories adopting this architecture:
 
 1. **Ensure Java 17 compatibility** in source code
 2. **Add JaCoCo plugin** to pom.xml if not present
-3. **Configure COMMUNITY_MAVEN_TOKEN** secret for GitLab access
-4. **Update workflow files** via template-sync mechanism
-5. **Verify build passes** with new architecture
+3. **Update workflow files** via template-sync mechanism
+4. **Verify build passes** with new architecture
 
 ## Future Evolution
 

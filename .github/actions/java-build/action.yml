@@ -6,9 +6,6 @@ inputs:
     description: 'Whether to generate coverage report'
     required: false
     default: 'false'
-  gitlab_token:
-    description: 'GitLab token for Maven authentication'
-    required: false
   maven_profile:
     description: 'Optional Maven profile(s) to restrict the build (e.g. core,azure — a comma-separated list is allowed). When empty, no -P is passed; validate.yml supplies the core,azure default (ADR-035).'
     required: false
@@ -109,7 +106,6 @@ runs:
         fi
       env:
         MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
-        COMMUNITY_MAVEN_TOKEN: ${{ inputs.gitlab_token }}
         MAVEN_PROFILE: ${{ inputs.maven_profile }}
         GENERATE_COVERAGE: ${{ inputs.generate_coverage }}
 

@@ -38,7 +38,7 @@ The workflow produces clear outcomes to help you understand the state of your ch
 ### Build Features
 - **Maven dependency caching** - Speeds up builds by caching `.m2/repository`
 - **JaCoCo coverage reporting** - Generates detailed test coverage reports using JaCoCo plugin
-- **Community repository access** - Authenticates with GitLab Maven repositories for OSDU dependencies
+- **Community repository access** - Resolves OSDU dependencies from the public GitLab Maven repository
 - **Artifact storage** - Saves JARs and coverage data for 2 days
 
 ## When You Need to Act
@@ -94,7 +94,7 @@ Sync PRs targeting the provider-less `fork_upstream` tree build `core` only. See
 
 ### Community Repository Access
 
-When present, `.mvn/community-maven.settings.xml` supplies the OSDU dependency repository configuration. The `GITLAB_TOKEN`, `OPENGROUP_MAVEN_USERNAME`, and `OPENGROUP_MAVEN_TOKEN` secrets provide credentials where the corresponding workflow needs them.
+When present, `.mvn/community-maven.settings.xml` supplies the OSDU dependency repository configuration. Dependency downloads use the repository's public read access, so the build workflows do not require Maven registry secrets. Maven publication is outside the scope of these workflows and would require separate authenticated configuration.
 
 ## Performance
 
