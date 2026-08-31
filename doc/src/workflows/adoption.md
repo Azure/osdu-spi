@@ -50,12 +50,9 @@ On the fork (`Settings > Secrets and variables > Actions`):
 |---|---|---|
 | `RELEASE_APP_ID` | Yes | Your GitHub App's ID |
 | `RELEASE_APP_PRIVATE_KEY` | Yes | Your GitHub App's private key (PEM) |
-| `GITLAB_TOKEN` | For OSDU Java services | Community Maven registry access for builds |
-| `OPENGROUP_MAVEN_USERNAME` | For OSDU Java services | Community Maven credentials used by validation |
-| `OPENGROUP_MAVEN_TOKEN` | For OSDU Java services | Community Maven credentials used by validation |
 | `AZURE_API_KEY`, `AZURE_API_BASE`, `AZURE_API_VERSION` | Optional | AI-enhanced PR descriptions; everything degrades to templated text without them |
 
-Set the build secrets before merging your first sync PR: mirror-mode sync PRs build the full profile set, so they need registry access from the start.
+OSDU Maven dependencies use public read access, so Java builds require no Maven registry secrets. Maven publication is outside the scope of these workflows and would require separate authenticated configuration.
 
 ## Run Adoption
 

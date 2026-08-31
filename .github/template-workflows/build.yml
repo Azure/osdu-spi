@@ -73,8 +73,6 @@ jobs:
       - name: "Run Java Build"
         id: build
         uses: ./.github/actions/java-build
-        with:
-          gitlab_token: ${{ secrets.GITLAB_TOKEN }}
 
   code-coverage:
     name: "📊 Code Coverage"
@@ -103,7 +101,6 @@ jobs:
       - name: "Generate Coverage Report"
         env:
           MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
-          COMMUNITY_MAVEN_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
           # Set up Maven CLI options
           MAVEN_CLI_OPTS="--batch-mode -Drevision=${GITHUB_REF_NAME}-SNAPSHOT"
