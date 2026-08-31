@@ -154,6 +154,27 @@ grep -q "LEGAL_TAG" "$TMP/refused-err.txt" || die "refusal must name the unresol
 [ "$(report_field "$TMP/refused.json" "r['error']['category']")" = "env-not-ready" ] || die "wrong error category"
 ok "typed env-not-ready refusal"
 
+note "present-but-empty fact values are missing facts, never empty env vars"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['azure']['openid_issuer'] = ''
+facts['partitions'][0]['legal_tag'] = '   '
+json.dump(facts, open('$TMP/facts-empty.json', 'w'))
+"
+RC=0
+TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-empty.json" \
+  --env-file "$TMP/empty.env" --secrets "$SECRETS" --report "$TMP/empty.json" >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 0 ] || die "bind must exit 0 on empty fact values"
+grep -q "^TEST_OPENID_PROVIDER_URL=" "$TMP/empty.env" && die "empty openid fact must be omitted, not written empty"
+grep -q "^LEGAL_TAG=" "$TMP/empty.env" && die "whitespace legalTag fact must be omitted, not written blank"
+[ "$(report_field "$TMP/empty.json" "len(r['missing'])")" = "2" ] || die "empty facts must report as missing"
+RC=0
+TESTER_TOKEN="tok-123" engine --mode run --descriptor "$DESCRIPTOR" --facts "$TMP/facts-empty.json" \
+  --env-file "$TMP/empty2.env" --secrets "$SECRETS" >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 3 ] || die "run must refuse empty fact values with exit 3, got $RC"
+ok "empty fact value == missing fact"
+
 note "missing secrets: bind warns, run refuses"
 RC=0
 TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
