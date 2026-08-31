@@ -716,7 +716,8 @@ def build_report(mode, contract, facts, resolved, missing, agreement):
             "dependencies": contract["dependencies"],
         },
         "key_vault": {
-            "vault": _fact_at(facts, VAULT_NAME_PATH),
+            "vault": _require_printable_fact(
+                "keyvault", _fact_at(facts, VAULT_NAME_PATH)).strip(),
             "secret_names": secret_names(contract),
         },
         "agreement_checked": agreement,
