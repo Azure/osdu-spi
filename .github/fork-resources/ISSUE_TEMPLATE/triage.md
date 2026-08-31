@@ -42,7 +42,7 @@ Analyze this service's dependencies and security posture using available tools, 
 
 4. Identify security vulnerabilities:
    - Analyze the parent POM and, if applicable, core and azure provider modules for known vulnerabilities.
-   - Create a table of security CVCE vulnerabilities for each POM, including the severity and affected dependency.
+   - Create a table of security CVE vulnerabilities for each POM, including the severity and affected dependency.
    - Count the total number of vulnerabilities as you add them to the table.
    - Summarize the findings, highlighting any critical or high-severity vulnerabilities.
 

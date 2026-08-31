@@ -399,14 +399,6 @@ jobs:
               git show refs/remotes/template/main:".github/fork-resources/triage.prompt.md" > ".github/prompts/triage.prompt.md"
               git add ".github/prompts/triage.prompt.md"
             fi
-            
-            # Process .vscode configuration
-            if git show refs/remotes/template/main:".github/fork-resources/.vscode" >/dev/null 2>&1; then
-              echo "Updating .vscode MCP configuration from fork-resources..."
-              mkdir -p ".vscode"
-              git archive refs/remotes/template/main ".github/fork-resources/.vscode" | tar -x --strip-components=3 -C ".vscode" || echo "Failed to extract .vscode config"
-              git add -f ".vscode/" || true
-            fi
           fi
 
           # Plant the upstream filter config if the fork lacks one. Create-if-missing

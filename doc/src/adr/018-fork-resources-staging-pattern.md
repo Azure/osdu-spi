@@ -171,9 +171,8 @@ This ADR extends:
 
 1. **Issue Templates**: `ISSUE_TEMPLATE/triage.md` → `.github/ISSUE_TEMPLATE/triage.md`
 2. **Copilot Config**: `copilot-instructions.md` → `.github/copilot-instructions.md`
-3. **MCP Config**: `.vscode/mcp.json` → `.vscode/mcp.json`
-4. **AI Prompts**: `triage.prompt.md` → `.github/prompts/triage.prompt.md`
-5. **Security Config**: `copilot-firewall-config.json` → `.github/` + repository variables
+3. **AI Prompts**: `triage.prompt.md` → `.github/prompts/triage.prompt.md`
+4. **Security Config**: `copilot-firewall-config.json` → `.github/` + repository variables
 
 ### Future Extensions
 
