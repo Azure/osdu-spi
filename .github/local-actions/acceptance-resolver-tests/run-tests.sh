@@ -210,6 +210,26 @@ expect_fail "unwritable env file" 4 "OUTPUT_UNWRITABLE" "OUTPUT_UNWRITABLE" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
   --env-file "$TMP/no-such-dir/out.env" --secrets "$SECRETS"
 
+note "usage: --report and --env-file must name different paths"
+RC=0
+engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
+  --env-file "$TMP/same.out" --report "$TMP/same.out" --secrets "$SECRETS" \
+  >/dev/null 2>"$TMP/same-err.txt" || RC=$?
+[ "$RC" -eq 2 ] || die "identical output paths must exit 2, got $RC"
+grep -q "different paths" "$TMP/same-err.txt" || die "usage error must name the collision"
+ok "output collision refused"
+
+note "halt: a malformed template placeholder is rejected, not passed through"
+variant "$TMP/bad-placeholder.yaml" 'value: "${DEMO_BASE_URL}search"' \
+  'value: "${DEMO_BASE_URL}${BAD-NAME}search"'
+expect_fail "malformed placeholder" 2 "malformed" "DESCRIPTOR_INVALID" \
+  engine --mode bind --descriptor "$TMP/bad-placeholder.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+
+note "halt: a value beyond the schema's 240-character maximum is rejected"
+variant "$TMP/long-value.yaml" "value: azure }" "value: $(python3 -c 'print("x"*241)') }"
+expect_fail "value too long" 2 "240" "DESCRIPTOR_INVALID" \
+  engine --mode bind --descriptor "$TMP/long-value.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+
 note "halt: unknown source kind exits 2 naming the key"
 variant "$TMP/bad-source.yaml" "{ source: partition }" "{ source: cosmos }"
 expect_fail "unknown source" 2 "bindings.DEMO_TENANT.source 'cosmos'" "UNKNOWN_SOURCE" \

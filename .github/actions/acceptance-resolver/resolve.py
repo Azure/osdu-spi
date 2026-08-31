@@ -319,6 +319,10 @@ def _validate_binding(name, binding, where):
             raise Halt("MISSING_KEY", f"{where}.value is required for source {source}")
         if not isinstance(binding["value"], str) or binding["value"] == "":
             raise Halt("DESCRIPTOR_INVALID", f"{where}.value must be a non-empty string")
+        if len(binding["value"]) > 240:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.value exceeds 240 characters, the published "
+                       "schema maximum")
     elif "value" in binding:
         raise Halt("DESCRIPTOR_INVALID",
                    f"{where}.value is only valid for sources static and template")
@@ -339,6 +343,9 @@ def _validate_binding(name, binding, where):
         if not refs:
             raise Halt("DESCRIPTOR_INVALID",
                        f"{where}.value has no ${{NAME}} reference; use source static")
+        if "${" in TEMPLATE_REF_RE.sub("", binding["value"]):
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.value carries a malformed ${{...}} placeholder")
     return source
 
 
@@ -715,6 +722,9 @@ def main(argv=None):
     parser.add_argument("--expect-partition", default="")
     parser.add_argument("--report", default="")
     args = parser.parse_args(argv)
+    if args.report and os.path.realpath(args.report) == os.path.realpath(args.env_file):
+        # The report would overwrite the env file after a successful resolve.
+        parser.error("--report and --env-file must name different paths")
 
     report = None
     try:
