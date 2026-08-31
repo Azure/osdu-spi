@@ -95,9 +95,13 @@ TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" --facts "$F
 ok "all eleven bindings resolved"
 
 note "run: happy path succeeds and reports the contract"
+touch "$TMP/run.env" && chmod 644 "$TMP/run.env"
 TESTER_TOKEN="tok-123" engine --mode run --descriptor "$DESCRIPTOR" --facts "$FACTS" \
   --env-file "$TMP/run.env" --secrets "$SECRETS" --report "$TMP/run.json" >/dev/null 2>&1 \
   || die "happy path run failed"
+MODE="$(python3 -c "import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))" "$TMP/run.env")"
+[ "$MODE" = "0o600" ] || die "env file must be owner-only even over a loose pre-existing file, got $MODE"
+ok "env file is 0600"
 [ "$(report_field "$TMP/run.json" "r['contract']['test_dir']")" = "demo-acceptance-test" ] || die "test_dir wrong"
 [ "$(report_field "$TMP/run.json" "r['contract']['maven_arguments']")" = "['verify', '-DskipTests=false']" ] \
   || die "maven argv tokens wrong"
@@ -141,10 +145,11 @@ ok "bind warns, writes, reports"
 
 note "missing facts (today's envelope): run refuses with a typed reason"
 RC=0
+echo "STALE=from-an-earlier-run" > "$TMP/refused.env"
 TESTER_TOKEN="tok-123" engine --mode run --descriptor "$DESCRIPTOR" --facts "$FACTS_TODAY" \
   --env-file "$TMP/refused.env" --secrets "$SECRETS" --report "$TMP/refused.json" >/dev/null 2>"$TMP/refused-err.txt" || RC=$?
 [ "$RC" -eq 3 ] || die "run must exit 3 on missing facts, got $RC"
-[ ! -e "$TMP/refused.env" ] || die "run must not hand over an env file on refusal"
+[ ! -e "$TMP/refused.env" ] || die "refusal must remove a stale env file, not leave it for the caller"
 grep -q "LEGAL_TAG" "$TMP/refused-err.txt" || die "refusal must name the unresolved binding"
 [ "$(report_field "$TMP/refused.json" "r['error']['category']")" = "env-not-ready" ] || die "wrong error category"
 ok "typed env-not-ready refusal"

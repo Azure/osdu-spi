@@ -20,14 +20,9 @@ that point at *their own* stack — so nothing environment-specific can be
 baked in. And the same tests must run against a personal stack during
 development with no CI in the path.
 
-A working prototype proved the deploy lane but transported configuration as
-~16 repository variables pushed per fork, six of which go stale on every
-environment rebuild with no reconciliation loop. Its own later decision
-(descriptor contract, prototype ADR-043) already assumed late-bound facts —
-only the transport was baked. Separately, the stack repository shipped a
-versioned discovery contract: `spi info --json` and `spi status --json`
-publish endpoints, tenant, partitions, and the Key Vault name under
-`apiVersion: spi.osdu.dev/v1`. The full arbitration between these prior
+The stack repository ships a versioned discovery contract: `spi info --json`
+and `spi status --json` publish endpoints, tenant, partitions, and the Key
+Vault name under `apiVersion: spi.osdu.dev/v1`. The arbitration with prior
 efforts is recorded in the
 [Borrow, Prove, Restore design](../architecture/deploy_test.md), whose
 decision register (D2, D3, D10) this ADR implements.
@@ -105,8 +100,8 @@ seeded" in seconds instead of a mystery test failure.
   across N forks and M mirrors: the repo holds a pointer and an identity,
   everything else is read per run.
 - Acceptance requirements are reviewed with the code that needs them, and
-  the drift the prototype suffered — variables asserting an environment that
-  no longer exists — is structurally impossible.
+  the drift of stored variables asserting an environment that no longer
+  exists is structurally impossible.
 - The same contract serves CI, a personal stack, and a fully offline run;
   the harness proves the resolver against fixture facts with no cluster and
   no Azure calls.
@@ -133,7 +128,7 @@ seeded" in seconds instead of a mystery test failure.
 
 ## Alternatives Considered
 
-- **Acceptance configuration in repository variables** (the prototype's
+- **Acceptance configuration in repository variables** (a prior prototype's
   transport). Rejected: not branch-versioned, not reviewable with test
   changes, and six of its ~16 values went stale on every rebuild. Its sticky
   `DEPLOY_VALIDATED` boolean kept asserting a canary against an environment
@@ -145,9 +140,8 @@ seeded" in seconds instead of a mystery test failure.
   appealing, but it couples test semantics to the environment's release
   cadence and adds a version-skew axis between what a branch declares and
   what the installed CLI understands. The CLI stays the sole authority on
-  facts; the template stays the sole authority on resolution. Two resolvers
-  with drifting semantics is the failure mode the evidence warns against —
-  so there is exactly one, and it is synced everywhere.
+  facts; the template stays the sole authority on resolution. There is
+  exactly one resolver, and it is synced everywhere.
 - **GitHub Environments as configuration storage.** Rejected: environments
   are for identity protection, not config transport; values stored there are
   as stale as repository variables and invisible to the developer loop.

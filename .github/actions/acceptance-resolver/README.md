@@ -24,7 +24,8 @@ here are breaking changes.
 - **Deterministic.** Same inputs produce a byte-identical env file: sorted
   names, no timestamps.
 - **Secrets stay out of the report.** The JSON report carries secret *names*
-  only. The env file is the single delivery artifact for values.
+  only. The env file is the single delivery artifact for values, written
+  owner-only (0600).
 
 ## Invocation
 
@@ -46,7 +47,7 @@ The composite `action.yml` wraps exactly this invocation.
 | Mode | Audience | Missing answer |
 | --- | --- | --- |
 | `bind` | A developer iterating against a personal stack | Warn, omit the entry, still write the env file, exit 0 |
-| `run` | The CI lane about to execute the suite | Refuse: exit 3 naming every unresolved binding; no env file |
+| `run` | The CI lane about to execute the suite | Refuse: exit 3 naming every unresolved binding; no env file, and a stale one at the path is removed |
 
 ## Source vocabulary (closed)
 

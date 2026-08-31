@@ -661,9 +661,22 @@ def write_report(path, report):
 
 
 def write_env_file(path, resolved):
-    with open(path, "w", encoding="utf-8") as stream:
+    # The file can carry Key Vault secrets: create it owner-only, and tighten
+    # a pre-existing destination before any value is written.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
         for name in sorted(resolved):
             stream.write(f"{name}={resolved[name]}\n")
+
+
+def discard_env_file(path):
+    # A failed resolution must not leave an earlier run's env file for the
+    # caller to consume as if it were this run's answer.
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 
 def main(argv=None):
@@ -716,6 +729,7 @@ def main(argv=None):
                     Infra: "infra"}[type(error)]
         report["error"] = {"category": category, "code": error.code,
                           "detail": error.detail}
+        discard_env_file(args.env_file)
         try:
             write_report(args.report, report)
         except OSError:
