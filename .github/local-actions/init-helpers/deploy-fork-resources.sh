@@ -10,7 +10,6 @@
 #   - Dependabot configuration
 #   - Copilot firewall configuration
 #   - Triage prompts
-#   - VS Code MCP configuration
 #   - Issue templates
 #   - Copilot setup workflow
 #
@@ -79,15 +78,6 @@ if [[ -f ".github/fork-resources/triage.prompt.md" ]]; then
   mkdir -p ".github/prompts"
   cp ".github/fork-resources/triage.prompt.md" ".github/prompts/triage.prompt.md"
   git add ".github/prompts/triage.prompt.md"
-fi
-
-# Copy .vscode configuration directory
-if [[ -d ".github/fork-resources/.vscode" ]]; then
-  echo "Installing .vscode MCP configuration..."
-  mkdir -p ".vscode"
-  cp -r ".github/fork-resources/.vscode/"* ".vscode/"
-  # Force add .vscode files even if gitignore might affect them
-  git add -f ".vscode/"
 fi
 
 # Copy issue templates

@@ -10,17 +10,6 @@ assignees: []
 
 Analyze this service's dependencies and security posture using available tools, then produce a detailed report. 
 
-## Tool Use
-
-| Tool Name                  | Function Signature                                                                                                 |
-|----------------------------|--------------------------------------------------------------------------------------------------------------------|
-| check_version_tool         | `mcp__mvn-mcp-server__check_version_tool(dependency, version, packaging, classifier)`                              |
-| check_version_batch_tool   | `mcp__mvn-mcp-server__check_version_batch_tool(dependencies)`                                                      |
-| list_available_versions_tool | `mcp__mvn-mcp-server__list_available_versions_tool(dependency, version, packaging, classifier, include_all_versions)` |
-| scan_java_project_tool     | `mcp__mvn-mcp-server__scan_java_project_tool(workspace, include_profiles, scan_all_modules, scan_mode, pom_file, severity_filter, max_results, offset)` |
-| analyze_pom_file_tool      | `mcp__mvn-mcp-server__analyze_pom_file_tool(pom_file_path, include_vulnerability_check)`                           |
-
-
 ## Checklist
 
 - [ ] Document repository structure and list all POM files
@@ -45,15 +34,15 @@ Analyze this service's dependencies and security posture using available tools, 
    - Focus on the parent POM and any configured Maven profiles.
    - Never include any test projects in your analysis.
 
-3. Use the Check Version Batch Tool to identify dependency updates:
-   - Run the tool on each relevant POM file.
+3. Identify dependency updates:
+   - Analyze the dependencies in each relevant POM file.
    - Create a table of version updates available for each POM, including the dependency name, current version, and latest version.
    - Count the total number of outdated dependencies as you add them to the table.
    - Summarize the findings, noting any patterns or particularly outdated dependencies.
 
-4. Use the Scan Java Tool to find vulnerabilities:
-   - Run the tool on the parent POM and, if applicable, core and azure provider modules.
-   - Create a table of security CVCE vulnerabilities for each POM, including the severity and affected dependency.
+4. Identify security vulnerabilities:
+   - Analyze the parent POM and, if applicable, core and azure provider modules for known vulnerabilities.
+   - Create a table of security CVE vulnerabilities for each POM, including the severity and affected dependency.
    - Count the total number of vulnerabilities as you add them to the table.
    - Summarize the findings, highlighting any critical or high-severity vulnerabilities.
 
