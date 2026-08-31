@@ -438,6 +438,21 @@ expect_fail "partition mismatch" 4 "disagree on partition" "AGREEMENT_MISMATCH" 
   --env-file "$TMP/x.env" --secrets "$SECRETS" --expect-partition "closedes"
 ok "trailing-slash-insensitive gateway comparison, typed mismatch"
 
+note "contract-only: reports the contract with no facts, no env file"
+engine --contract-only --descriptor "$DESCRIPTOR" --report "$TMP/contract.json" >/dev/null 2>&1 \
+  || die "contract-only must succeed on the fixture descriptor"
+[ "$(report_field "$TMP/contract.json" "r['contract']['test_dir']")" = "demo-acceptance-test" ] \
+  || die "contract-only test_dir wrong"
+[ "$(report_field "$TMP/contract.json" "r['mode']")" = "contract-only" ] || die "contract-only mode wrong"
+[ "$(report_field "$TMP/contract.json" "sorted(r['key_vault']['secret_names'])")" = "['app-sp-password', 'demo-client-secret']" ] \
+  || die "contract-only secret names wrong"
+expect_fail "contract-only still halts on a bad descriptor" 2 "bindings.DEMO_TENANT.source 'cosmos'" "UNKNOWN_SOURCE" \
+  engine --contract-only --descriptor "$TMP/bad-source.yaml"
+RC=0
+engine --descriptor "$DESCRIPTOR" >/dev/null 2>&1 || RC=$?
+[ "$RC" -ne 0 ] || die "full mode without --mode/--facts/--env-file must be a usage error"
+ok "contract-only mode"
+
 note "infra: wrong facts apiVersion is a typed refusal"
 python3 -c "
 import json

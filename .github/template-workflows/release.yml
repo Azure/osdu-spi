@@ -135,12 +135,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: "Resolve acceptance suite"
+        # Whether this release commit built an acceptance image (design §8): a fork with no
+        # suite module must skip the acceptance retag instantly, not wait out a poll loop.
+        id: suite
+        run: .github/actions/acceptance-image/resolve-suite.sh
+        env:
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          RESOLVER: .github/actions/acceptance-resolver/resolve.py
+
       - name: "Tag release image with semver"
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           OWNER: ${{ github.repository_owner }}
           SERVICE_NAME: ${{ vars.SERVICE_NAME }}
           REPO_NAME: ${{ github.event.repository.name }}
+          ACCEPTANCE_BUILDABLE: ${{ steps.suite.outputs.buildable }}
         run: |
           set -euo pipefail
           # Registry-side retag: add :<version> to the release commit's image. No rebuild.
@@ -166,4 +178,27 @@ jobs:
           fi
 
           docker buildx imagetools create --tag "${REPO}:${VERSION}" "$SRC"
-          echo "Tagged \`${REPO}:${VERSION}\` from \`${SRC}\`" >> "$GITHUB_STEP_SUMMARY" 
+          echo "Tagged \`${REPO}:${VERSION}\` from \`${SRC}\`" >> "$GITHUB_STEP_SUMMARY"
+
+          # Acceptance image rides the same commit (design §8): "prove release X on stack Y"
+          # stays one command months later. The suite-resolution step already told us whether
+          # this fork builds one; the service-image wait above has synchronized on docker-push,
+          # so only the acceptance step's own build time remains to poll out.
+          if [ "${ACCEPTANCE_BUILDABLE}" = "true" ]; then
+            ACC_REPO="${REPO}-acceptance"
+            ACC_SRC="${ACC_REPO}:sha-${GITHUB_SHA:0:12}"
+            acc_found=false
+            for attempt in $(seq 1 60); do
+              if docker buildx imagetools inspect "$ACC_SRC" >/dev/null 2>&1; then acc_found=true; break; fi
+              echo "Acceptance ${ACC_SRC} not present yet (attempt ${attempt}/60); waiting for its push…"
+              sleep 20
+            done
+            if [ "$acc_found" != "true" ]; then
+              echo "::error::Acceptance image ${ACC_SRC} did not appear within ~20 min; the acceptance push may have failed for this commit."
+              exit 1
+            fi
+            docker buildx imagetools create --tag "${ACC_REPO}:${VERSION}" "$ACC_SRC"
+            echo "Tagged \`${ACC_REPO}:${VERSION}\` from \`${ACC_SRC}\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No acceptance suite on this commit; acceptance image retag skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi 

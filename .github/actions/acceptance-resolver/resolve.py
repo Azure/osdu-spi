@@ -787,21 +787,32 @@ def discard_env_file(path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--descriptor", required=True)
-    parser.add_argument("--facts", required=True)
-    parser.add_argument("--mode", required=True, choices=("bind", "run"))
-    parser.add_argument("--env-file", required=True)
+    parser.add_argument("--facts", default="")
+    parser.add_argument("--mode", choices=("bind", "run"), default="")
+    parser.add_argument("--env-file", default="")
     parser.add_argument("--secrets", default="")
     parser.add_argument("--expect-gateway", default="")
     parser.add_argument("--expect-partition", default="")
     parser.add_argument("--report", default="")
+    parser.add_argument("--contract-only", action="store_true",
+                        help="validate the descriptor and report the contract; "
+                             "no facts, no resolution, no env file")
     args = parser.parse_args(argv)
+    if args.contract_only:
+        args.mode = "contract-only"
+    elif not (args.mode and args.facts and args.env_file):
+        parser.error("--mode, --facts and --env-file are required unless --contract-only")
     # An output aliasing another output, or any input, would overwrite what
     # this run reads (or delete it via the failure cleanup); refuse up front.
-    if args.report and os.path.realpath(args.report) == os.path.realpath(args.env_file):
+    # Contract-only runs carry no env file and may carry no facts, so only
+    # paths actually in play participate.
+    if args.report and args.env_file and \
+            os.path.realpath(args.report) == os.path.realpath(args.env_file):
         parser.error("--report and --env-file must name different paths")
-    outputs = [("--env-file", args.env_file)] + (
+    outputs = ([("--env-file", args.env_file)] if args.env_file else []) + (
         [("--report", args.report)] if args.report else [])
-    inputs = [("--descriptor", args.descriptor), ("--facts", args.facts)] + (
+    inputs = [("--descriptor", args.descriptor)] + (
+        [("--facts", args.facts)] if args.facts else []) + (
         [("--secrets", args.secrets)] if args.secrets else [])
     for out_flag, out_path in outputs:
         for in_flag, in_path in inputs:
@@ -816,6 +827,12 @@ def main(argv=None):
         except (OSError, UnicodeDecodeError) as error:
             raise Halt("DESCRIPTOR_UNREADABLE", f"{args.descriptor}: {error}")
         contract = validate_descriptor(parse_descriptor_yaml(descriptor_text))
+        if args.contract_only:
+            report = build_report(args.mode, contract, {}, {}, [], [])
+            write_report(args.report, report)
+            print(f"contract validated for service '{contract['service']}' "
+                  f"(suite: {contract['test_dir']})")
+            return 0
         facts = load_facts(args.facts)
         secrets = load_secrets(args.secrets)
         agreement = check_agreement(facts, args.expect_gateway, args.expect_partition)
