@@ -215,6 +215,26 @@ json.dump(facts, open('$TMP/facts-badtype.json', 'w'))
 expect_fail "wrong-typed fact" 4 "not a string" "FACTS_INVALID" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-badtype.json" --env-file "$TMP/x.env"
 
+note "infra: a non-boolean primary marker is a contract failure, never selected"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['partitions'][0]['primary'] = 'false'
+json.dump(facts, open('$TMP/facts-badprimary.json', 'w'))
+"
+expect_fail "non-boolean primary" 4 "primary" "FACTS_INVALID" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-badprimary.json" --env-file "$TMP/x.env"
+
+note "infra: an unencodable resolved value is typed, never a traceback"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['base_url'] = facts['base_url'] + '\ud800'
+json.dump(facts, open('$TMP/facts-surrogate.json', 'w'))
+"
+expect_fail "unpaired surrogate" 4 "UTF-8" "UNSAFE_VALUE" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-surrogate.json" --env-file "$TMP/x.env"
+
 note "infra: an unwritable env-file destination is a typed failure"
 expect_fail "unwritable env file" 4 "OUTPUT_UNWRITABLE" "OUTPUT_UNWRITABLE" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \

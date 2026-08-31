@@ -542,17 +542,24 @@ def fact_value(facts, kind):
         if not isinstance(partitions, list):
             raise Infra("FACTS_INVALID", "facts value at 'partitions' is not a list")
         for entry in partitions:
-            if isinstance(entry, dict) and entry.get("primary"):
-                value = entry.get(PARTITION_FACT_KEYS[kind])
-                if value is None:
-                    return ""
-                if not isinstance(value, str):
-                    raise Infra(
-                        "FACTS_INVALID",
-                        f"facts value at 'partitions[].{PARTITION_FACT_KEYS[kind]}' "
-                        "is not a string",
-                    )
-                return _require_printable_fact(kind, value).strip()
+            if not isinstance(entry, dict):
+                continue
+            primary = entry.get("primary", False)
+            if not isinstance(primary, bool):
+                raise Infra("FACTS_INVALID",
+                            "facts value at 'partitions[].primary' is not a boolean")
+            if not primary:
+                continue
+            value = entry.get(PARTITION_FACT_KEYS[kind])
+            if value is None:
+                return ""
+            if not isinstance(value, str):
+                raise Infra(
+                    "FACTS_INVALID",
+                    f"facts value at 'partitions[].{PARTITION_FACT_KEYS[kind]}' "
+                    "is not a string",
+                )
+            return _require_printable_fact(kind, value).strip()
         return ""
     return _require_printable_fact(kind, _fact_at(facts, FACT_PATHS[kind])).strip()
 
@@ -564,6 +571,12 @@ def _check_value_safe(name, value):
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise Infra("UNSAFE_VALUE",
                     f"resolved value for {name} contains a control character; "
+                    "an env file cannot carry it")
+    try:
+        value.encode("utf-8")
+    except UnicodeError:
+        raise Infra("UNSAFE_VALUE",
+                    f"resolved value for {name} is not UTF-8 encodable; "
                     "an env file cannot carry it")
 
 
@@ -787,7 +800,7 @@ def main(argv=None):
         try:
             write_env_file(args.env_file, resolved)
             write_report(args.report, report)
-        except OSError as error:
+        except (OSError, UnicodeError) as error:
             # Keep the exit-code contract: a full disk or missing parent is an
             # infra failure (4), and the cleanup below discards any partial file.
             raise Infra("OUTPUT_UNWRITABLE", str(error)) from error
