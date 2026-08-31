@@ -79,6 +79,12 @@ appended — which is what lets a developer point one variable at localhost
 without forking the contract. `template` sources render last, from the
 already-resolved map.
 
+A variable set to the **empty string** counts as unset, deliberately: CI
+materializes empty strings from undefined workflow variables, and a blank
+override silently erasing a live fact is exactly the failure mode typed
+refusals exist to prevent. An intentionally empty value is expressible in
+the contract itself (`default: ""`).
+
 ## The agreement point
 
 Where the caller and the facts could both answer the same question, one owns

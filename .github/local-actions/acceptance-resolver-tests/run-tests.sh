@@ -161,6 +161,21 @@ TESTER_TOKEN="tok-123" engine --mode run --descriptor "$DESCRIPTOR" --facts "$FA
 [ "$RC" -eq 3 ] || die "run without secrets must exit 3, got $RC"
 ok "secrets follow the same two-audience rule"
 
+note "parser: quoted scalars may carry '#'; inline comments still strip"
+variant "$TMP/quoted-hash.yaml" "archetype: java-maven-azure }" \
+  'archetype: java-maven-azure, description: "demo # service" }'
+TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$TMP/quoted-hash.yaml" --facts "$FACTS" \
+  --env-file "$TMP/qh.env" --secrets "$SECRETS" >/dev/null 2>&1 \
+  || die "a quoted scalar containing ' # ' must parse"
+[ "$(env_value "$TMP/qh.env" VENDOR)" = "azure" ] || die "quoted '#' corrupted the parse"
+variant "$TMP/inline-comment.yaml" "timeoutMinutes: 30" "timeoutMinutes: 30 # generous cap"
+TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$TMP/inline-comment.yaml" --facts "$FACTS" \
+  --env-file "$TMP/ic.env" --secrets "$SECRETS" --report "$TMP/ic.json" >/dev/null 2>&1 \
+  || die "an inline comment must still strip"
+[ "$(report_field "$TMP/ic.json" "r['contract']['timeout_minutes']")" = "30" ] \
+  || die "inline comment leaked into the value"
+ok "quote-aware comment stripping"
+
 note "halt: unknown source kind exits 2 naming the key"
 variant "$TMP/bad-source.yaml" "{ source: partition }" "{ source: cosmos }"
 expect_fail "unknown source" 2 "bindings.DEMO_TENANT.source 'cosmos'" "UNKNOWN_SOURCE" \

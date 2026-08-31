@@ -113,10 +113,18 @@ class Infra(Exception):
 # scalars, comments. No anchors, no multi-line scalars, no tabs.
 
 def _strip_inline_comment(value):
-    if value.lstrip().startswith("#"):
-        return ""
-    m = re.search(r"\s#", value)
-    return value[:m.start()] if m else value
+    # YAML rules: an inline comment's '#' must be preceded by whitespace (or
+    # start the value) and must sit outside any quoted scalar.
+    quote = ""
+    for i, ch in enumerate(value):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "#" and (i == 0 or value[i - 1] in " \t"):
+            return value[:i]
+    return value
 
 
 def _scalar(text, line_no):

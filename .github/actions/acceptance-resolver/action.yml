@@ -93,16 +93,20 @@ runs:
         fi
         python3 "$GITHUB_ACTION_PATH/resolve.py" "${ARGS[@]}"
         python3 - "$REPORT" >> "$GITHUB_OUTPUT" <<'PY'
-        import json, sys
+        import json, sys, uuid
         report = json.load(open(sys.argv[1]))
         contract = report["contract"]
         compact = lambda value: json.dumps(value, separators=(",", ":"), sort_keys=True)
-        print(f"test_dir={contract['test_dir']}")
-        print(f"maven_arguments={compact(contract['maven_arguments'])}")
-        print(f"timeout_minutes={contract['timeout_minutes']}")
-        print(f"requires={compact(contract['requires'])}")
-        print(f"dependencies={compact(contract['dependencies'])}")
-        print(f"keyvault_name={report['key_vault']['vault']}")
-        print(f"secret_names={compact(report['key_vault']['secret_names'])}")
-        print(f"missing_count={len(report['missing'])}")
+        def emit(name, value):
+            # Heredoc form so a value can never smuggle extra output lines.
+            delimiter = f"ghadelim_{uuid.uuid4().hex}"
+            print(f"{name}<<{delimiter}\n{value}\n{delimiter}")
+        emit("test_dir", contract["test_dir"])
+        emit("maven_arguments", compact(contract["maven_arguments"]))
+        emit("timeout_minutes", contract["timeout_minutes"])
+        emit("requires", compact(contract["requires"]))
+        emit("dependencies", compact(contract["dependencies"]))
+        emit("keyvault_name", report["key_vault"]["vault"])
+        emit("secret_names", compact(report["key_vault"]["secret_names"]))
+        emit("missing_count", len(report["missing"]))
         PY
