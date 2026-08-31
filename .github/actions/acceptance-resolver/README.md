@@ -87,6 +87,12 @@ it and the other asserts agreement. If `--expect-gateway` or
 a typed infra error (exit 4) — never a silent preference. Gateway comparison
 ignores trailing slashes.
 
+A caller that knows its target SHOULD pass the expect flags: the CI lane
+knows exactly what it pinned where, so it asserts both and injects no
+per-binding overrides, which makes the cross-check govern in CI. The
+developer loop may omit them — there, per-binding explicit environment wins
+by design.
+
 ## Guard rails
 
 - **Reserved environment names** are rejected at validation: exact names

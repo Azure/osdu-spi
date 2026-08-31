@@ -211,7 +211,7 @@ Phases:
 |---|---|
 | Contract + resolver semantics, dev loop, drift tripwire | `subgroup-core/ci/acceptance/engine.py` · `wiki/pages/design/venus-core-prototype/acceptance.md` |
 | "Consume, don't own"; attribution; provenance; fixtures | `cimpl-test/docs/decisions/0002-resolution-backends.md` · `src/cimpl_test/envdiscovery/` · `fixtures/` |
-| Descriptor contract; secretless tokens; transaction shape | `yuchen-osdu/osdu-spi`: `doc/src/adr/043` · `.github/scripts/service-config/` · `.github/actions/integration-test/` |
+| Descriptor contract; secretless tokens; transaction shape | `yuchen-osdu/osdu-spi`: its ADR-043 · `.github/scripts/service-config/` · `.github/actions/integration-test/` |
 | Pin seam; facts contract; identity; lifecycle | `osdu-spi-stack`: `docs/decisions/030–032` · `docs/design/fork-deployment.md` · `src/spi/{pins,info,status}.py` |
 | Seeding tiers; legal-tag bootstrap; load jobs | `cimpl-stack`: `docs/decisions/{016,025}` · `software/stacks/osdu/bootstrap/legal-bootstrap.yaml` · `src/cimpl/load.py` |
 | Existing trust gate + docker outputs (the hook point) | `osdu-spi/.github/template-workflows/validate.yml` (`docker-push`) · ADR-036 · `upstream-filter.yml` |
