@@ -63,17 +63,29 @@ RESERVED_ENV_NAMES = frozenset({
     "AZURE_SUBSCRIPTION_ID",
     "AZURE_TENANT_ID",
     "BASH_ENV",
+    # Ambient on every runner: a binding with one of these names would read
+    # the runner's own value as an explicit override, never its source.
+    "CI",
     "ENV",
     "HOME",
+    "HOSTNAME",
     "JAVA_TOOL_OPTIONS",
+    "LANG",
+    "LC_ALL",
     "LD_LIBRARY_PATH",
     "LD_PRELOAD",
+    "LOGNAME",
     "MAVEN_OPTS",
     "OLDPWD",
     "PATH",
     "PWD",
     "PYTHONPATH",
     "SHELL",
+    "SHLVL",
+    "TERM",
+    "TMPDIR",
+    "TZ",
+    "USER",
 })
 RESERVED_ENV_PREFIXES = ("ACTIONS_", "GITHUB_", "RESOLVER_", "RUNNER_", "SPI_STACK_")
 
@@ -504,7 +516,12 @@ def _fact_at(facts, path):
         if not isinstance(node, dict) or key not in node:
             return ""
         node = node[key]
-    return node if isinstance(node, str) else ""
+    if not isinstance(node, str):
+        # Absent reads as env-not-ready; present with the wrong type is a
+        # producer contract failure and must not masquerade as unseeded.
+        raise Infra("FACTS_INVALID",
+                    f"facts value at '{'.'.join(path)}' is not a string")
+    return node
 
 
 def _require_printable_fact(kind, value):
@@ -520,13 +537,21 @@ def _require_printable_fact(kind, value):
 def fact_value(facts, kind):
     if kind in PARTITION_FACT_KEYS:
         partitions = facts.get("partitions")
-        if not isinstance(partitions, list):
+        if partitions is None:
             return ""
+        if not isinstance(partitions, list):
+            raise Infra("FACTS_INVALID", "facts value at 'partitions' is not a list")
         for entry in partitions:
             if isinstance(entry, dict) and entry.get("primary"):
                 value = entry.get(PARTITION_FACT_KEYS[kind])
-                if not isinstance(value, str):
+                if value is None:
                     return ""
+                if not isinstance(value, str):
+                    raise Infra(
+                        "FACTS_INVALID",
+                        f"facts value at 'partitions[].{PARTITION_FACT_KEYS[kind]}' "
+                        "is not a string",
+                    )
                 return _require_printable_fact(kind, value).strip()
         return ""
     return _require_printable_fact(kind, _fact_at(facts, FACT_PATHS[kind])).strip()

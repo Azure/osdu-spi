@@ -205,6 +205,16 @@ json.dump(facts, open('$TMP/facts-ctrl.json', 'w'))
 expect_fail "control char fact" 4 "control character" "UNSAFE_VALUE" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-ctrl.json" --env-file "$TMP/x.env"
 
+note "infra: a published fact with the wrong type is a contract failure, not unseeded"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['base_url'] = 12345
+json.dump(facts, open('$TMP/facts-badtype.json', 'w'))
+"
+expect_fail "wrong-typed fact" 4 "not a string" "FACTS_INVALID" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-badtype.json" --env-file "$TMP/x.env"
+
 note "infra: an unwritable env-file destination is a typed failure"
 expect_fail "unwritable env file" 4 "OUTPUT_UNWRITABLE" "OUTPUT_UNWRITABLE" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
@@ -264,6 +274,9 @@ expect_fail "reserved prefix SPI_STACK_" 2 "SPI_STACK_POINTER" "RESERVED_ENV_NAM
 variant "$TMP/reserved4.yaml" "VENDOR: {" "RESOLVER_MODE: {"
 expect_fail "reserved prefix RESOLVER_" 2 "RESOLVER_MODE" "RESERVED_ENV_NAME" \
   engine --mode bind --descriptor "$TMP/reserved4.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+variant "$TMP/reserved5.yaml" "VENDOR: {" "USER: {"
+expect_fail "reserved ambient name USER" 2 "USER" "RESERVED_ENV_NAME" \
+  engine --mode bind --descriptor "$TMP/reserved5.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
 
 note "halt: a tab anywhere in a line is rejected, not only in the indent"
 variant "$TMP/tab-value.yaml" "path: demo-acceptance-test" $'path:\tdemo-acceptance-test'
