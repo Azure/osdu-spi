@@ -88,4 +88,4 @@ The chosen approach balances automation with respect for security policies while
 
 ---
 
-[← ADR-015](015-template-workflows-separation-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-017 →](017-mcp-server-integration-pattern.md)
+[← ADR-015](015-template-workflows-separation-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-018 →](018-fork-resources-staging-pattern.md)

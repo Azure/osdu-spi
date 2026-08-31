@@ -164,7 +164,6 @@ This ADR extends:
 
 - **ADR-011**: Adds fork-resources to configuration-driven sync rules
 - **ADR-012**: Incorporates specialized deployment into template update propagation
-- **ADR-017**: Generalizes the MCP integration pattern for all specialized resources
 
 ## Examples
 
@@ -188,4 +187,4 @@ This ADR extends:
 
 ---
 
-[← ADR-017](017-mcp-server-integration-pattern.md) | :material-arrow-up: [Catalog](index.md) | [ADR-019 →](019-cascade-monitor-pattern.md)
+[← ADR-016](016-initialization-security-handling.md) | :material-arrow-up: [Catalog](index.md) | [ADR-019 →](019-cascade-monitor-pattern.md)

@@ -1,0 +1,47 @@
+{
+  "inputs": [
+    {
+      "id": "osdu_url",
+      "type": "promptString",
+      "description": "OSDU Server URL (e.g., https://your-osdu.com)"
+    },
+    {
+      "id": "data_partition",
+      "type": "promptString",
+      "description": "OSDU Data Partition (e.g., your-partition)"
+    },
+    {
+      "id": "azure_client_id",
+      "type": "promptString",
+      "description": "Azure Client ID"
+    },
+    {
+      "id": "azure_tenant_id",
+      "type": "promptString",
+      "description": "Azure Tenant ID"
+    },
+    {
+      "id": "azure_client_secret",
+      "type": "promptString",
+      "description": "Azure Client Secret (optional for Service Principal auth)",
+      "password": true
+    }
+  ],
+  "servers": {
+    "osdu-mcp-server": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/danielscholl-osdu/osdu-mcp-server@main",
+        "osdu-mcp-server"
+      ],
+      "env": {
+        "OSDU_MCP_SERVER_URL": "${input:osdu_url}",
+        "OSDU_MCP_SERVER_DATA_PARTITION": "${input:data_partition}",
+        "AZURE_CLIENT_ID": "${input:azure_client_id}",
+        "AZURE_TENANT_ID": "${input:azure_tenant_id}"
+      }
+    }
+  }
+}

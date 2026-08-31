@@ -13,8 +13,6 @@ Your fork management repository is now ready! Here is what was set up:
 
 ✅ **AI Enhancement:** GitHub Copilot Agent firewall allowlist configured for OSDU domains
 
-⚠️ **MCP Configuration:** Maven MCP Server requires manual setup (see new issue created above)
-
 ✅ **Template Cleanup:** Removed template documentation (upstream README will be used)
 
 {VARIABLE_STATUS}

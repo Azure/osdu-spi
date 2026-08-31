@@ -57,10 +57,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Create a global exclude file to prevent .mcp.json from being tracked
-          echo ".mcp.json" > ~/.gitignore_global
-          git config core.excludesfile ~/.gitignore_global
 
           # Add upstream remote using stored variable
           if [ -z "${{ vars.UPSTREAM_REPO_URL }}" ]; then

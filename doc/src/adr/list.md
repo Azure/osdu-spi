@@ -24,7 +24,6 @@ Architecture Decision Records for Fork Management Template
 | 014 | AI-Enhanced Development Workflow Integration | [ADR-014](014-ai-enhanced-development-workflow.md) |
 | 015 | Template-Workflows Separation Pattern      | [ADR-015](015-template-workflows-separation-pattern.md) |
 | 016 | Initialization Security Handling           | [ADR-016](016-initialization-security-handling.md) |
-| 017 | MCP Server Integration Pattern             | [ADR-017](017-mcp-server-integration-pattern.md) |
 | 018 | Fork-Resources Staging Pattern             | [ADR-018](018-fork-resources-staging-pattern.md) |
 | 019 | Cascade Monitor Pattern                    | [ADR-019](019-cascade-monitor-pattern.md) |
 | 020 | Human-Required Label Strategy              | [ADR-020](020-human-required-label-strategy.md) |
@@ -113,12 +112,6 @@ These Architecture Decision Records document the key design choices made in the 
 - Allows syncing upstream repositories with historical secrets
 - Re-enables full security immediately after initialization
 - Simple and maintainable approach without complex error handling
-
-**MCP Server Integration Pattern (ADR-017)**
-- Automatic MCP server configuration for GitHub Copilot Agent
-- Maven MCP Server provides AI-enhanced dependency management
-- Configuration stored in fork-resources for template-wide deployment
-- Read-only MCP servers for security and Maven Central integration
 
 **Fork-Resources Staging Pattern (ADR-018)**
 - `.github/fork-resources/` as staging area for specialized template deployment

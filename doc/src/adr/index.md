@@ -35,7 +35,6 @@ Decisions governing repository initialization, configuration, and security setup
 | [007](007-initialization-workflow-bootstrap.md) | **Workflow Bootstrap Pattern** | :material-minus: Medium |
 | [008](008-centralized-label-management.md) | **Centralized Label Management** | :material-minus: Medium |
 | [016](016-initialization-security-handling.md) | **Initialization Security Handling** | :material-minus: Medium |
-| [017](017-mcp-server-integration-pattern.md) | **MCP Server Integration** | :material-minus: Medium |
 
 ### :material-sync: Upstream Synchronization & Integration
 

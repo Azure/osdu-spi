@@ -394,7 +394,6 @@ jobs:
           # setup-rulesets.sh now lives durably at .github/scripts/settings-apply/ (survives cleanup,
           # reused by settings-apply.yml) — no temp preservation needed.
           cp .github/local-actions/templates/initialization-complete.md /tmp/templates/
-          cp .github/local-actions/templates/mcp-setup-issue.md /tmp/templates/
           cp .github/local-actions/templates/manual-steps/*.md /tmp/templates/manual-steps/
           chmod +x /tmp/init-helpers/*.sh
 
@@ -489,24 +488,6 @@ jobs:
 
           # Post completion message
           echo "$MESSAGE" | gh issue comment "${{ github.event.issue.number }}" --body-file -
-
-      - name: Create MCP Configuration Issue
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Creating issues
-        run: |
-          # A resumed run must not open a duplicate
-          EXISTING=$(gh issue list --state all --search "Configure MCP Server for GitHub Copilot Agent in:title" --json number --jq 'length')
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "MCP configuration issue already exists, skipping"
-          else
-            # Use preserved template from /tmp
-            gh issue create \
-              --title "Configure MCP Server for GitHub Copilot Agent" \
-              --body-file /tmp/templates/mcp-setup-issue.md \
-              --label "human-required"
-
-            echo "Created MCP configuration issue"
-          fi
 
       - name: Complete Initialization
         env:

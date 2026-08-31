@@ -101,12 +101,3 @@ mvn versions:display-dependency-updates
 ```
 
 ---
-
-## MCP Integration Tools
-
-* **`check_version_tool`**: Check Maven dependency versions
-* **`check_version_batch_tool`**: Batch process Maven dependency checks
-* **`list_available_versions_tool`**: List Maven versions by minor track
-* **`scan_java_project_tool`**: Vulnerability scans with Trivy
-* **`analyze_pom_file_tool`**: Analyze Maven POM files for dependencies and vulnerabilities
-
