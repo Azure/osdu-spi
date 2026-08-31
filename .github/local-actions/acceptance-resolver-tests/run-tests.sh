@@ -195,6 +195,21 @@ expect_fail "symlink env file" 4 "symlink" "ENV_FILE_SYMLINK" \
 [ -s "$TMP/symlink-target" ] && die "no secret value may reach the symlink target"
 ok "symlink target untouched"
 
+note "infra: a control character in a published fact is refused, not stripped"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['base_url'] = facts['base_url'] + '\n'
+json.dump(facts, open('$TMP/facts-ctrl.json', 'w'))
+"
+expect_fail "control char fact" 4 "control character" "UNSAFE_VALUE" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-ctrl.json" --env-file "$TMP/x.env"
+
+note "infra: an unwritable env-file destination is a typed failure"
+expect_fail "unwritable env file" 4 "OUTPUT_UNWRITABLE" "OUTPUT_UNWRITABLE" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
+  --env-file "$TMP/no-such-dir/out.env" --secrets "$SECRETS"
+
 note "halt: unknown source kind exits 2 naming the key"
 variant "$TMP/bad-source.yaml" "{ source: partition }" "{ source: cosmos }"
 expect_fail "unknown source" 2 "bindings.DEMO_TENANT.source 'cosmos'" "UNKNOWN_SOURCE" \

@@ -487,6 +487,16 @@ def _fact_at(facts, path):
     return node if isinstance(node, str) else ""
 
 
+def _require_printable_fact(kind, value):
+    # Validate the raw fact before any normalization: a control character
+    # inside a JSON string value is never accidental, and stripping it would
+    # silently alter what the environment published.
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise Infra("UNSAFE_VALUE",
+                    f"facts value for '{kind}' contains a control character")
+    return value
+
+
 def fact_value(facts, kind):
     if kind in PARTITION_FACT_KEYS:
         partitions = facts.get("partitions")
@@ -495,9 +505,11 @@ def fact_value(facts, kind):
         for entry in partitions:
             if isinstance(entry, dict) and entry.get("primary"):
                 value = entry.get(PARTITION_FACT_KEYS[kind])
-                return value.strip() if isinstance(value, str) else ""
+                if not isinstance(value, str):
+                    return ""
+                return _require_printable_fact(kind, value).strip()
         return ""
-    return _fact_at(facts, FACT_PATHS[kind]).strip()
+    return _require_printable_fact(kind, _fact_at(facts, FACT_PATHS[kind])).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -724,8 +736,13 @@ def main(argv=None):
 
         for entry in missing:
             print(f"warning: {entry['name']}: {entry['reason']}", file=sys.stderr)
-        write_env_file(args.env_file, resolved)
-        write_report(args.report, report)
+        try:
+            write_env_file(args.env_file, resolved)
+            write_report(args.report, report)
+        except OSError as error:
+            # Keep the exit-code contract: a full disk or missing parent is an
+            # infra failure (4), and the cleanup below discards any partial file.
+            raise Infra("OUTPUT_UNWRITABLE", str(error)) from error
         print(f"resolved {len(resolved)} bindings for service "
               f"'{contract['service']}' ({args.mode} mode"
               + (f", {len(missing)} missing" if missing else "") + ")")
