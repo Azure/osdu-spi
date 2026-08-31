@@ -537,11 +537,12 @@ def resolve(contract, facts, secrets, environ):
             continue
         keyvault = KEYVAULT_SOURCE_RE.fullmatch(source)
         if keyvault:
-            secret_name = keyvault.group(1)
-            if secret_name in secrets:
-                resolved[name] = secrets[secret_name]
+            # kv_name is the vault entry's NAME from the descriptor, never a value.
+            kv_name = keyvault.group(1)
+            if kv_name in secrets:
+                resolved[name] = secrets[kv_name]
             else:
-                miss(name, f"Key Vault secret '{secret_name}' was not supplied")
+                miss(name, f"Key Vault secret '{kv_name}' was not supplied")
         elif source == "static":
             resolved[name] = binding["value"]
         elif source == "user":
@@ -576,14 +577,14 @@ def resolve(contract, facts, secrets, environ):
         resolved[name] = TEMPLATE_REF_RE.sub(lambda m: resolved[m.group(1)], value)
 
     for name in sorted(contract["key_vault_bindings"]):
-        secret_name = contract["key_vault_bindings"][name]
+        kv_name = contract["key_vault_bindings"][name]
         override = environ.get(name, "")
         if override:
             resolved[name] = override
-        elif secret_name in secrets:
-            resolved[name] = secrets[secret_name]
+        elif kv_name in secrets:
+            resolved[name] = secrets[kv_name]
         else:
-            miss(name, f"Key Vault secret '{secret_name}' was not supplied")
+            miss(name, f"Key Vault secret '{kv_name}' was not supplied")
 
     for name in sorted(resolved):
         _check_value_safe(name, resolved[name])
