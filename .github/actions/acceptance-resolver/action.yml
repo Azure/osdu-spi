@@ -116,8 +116,8 @@ runs:
         # action only runs bind or run; contract-only invokes the engine directly.
         if python3 -c "
         import json, sys
-        kv = json.load(open('$REPORT'))['key_vault']
+        kv = json.load(open(sys.argv[1]))['key_vault']
         sys.exit(0 if kv['secret_names'] and not kv['vault'] else 1)
-        " 2>/dev/null; then
+        " "$REPORT" 2>/dev/null; then
           echo "::warning title=acceptance-resolver::descriptor requests Key Vault secrets but facts publish no azure.keyvault; skip the secret fetch and let run mode refuse with typed misses"
         fi
