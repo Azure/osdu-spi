@@ -249,6 +249,21 @@ engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
 grep -q "different paths" "$TMP/same-err.txt" || die "usage error must name the collision"
 ok "output collision refused"
 
+note "usage: an output must never alias an input file"
+RC=0
+engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
+  --env-file "$FACTS" --secrets "$SECRETS" >/dev/null 2>"$TMP/alias-err.txt" || RC=$?
+[ "$RC" -eq 2 ] || die "an output aliasing an input must exit 2, got $RC"
+grep -q -- "--facts" "$TMP/alias-err.txt" || die "usage error must name the aliased input"
+[ -s "$FACTS" ] || die "the facts fixture must survive untouched"
+ok "input-aliasing output refused"
+
+note "infra: a facts file that is not UTF-8 is a typed failure, never a traceback"
+printf '\xff\xfe{}' > "$TMP/facts-not-utf8.json"
+expect_fail "non-UTF-8 facts" 4 "facts-not-utf8" "FACTS_UNREADABLE" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-not-utf8.json" \
+  --env-file "$TMP/x.env"
+
 note "halt: a malformed template placeholder is rejected, not passed through"
 variant "$TMP/bad-placeholder.yaml" 'value: "${DEMO_BASE_URL}search"' \
   'value: "${DEMO_BASE_URL}${BAD-NAME}search"'

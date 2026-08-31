@@ -498,7 +498,7 @@ def load_facts(path):
     try:
         with open(path, encoding="utf-8") as stream:
             facts = json.load(stream)
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise Infra("FACTS_UNREADABLE", f"{path}: {error}")
     if not isinstance(facts, dict):
         raise Infra("FACTS_UNREADABLE", f"{path}: envelope is not a JSON object")
@@ -688,7 +688,7 @@ def load_secrets(path):
     try:
         with open(path, encoding="utf-8") as stream:
             secrets = json.load(stream)
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise Infra("SECRETS_UNREADABLE", f"{path}: {error}")
     if not isinstance(secrets, dict) or not all(
         isinstance(k, str) and isinstance(v, str) for k, v in secrets.items()
@@ -773,16 +773,25 @@ def main(argv=None):
     parser.add_argument("--expect-partition", default="")
     parser.add_argument("--report", default="")
     args = parser.parse_args(argv)
+    # An output aliasing another output, or any input, would overwrite what
+    # this run reads (or delete it via the failure cleanup); refuse up front.
     if args.report and os.path.realpath(args.report) == os.path.realpath(args.env_file):
-        # The report would overwrite the env file after a successful resolve.
         parser.error("--report and --env-file must name different paths")
+    outputs = [("--env-file", args.env_file)] + (
+        [("--report", args.report)] if args.report else [])
+    inputs = [("--descriptor", args.descriptor), ("--facts", args.facts)] + (
+        [("--secrets", args.secrets)] if args.secrets else [])
+    for out_flag, out_path in outputs:
+        for in_flag, in_path in inputs:
+            if os.path.realpath(out_path) == os.path.realpath(in_path):
+                parser.error(f"{out_flag} must not name the same file as {in_flag}")
 
     report = None
     try:
         try:
             with open(args.descriptor, encoding="utf-8") as stream:
                 descriptor_text = stream.read()
-        except OSError as error:
+        except (OSError, UnicodeDecodeError) as error:
             raise Halt("DESCRIPTOR_UNREADABLE", f"{args.descriptor}: {error}")
         contract = validate_descriptor(parse_descriptor_yaml(descriptor_text))
         facts = load_facts(args.facts)
