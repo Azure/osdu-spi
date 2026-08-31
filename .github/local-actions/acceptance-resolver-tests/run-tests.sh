@@ -230,6 +230,17 @@ variant "$TMP/long-value.yaml" "value: azure }" "value: $(python3 -c 'print("x"*
 expect_fail "value too long" 2 "240" "DESCRIPTOR_INVALID" \
   engine --mode bind --descriptor "$TMP/long-value.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
 
+note "halt: escape syntax inside a quoted scalar is refused, never misread"
+variant "$TMP/bad-escape.yaml" "path: demo-acceptance-test" "path: 'demo''s-test'"
+expect_fail "quoted escape" 2 "escape" "DESCRIPTOR_INVALID" \
+  engine --mode bind --descriptor "$TMP/bad-escape.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+
+note "halt: a description beyond the schema's 200-character maximum is rejected"
+variant "$TMP/long-desc.yaml" "archetype: java-maven-azure }" \
+  "archetype: java-maven-azure, description: $(python3 -c 'print("x"*201)') }"
+expect_fail "description too long" 2 "description" "DESCRIPTOR_INVALID" \
+  engine --mode bind --descriptor "$TMP/long-desc.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+
 note "halt: unknown source kind exits 2 naming the key"
 variant "$TMP/bad-source.yaml" "{ source: partition }" "{ source: cosmos }"
 expect_fail "unknown source" 2 "bindings.DEMO_TENANT.source 'cosmos'" "UNKNOWN_SOURCE" \

@@ -111,7 +111,8 @@ class Infra(Exception):
 # Same posture as the upstream filter's config reader: a fixed-schema dialect,
 # parsed by hand so the engine stays standard-library only. Block mappings,
 # block lists of scalars, one level of flow mapping/list, quoted or plain
-# scalars, comments. No anchors, no multi-line scalars, no tabs.
+# scalars, comments. No anchors, no multi-line scalars, no escapes inside
+# quoted scalars, no tabs.
 
 def _strip_inline_comment(value):
     # YAML rules: an inline comment's '#' must be preceded by whitespace (or
@@ -131,7 +132,13 @@ def _strip_inline_comment(value):
 def _scalar(text, line_no):
     text = text.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
-        return text[1:-1]
+        inner = text[1:-1]
+        # The dialect has no escape syntax: a same-kind quote inside (or a
+        # backslash, when double-quoted) would be silently misread; refuse it.
+        if text[0] in inner or (text[0] == '"' and "\\" in inner):
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"line {line_no}: unsupported escape inside a quoted scalar")
+        return inner
     if text and (text[0] in "'\"" or text[-1] in "'\""):
         raise Halt("DESCRIPTOR_INVALID",
                    f"line {line_no}: unterminated or mismatched quote")
@@ -367,6 +374,12 @@ def validate_descriptor(data):
     if archetype != "java-maven-azure":
         raise Halt("DESCRIPTOR_INVALID",
                    "descriptor.service.archetype must be java-maven-azure")
+    if "description" in service:
+        description = _string_field(service, "description", "descriptor.service")
+        if len(description) > 200:
+            raise Halt("DESCRIPTOR_INVALID",
+                       "descriptor.service.description exceeds 200 characters, "
+                       "the published schema maximum")
 
     tests = data["tests"]
     if not isinstance(tests, dict):
