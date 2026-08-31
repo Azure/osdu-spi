@@ -205,6 +205,52 @@ json.dump(facts, open('$TMP/facts-ctrl.json', 'w'))
 expect_fail "control char fact" 4 "control character" "UNSAFE_VALUE" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-ctrl.json" --env-file "$TMP/x.env"
 
+note "infra: the report-exposed vault name is held to the printable-fact rule"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['azure']['keyvault'] = 'kv-spi\tdemo'
+json.dump(facts, open('$TMP/facts-vault-ctrl.json', 'w'))
+"
+expect_fail "control char vault name" 4 "keyvault" "UNSAFE_VALUE" \
+  engine --mode bind --descriptor "$DESCRIPTOR" \
+  --facts "$TMP/facts-vault-ctrl.json" --env-file "$TMP/x.env" --secrets "$SECRETS"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['azure']['keyvault'] = '  kv-spi-demo  '
+json.dump(facts, open('$TMP/facts-vault-pad.json', 'w'))
+"
+TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" \
+  --facts "$TMP/facts-vault-pad.json" --env-file "$TMP/vault.env" --secrets "$SECRETS" \
+  --report "$TMP/vault.json" >/dev/null 2>&1 || die "padded vault name must still resolve"
+[ "$(report_field "$TMP/vault.json" "r['key_vault']['vault']")" = "kv-spi-demo" ] \
+  || die "vault name must be stripped in the report"
+ok "vault name validated and normalized"
+
+note "env-not-ready: an unpublished azure.keyvault names the root cause, never an empty fetch"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+del facts['azure']['keyvault']
+json.dump(facts, open('$TMP/facts-no-vault.json', 'w'))
+"
+TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" \
+  --facts "$TMP/facts-no-vault.json" --env-file "$TMP/no-vault.env" \
+  --report "$TMP/no-vault.json" >/dev/null 2>&1 || die "bind must stay 0 without a vault fact"
+[ "$(report_field "$TMP/no-vault.json" "r['key_vault']['vault']")" = "" ] \
+  || die "unpublished vault must be empty in the report, not invented"
+report_field "$TMP/no-vault.json" \
+  "next(m['reason'] for m in r['missing'] if m['name'] == 'SP_PASSWORD')" \
+  | grep -q "publish no azure.keyvault" \
+  || die "secret miss must name the unpublished vault fact as the root cause"
+RC=0
+TESTER_TOKEN="tok-123" engine --mode run --descriptor "$DESCRIPTOR" \
+  --facts "$TMP/facts-no-vault.json" --env-file "$TMP/no-vault-run.env" \
+  >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 3 ] || die "run must refuse env-not-ready without the vault fact, got $RC"
+ok "unpublished vault fact is a typed env-not-ready"
+
 note "infra: a published fact with the wrong type is a contract failure, not unseeded"
 python3 -c "
 import json

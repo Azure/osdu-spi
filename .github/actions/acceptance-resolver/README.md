@@ -17,7 +17,10 @@ here are breaking changes.
   arrive as files. The caller saves `spi info --json` to disk and, when the
   descriptor names Key Vault secrets, fetches those values (e.g. one
   `az keyvault secret show` per name in the `secret_names` output) into a
-  JSON file of name → value.
+  JSON file of name → value. Fetch only when `keyvault_name` is non-empty:
+  an empty name beside a non-empty `secret_names` means the environment has
+  not published its vault — skip the fetch and let `run` mode refuse with
+  typed misses naming each secret and the unpublished fact.
 - **Standard library only.** No `pip install` at runtime. The resolved
   environment must be a function of the descriptor, the facts, the secrets
   file, and the caller's explicit environment — never of the runner image.

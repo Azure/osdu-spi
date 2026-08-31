@@ -607,6 +607,11 @@ def resolve(contract, facts, secrets, environ):
     def miss(name, reason):
         missing.append({"name": name, "reason": reason})
 
+    # An unsupplied secret reads very differently when the environment never
+    # published a vault to fetch it from; name that root cause in the miss.
+    vault_hint = ("" if _fact_at(facts, VAULT_NAME_PATH).strip()
+                  else " and facts publish no azure.keyvault to fetch it from")
+
     ordered = sorted(contract["bindings"])
     for name in ordered:
         if contract["sources"][name] == "template":
@@ -624,7 +629,7 @@ def resolve(contract, facts, secrets, environ):
             if kv_name in secrets:
                 resolved[name] = secrets[kv_name]
             else:
-                miss(name, f"Key Vault secret '{kv_name}' was not supplied")
+                miss(name, f"Key Vault secret '{kv_name}' was not supplied{vault_hint}")
         elif source == "static":
             resolved[name] = binding["value"]
         elif source == "user":
@@ -666,7 +671,7 @@ def resolve(contract, facts, secrets, environ):
         elif kv_name in secrets:
             resolved[name] = secrets[kv_name]
         else:
-            miss(name, f"Key Vault secret '{kv_name}' was not supplied")
+            miss(name, f"Key Vault secret '{kv_name}' was not supplied{vault_hint}")
 
     for name in sorted(resolved):
         _check_value_safe(name, resolved[name])

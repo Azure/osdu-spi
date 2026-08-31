@@ -110,3 +110,14 @@ runs:
         emit("secret_names", compact(report["key_vault"]["secret_names"]))
         emit("missing_count", len(report["missing"]))
         PY
+        # Secrets requested but no vault published: tell the caller in the step
+        # log to skip its fetch loop — run mode refuses with typed misses, and
+        # an az call against an empty vault name would fail unattributed.
+        if python3 -c "
+        import json, sys
+        r = json.load(open('$REPORT'))
+        kv = r['key_vault']
+        sys.exit(0 if kv['secret_names'] and not kv['vault'] and r['mode'] != 'contract-only' else 1)
+        " 2>/dev/null; then
+          echo "::warning title=acceptance-resolver::descriptor requests Key Vault secrets but facts publish no azure.keyvault; skip the secret fetch and let run mode refuse with typed misses"
+        fi
