@@ -49,7 +49,7 @@ stays a one-command operation months later.
 
 The vocabulary is closed in both directions. An unknown source kind, an
 unknown key, or a reserved environment name (exact names such as
-`AZURE_CLIENT_ID`; prefixes `ACTIONS_`, `GITHUB_`, `RUNNER_`, `SPI_STACK_`)
+`AZURE_CLIENT_ID`; prefixes `ACTIONS_`, `GITHUB_`, `RESOLVER_`, `RUNNER_`, `SPI_STACK_`)
 is a hard failure naming the offending key — the resolver refuses to guess,
 exactly as the upstream filter does (ADR-038). Maven arguments are an array
 of argv tokens passed directly to Maven, never a shell string. The descriptor

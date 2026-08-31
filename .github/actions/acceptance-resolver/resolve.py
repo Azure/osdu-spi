@@ -75,7 +75,7 @@ RESERVED_ENV_NAMES = frozenset({
     "PYTHONPATH",
     "SHELL",
 })
-RESERVED_ENV_PREFIXES = ("ACTIONS_", "GITHUB_", "RUNNER_", "SPI_STACK_")
+RESERVED_ENV_PREFIXES = ("ACTIONS_", "GITHUB_", "RESOLVER_", "RUNNER_", "SPI_STACK_")
 
 
 class Halt(Exception):
@@ -200,8 +200,8 @@ def _flow_value(text, line_no):
 def parse_descriptor_yaml(text):
     lines = []
     for idx, raw in enumerate(text.split("\n"), start=1):
-        if "\t" in raw[:len(raw) - len(raw.lstrip())]:
-            raise Halt("DESCRIPTOR_INVALID", f"line {idx}: tab indentation")
+        if "\t" in raw:
+            raise Halt("DESCRIPTOR_INVALID", f"line {idx}: tabs are not part of the dialect")
         stripped = raw.strip()
         if not stripped or stripped.startswith("#"):
             continue

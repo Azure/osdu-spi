@@ -105,7 +105,7 @@ by design.
 - **Reserved environment names** are rejected at validation: exact names
   (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_FEDERATED_TOKEN_FILE`, plus process basics such as `PATH`, `HOME`,
-  `LD_PRELOAD`, `MAVEN_OPTS`) and prefixes (`ACTIONS_`, `GITHUB_`, `RUNNER_`,
+  `LD_PRELOAD`, `MAVEN_OPTS`) and prefixes (`ACTIONS_`, `GITHUB_`, `RESOLVER_`, `RUNNER_`,
   `SPI_STACK_`).
 - **`mavenArguments` is an argv array.** Each token must be free of
   whitespace and control characters; consumers pass the decoded array

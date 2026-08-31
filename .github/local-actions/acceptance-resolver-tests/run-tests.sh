@@ -261,6 +261,14 @@ expect_fail "reserved name AZURE_CLIENT_ID" 2 "AZURE_CLIENT_ID" "RESERVED_ENV_NA
 variant "$TMP/reserved3.yaml" "CLIENT_TENANT" "SPI_STACK_POINTER"
 expect_fail "reserved prefix SPI_STACK_" 2 "SPI_STACK_POINTER" "RESERVED_ENV_NAME" \
   engine --mode bind --descriptor "$TMP/reserved3.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+variant "$TMP/reserved4.yaml" "VENDOR: {" "RESOLVER_MODE: {"
+expect_fail "reserved prefix RESOLVER_" 2 "RESOLVER_MODE" "RESERVED_ENV_NAME" \
+  engine --mode bind --descriptor "$TMP/reserved4.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+
+note "halt: a tab anywhere in a line is rejected, not only in the indent"
+variant "$TMP/tab-value.yaml" "path: demo-acceptance-test" $'path:\tdemo-acceptance-test'
+expect_fail "tab after key" 2 "tab" "DESCRIPTOR_INVALID" \
+  engine --mode bind --descriptor "$TMP/tab-value.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
 
 note "halt: a Maven argument is one argv token, never a shell string"
 variant "$TMP/bad-maven.yaml" "[verify, -DskipTests=false]" '["verify -DskipTests=false"]'
