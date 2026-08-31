@@ -147,6 +147,7 @@
   "exclusions": [
     ".github/copilot-instructions.md",
     ".github/local-actions",
+    ".spi",
     "CODEOWNERS"
   ],
   "cleanup_rules": {

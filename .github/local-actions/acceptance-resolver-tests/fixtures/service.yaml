@@ -1,0 +1,28 @@
+# Fixture descriptor for the acceptance resolver harness.
+# Mirrors the schema of .spi/service.yaml v3 (see the resolver README) and
+# deliberately exercises every source kind in the closed vocabulary.
+schemaVersion: 3
+service: { name: demo, archetype: java-maven-azure }
+tests:
+  acceptance:
+    type: maven
+    path: demo-acceptance-test
+    mavenArguments: [verify, -DskipTests=false]
+    bindings:
+      DEMO_BASE_URL: { source: gateway, suffix: /api/demo/v1/ }
+      DEMO_TENANT: { source: partition }
+      TEST_OPENID_PROVIDER_URL: { source: openid }
+      LEGAL_TAG: { source: legalTag }
+      CLIENT_TENANT: { source: tenant }
+      TESTER_TOKEN: { source: user }
+      RETRY_COUNT: { source: user, default: "3" }
+      VENDOR: { source: static, value: azure }
+      SEARCH_URL: { source: template, value: "${DEMO_BASE_URL}search" }
+      CLIENT_SECRET: { source: keyvault:demo-client-secret }
+    keyVaultBindings:
+      SP_PASSWORD: app-sp-password
+    requires:
+      loads: [reference-data]
+      groups: [users.datalake.admins]
+    dependencies: [entitlements]
+    timeoutMinutes: 30
