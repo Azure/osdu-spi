@@ -181,6 +181,20 @@ TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$TMP/inline-comment.yaml
   || die "inline comment leaked into the value"
 ok "quote-aware comment stripping"
 
+note "halt: an unterminated quote is a typed refusal, never a plain string"
+variant "$TMP/bad-quote.yaml" "path: demo-acceptance-test" 'path: "demo-acceptance-test'
+expect_fail "unterminated quote" 2 "quote" "DESCRIPTOR_INVALID" \
+  engine --mode bind --descriptor "$TMP/bad-quote.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+
+note "infra: a symlink env-file destination is refused"
+: > "$TMP/symlink-target"
+ln -s "$TMP/symlink-target" "$TMP/link.env"
+expect_fail "symlink env file" 4 "symlink" "ENV_FILE_SYMLINK" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$FACTS" \
+  --env-file "$TMP/link.env" --secrets "$SECRETS"
+[ -s "$TMP/symlink-target" ] && die "no secret value may reach the symlink target"
+ok "symlink target untouched"
+
 note "halt: unknown source kind exits 2 naming the key"
 variant "$TMP/bad-source.yaml" "{ source: partition }" "{ source: cosmos }"
 expect_fail "unknown source" 2 "bindings.DEMO_TENANT.source 'cosmos'" "UNKNOWN_SOURCE" \

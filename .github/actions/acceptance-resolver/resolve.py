@@ -18,6 +18,7 @@ Exit codes:
 """
 
 import argparse
+import errno
 import json
 import os
 import re
@@ -131,6 +132,9 @@ def _scalar(text, line_no):
     text = text.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
         return text[1:-1]
+    if text and (text[0] in "'\"" or text[-1] in "'\""):
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"line {line_no}: unterminated or mismatched quote")
     if text in ("true", "false"):
         return text == "true"
     if re.fullmatch(r"-?[0-9]+", text):
@@ -661,9 +665,18 @@ def write_report(path, report):
 
 
 def write_env_file(path, resolved):
-    # The file can carry Key Vault secrets: create it owner-only, and tighten
-    # a pre-existing destination before any value is written.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # The file can carry Key Vault secrets: create it owner-only, tighten a
+    # pre-existing destination, and never write through a symlink planted at
+    # the workspace-relative path.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.EMLINK):
+            raise Infra("ENV_FILE_SYMLINK",
+                        f"{path} is a symlink; refusing to write secret values "
+                        "through it")
+        raise
     os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
         for name in sorted(resolved):
