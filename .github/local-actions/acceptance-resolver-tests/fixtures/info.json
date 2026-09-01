@@ -1,0 +1,42 @@
+{
+  "apiVersion": "spi.osdu.dev/v1",
+  "ingress_mode": "fqdn",
+  "base_url": "https://osdu.spi.example.com/",
+  "endpoints": {
+    "demo": "/api/demo/v1"
+  },
+  "middleware_uis": {},
+  "internal_services": {},
+  "azure": {
+    "resource_group": "rg-spi-demo",
+    "region": "eastus2",
+    "gateway_ip": "203.0.113.10",
+    "fqdn": "osdu.spi.example.com",
+    "keyvault": "kv-spi-demo",
+    "cosmos_endpoint": "https://cosmos.example.com",
+    "storage_account": "stspidemo",
+    "servicebus": "sb-spi-demo",
+    "tenant_id": "11111111-2222-3333-4444-555555555555",
+    "data_plane_application_id": "66666666-7777-8888-9999-000000000000",
+    "openid_issuer": "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0"
+  },
+  "partitions": [
+    {
+      "name": "opendes",
+      "primary": true,
+      "cosmos_account": "cosmos-opendes",
+      "servicebus_namespace": "sb-opendes",
+      "storage_account": "stopendes",
+      "legal_tag": "opendes-public-usa-dataset-1"
+    },
+    {
+      "name": "second",
+      "primary": false,
+      "cosmos_account": "cosmos-second",
+      "servicebus_namespace": "sb-second",
+      "storage_account": "stsecond",
+      "legal_tag": "second-public-usa-dataset-1"
+    }
+  ],
+  "suspended": false
+}

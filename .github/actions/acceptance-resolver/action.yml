@@ -1,0 +1,123 @@
+name: 'Acceptance Resolver'
+description: 'Joins the fork-owned service descriptor with stack facts and Key Vault secret values into the acceptance suite environment'
+
+inputs:
+  mode:
+    description: 'bind (warn on missing answers, still write the env file) | run (refuse on missing answers)'
+    required: true
+  descriptor:
+    description: 'Path to the fork-owned service descriptor'
+    required: false
+    default: '.spi/service.yaml'
+  facts:
+    description: 'Path to a saved `spi info --json` envelope (apiVersion spi.osdu.dev/v1)'
+    required: true
+  env_file:
+    description: 'Path the resolved env file is written to'
+    required: false
+    default: 'acceptance.env'
+  secrets_file:
+    description: 'Optional path to a JSON object of Key Vault secret name to value, fetched by the caller'
+    required: false
+    default: ''
+  expect_gateway:
+    description: 'Optional gateway URL the caller believes it deployed against; a mismatch with facts is a typed infra error'
+    required: false
+    default: ''
+  expect_partition:
+    description: 'Optional partition the caller believes it targets; a mismatch with facts is a typed infra error'
+    required: false
+    default: ''
+  report:
+    description: 'Optional path to write the JSON report'
+    required: false
+    default: ''
+
+outputs:
+  test_dir:
+    description: 'Working directory of the acceptance suite'
+    value: ${{ steps.run.outputs.test_dir }}
+  maven_arguments:
+    description: 'Maven argv tokens as a compact JSON array; pass as decoded argv, never a shell string'
+    value: ${{ steps.run.outputs.maven_arguments }}
+  timeout_minutes:
+    description: 'Suite timeout declared by the descriptor'
+    value: ${{ steps.run.outputs.timeout_minutes }}
+  requires:
+    description: 'Declared environment requirements as compact JSON ({loads, groups}) for the deploy gate'
+    value: ${{ steps.run.outputs.requires }}
+  dependencies:
+    description: 'Sibling services the suite calls, as a compact JSON array'
+    value: ${{ steps.run.outputs.dependencies }}
+  keyvault_name:
+    description: 'Key Vault name published by the facts envelope'
+    value: ${{ steps.run.outputs.keyvault_name }}
+  secret_names:
+    description: 'Key Vault secret names the descriptor asks for, as a compact JSON array'
+    value: ${{ steps.run.outputs.secret_names }}
+  missing_count:
+    description: 'Number of bindings left unresolved (bind mode only; run mode fails instead)'
+    value: ${{ steps.run.outputs.missing_count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run acceptance resolver engine
+      id: run
+      shell: bash
+      env:
+        RESOLVER_MODE: ${{ inputs.mode }}
+        RESOLVER_DESCRIPTOR: ${{ inputs.descriptor }}
+        RESOLVER_FACTS: ${{ inputs.facts }}
+        RESOLVER_ENV_FILE: ${{ inputs.env_file }}
+        RESOLVER_SECRETS: ${{ inputs.secrets_file }}
+        RESOLVER_EXPECT_GATEWAY: ${{ inputs.expect_gateway }}
+        RESOLVER_EXPECT_PARTITION: ${{ inputs.expect_partition }}
+        RESOLVER_REPORT: ${{ inputs.report }}
+      run: |
+        set -euo pipefail
+        REPORT="$RESOLVER_REPORT"
+        if [ -z "$REPORT" ]; then
+          REPORT="$RUNNER_TEMP/acceptance-resolver-report.json"
+        fi
+        ARGS=(--mode "$RESOLVER_MODE" --descriptor "$RESOLVER_DESCRIPTOR" \
+              --facts "$RESOLVER_FACTS" --env-file "$RESOLVER_ENV_FILE" --report "$REPORT")
+        if [ -n "$RESOLVER_SECRETS" ]; then
+          ARGS+=(--secrets "$RESOLVER_SECRETS")
+        fi
+        if [ -n "$RESOLVER_EXPECT_GATEWAY" ]; then
+          ARGS+=(--expect-gateway "$RESOLVER_EXPECT_GATEWAY")
+        fi
+        if [ -n "$RESOLVER_EXPECT_PARTITION" ]; then
+          ARGS+=(--expect-partition "$RESOLVER_EXPECT_PARTITION")
+        fi
+        python3 "$GITHUB_ACTION_PATH/resolve.py" "${ARGS[@]}"
+        python3 - "$REPORT" >> "$GITHUB_OUTPUT" <<'PY'
+        import json, sys, uuid
+        report = json.load(open(sys.argv[1]))
+        contract = report["contract"]
+        compact = lambda value: json.dumps(value, separators=(",", ":"), sort_keys=True)
+        def emit(name, value):
+            # Heredoc form so a value can never smuggle extra output lines.
+            delimiter = f"ghadelim_{uuid.uuid4().hex}"
+            print(f"{name}<<{delimiter}\n{value}\n{delimiter}")
+        emit("test_dir", contract["test_dir"])
+        emit("maven_arguments", compact(contract["maven_arguments"]))
+        emit("timeout_minutes", contract["timeout_minutes"])
+        emit("requires", compact(contract["requires"]))
+        emit("dependencies", compact(contract["dependencies"]))
+        emit("keyvault_name", report["key_vault"]["vault"])
+        emit("secret_names", compact(report["key_vault"]["secret_names"]))
+        emit("missing_count", len(report["missing"]))
+        PY
+        # Secrets requested but no vault published: tell the caller in the step
+        # log to skip its fetch loop — run mode refuses with typed misses, and
+        # an az call against an empty vault name would fail unattributed. The
+        # action only runs bind or run; contract-only invokes the engine directly.
+        if python3 -c "
+        import json, sys
+        kv = json.load(open(sys.argv[1]))['key_vault']
+        sys.exit(0 if kv['secret_names'] and not kv['vault'] else 1)
+        " "$REPORT" 2>/dev/null; then
+          echo "::warning title=acceptance-resolver::descriptor requests Key Vault secrets but facts publish no azure.keyvault; skip the secret fetch and let run mode refuse with typed misses"
+        fi

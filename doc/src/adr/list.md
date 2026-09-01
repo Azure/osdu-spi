@@ -43,6 +43,8 @@ Architecture Decision Records for Fork Management Template
 | 036 | Workflow Trust Boundaries for CI/CD        | [ADR-036](036-workflow-trust-boundaries.md) |
 | 037 | Engineering System Owns the Canonical Service Dockerfile | [ADR-037](037-engineering-system-owns-service-dockerfile.md) |
 | 038 | Upstream Filter Transform and One-Time Azure Seeding | [ADR-038](038-upstream-filter-transform.md) |
+| 039 | Customer-Tier Forks and Mirror-Mode Sync   | [ADR-039](039-customer-tier-mirror-sync.md) |
+| 040 | Descriptor-Owned Acceptance Contract with Runtime Fact Discovery | [ADR-040](040-descriptor-acceptance-contract.md) |
 
 ## Overview
 
@@ -228,3 +230,8 @@ These Architecture Decision Records document the key design choices made in the 
 - A second fork tier: a consumer org's true GitHub fork of a service repository (fork network required for contribution PRs) live-syncs the parent's already-filtered `main` verbatim; the `SYNC_MODE=mirror` repository variable selects the tier because file presence cannot (the filter config itself arrives through the mirror)
 - Mirror generation reuses the generate-not-merge plumbing (verbatim upstream tree, merge-shaped commit, `Upstream-Sha` trailer, sentinel `Filter-Rev: mirror`); the filter engine never runs, and the cascade's fork-owned-path assertion and pom stamp plus the entire template sync are gated off (one delivery channel: the mirror)
 - The shipped `Adopt Fork` workflow replaces initialization for forks of forks: branches at the fork point, labels, rulesets, merge settings, and variables via the consumer's own GitHub App, refusing wherever `INITIALIZATION_COMPLETE` is already true
+
+**Descriptor-Owned Acceptance Contract with Runtime Fact Discovery (ADR-040)**
+- Each fork owns `.spi/service.yaml` (schema v3): symbolic bindings from a closed source vocabulary (`gateway | partition | openid | tenant | legalTag | keyvault:<name> | static | template | user`), Key Vault secret names never values, `requires.loads/groups`, dependencies, timeout; unknown key or source = hard fail naming the key; Maven args are argv tokens, never a shell string; `.spi/` is sync-excluded and fork-owned
+- The template-synced resolver (`.github/actions/acceptance-resolver/`, ADR-028 extraction, stdlib-only, no Azure calls) joins descriptor × `spi info --json` (`apiVersion spi.osdu.dev/v1`) × caller-fetched secrets into the suite's env file; precedence explicit env → facts → declared default, templates render last; caller/facts disagreement on gateway or partition is a typed infra error
+- Two audiences: `bind` warns on missing answers and still writes; `run` refuses with typed exit codes (2 descriptor, 3 env-not-ready, 4 infra) so gates report "environment not ready" in seconds, never a mystery test failure
