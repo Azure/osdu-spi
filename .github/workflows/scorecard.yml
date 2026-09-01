@@ -1,19 +1,15 @@
 name: OpenSSF Scorecard
 
 on:
-  # For Branch-Protection check. Only the default branch is supported.
   branch_protection_rule:
-  # To guarantee Maintained check is occasionally updated.
   schedule:
     - cron: '30 1 * * 0'  # Weekly on Sundays at 1:30 AM UTC
   push:
     branches: [main]
   workflow_dispatch:
 
-# Declare default permissions as read only.
 permissions: read-all
 
-# Only run in the template repository, not in forks
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,16 +18,11 @@ jobs:
   analysis:
     name: Scorecard Analysis
     runs-on: ubuntu-latest
-    # Only run on the template repository
     if: github.repository == 'azure/osdu-spi'
     permissions:
-      # Needed to upload the results to code-scanning dashboard.
       security-events: write
-      # Needed for GitHub OIDC token if publish_results is true
       id-token: write
-      # Needed to access repository contents
       contents: read
-      # Needed to access actions
       actions: read
 
     steps:
@@ -45,8 +36,7 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
-          # Publish results to enable scorecard badge and API access
-          # This requires id-token: write permission above
+          # publish_results needs id-token: write
           publish_results: true
 
       - name: Upload SARIF artifact

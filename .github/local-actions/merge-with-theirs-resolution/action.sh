@@ -1,19 +1,17 @@
 #!/bin/bash
-# Merge with Automatic Theirs Resolution
-#
-# Merges source branch into target branch, automatically resolving conflicts
-# by preferring the source branch version (theirs strategy).
+# Merges the source branch into the target branch, resolving every conflict in
+# favor of the source side.
 #
 # Inputs (via environment):
-#   SOURCE_BRANCH - Branch to merge from (e.g., fork_integration)
-#   TARGET_BRANCH - Branch to merge into (e.g., main)
-#   COMMIT_MESSAGE - Commit message for the merge
-#   ISSUE_NUMBER - GitHub issue number for status comments (optional)
-#   GITHUB_TOKEN - GitHub token for API access (optional, for comments)
+#   SOURCE_BRANCH - branch to merge from
+#   TARGET_BRANCH - branch to merge into
+#   COMMIT_MESSAGE - merge commit message
+#   ISSUE_NUMBER - issue for status comments (optional)
+#   GITHUB_TOKEN - needed only for comments
 #
-# Outputs (to GITHUB_OUTPUT and stdout):
-#   merge_successful=true/false - Whether merge completed
-#   conflicts_resolved=<count> - Number of conflicts auto-resolved
+# Outputs (to GITHUB_OUTPUT):
+#   merge_successful - true/false
+#   conflicts_resolved - count
 
 set -euo pipefail
 
@@ -30,35 +28,28 @@ fi
 
 echo "Merging $SOURCE_BRANCH into $TARGET_BRANCH..."
 
-# Checkout target branch
 git checkout "$TARGET_BRANCH"
 
-# Try merge with unrelated histories, preferring source branch changes
 if ! git merge "$SOURCE_BRANCH" --allow-unrelated-histories --no-ff -X theirs -m "$COMMIT_MESSAGE"; then
     echo "⚠️  Merge conflicts detected, resolving automatically..."
 
-    # Post comment if issue tracking enabled
     if [ -n "$ISSUE_NUMBER" ] && [ -n "$GITHUB_TOKEN" ]; then
         echo "⚠️ **Merge conflicts detected, resolving automatically...**" | gh issue comment "$ISSUE_NUMBER" --body-file - || true
     fi
 
-    # Count conflicts resolved
     CONFLICTS_RESOLVED=0
 
-    # If there are still conflicts even with -X theirs, explicitly take source version
-    # Git status codes: DD=deleted, AU=added by us, UD=deleted by them, etc.
+    # -X theirs does not resolve modify/delete; take the source side for anything still unmerged.
     git status --porcelain | grep -E '^(DD|AU|UD|UA|DU|AA|UU)' | cut -c4- | while read -r file; do
         echo "Resolving conflict in $file - using $SOURCE_BRANCH version"
-        # Use the version from source branch (which comes from upstream)
         git checkout --theirs "$file"
         git add "$file"
         CONFLICTS_RESOLVED=$((CONFLICTS_RESOLVED + 1))
     done
 
-    # Get actual count (subshell issue workaround)
+    # The while loop ran in a subshell, so recount here.
     CONFLICTS_RESOLVED=$(git status --porcelain | grep -E '^(DD|AU|UD|UA|DU|AA|UU)' | wc -l)
 
-    # Complete the merge
     git commit -m "$COMMIT_MESSAGE (conflicts resolved using $SOURCE_BRANCH versions)"
 
     echo "conflicts_resolved=$CONFLICTS_RESOLVED" >> "${GITHUB_OUTPUT:-/dev/stdout}"

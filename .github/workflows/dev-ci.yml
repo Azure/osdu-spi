@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
 
-# Only run in the template repository, not in forks
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -119,15 +118,14 @@ jobs:
           assert_yq '.on.push.branches | contains(["!dependabot/**"])' "$BUILD" \
             "Dependabot branches must use the Dependabot Validation workflow"
 
-          # Neither PR trigger may be path-filtered, or the required Docker summary stops
-          # reporting and wedges the PR (ADR-030).
+          # A path-filtered PR trigger leaves the required Docker summary Pending (ADR-030).
           assert_yq '.on.pull_request | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request must stay unfiltered so the required summary always reports"
           assert_yq '.on.pull_request_target | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request_target owns sync PRs and must stay unfiltered"
 
-          # Exactly one lane per PR. check-initialization routes; docker-build-required repeats
-          # the routing because always() bypasses it.
+          # One lane per PR: check-initialization routes, and docker-build-required repeats
+          # the test because always() bypasses it.
           SYNC_HEAD="github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'sync/')"
           CHECK_INIT_IF=$(yq -r '.jobs."check-initialization".if | sub("\s+"; " ")' "$VALIDATE")
           SUMMARY_IF=$(yq -r '.jobs."docker-build-required".if | sub("\s+"; " ")' "$VALIDATE")
@@ -149,8 +147,7 @@ jobs:
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.generate_coverage | contains("pull_request_target")' "$VALIDATE" \
             "The sync pull_request_target build must generate coverage"
 
-          # docker-build runs untrusted Dockerfile content with read-only permissions. A PR-head
-          # checkout ref there is a CodeQL cache-poisoning finding in every fork (#164).
+          # A PR-head checkout in the read-only docker-build job is a CodeQL cache-poisoning finding (#164).
           DOCKER_IF=$(yq -r '.jobs."docker-build".if | sub("\s+"; " ")' "$VALIDATE")
           assert_contains "$DOCKER_IF" "github.event_name != 'pull_request_target'" \
             "docker-build must stay out of the pull_request_target lane"
@@ -187,7 +184,6 @@ jobs:
       - name: Check Documentation Links
         run: |
           echo "Checking for broken internal documentation links..."
-          # Check that ADR references exist
           grep -r "adr/[0-9]" doc/ | while read -r line; do
             file=$(echo "$line" | cut -d: -f1)
             adr_ref=$(echo "$line" | grep -o "adr/[0-9][0-9][0-9]-[^.]*")
@@ -201,8 +197,7 @@ jobs:
       - name: Validate Template Structure
         run: |
           echo "Validating template repository structure..."
-          
-          # Check required files exist
+
           required_files=(
             "README.md"
             ".github/sync-config.json"

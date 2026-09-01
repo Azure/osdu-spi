@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Generate the filtered fork_upstream commit without leaving the current checkout.
+# Generates the filtered fork_upstream commit without leaving the current checkout.
 #
 # Extracts the upstream tree to a scratch directory, runs the filter engine over
 # it, serializes the result through a scratch index, and writes a merge-shaped
@@ -8,17 +8,15 @@
 # tip, so upstream history, blame, and attribution are preserved. The calling
 # checkout's working tree and index are never touched.
 #
-# Usage:
-#   generate-branch.sh <base_sha> <upstream_sha> <config_path> <out_file>
+# Usage: generate-branch.sh <base_sha> <upstream_sha> <config_path> <out_file>
 #
 # An empty <base_sha> is the first generation: no fork_upstream tip exists yet,
 # so the no-change comparison is skipped and the commit carries the upstream
-# tip as its only parent. Every later generation is merge-shaped as above.
+# tip as its only parent.
 #
-# SYNC_MODE=mirror (customer tier, ADR-039) produces the verbatim upstream
-# tree instead: no extraction, no engine, no report. <config_path> is accepted
-# but never read, filter_rev is the literal sentinel "mirror", and the report=
-# line is omitted from <out_file>. All commit plumbing is shared.
+# SYNC_MODE=mirror (customer tier, ADR-039) takes the upstream tree verbatim:
+# no extraction, no engine, no report. <config_path> is accepted but never
+# read, filter_rev is the literal "mirror", and the report= line is omitted.
 #
 # Writes key=value lines to <out_file>:
 #   filter_rev=<engine version + config hash, or "mirror">
@@ -29,8 +27,8 @@
 #
 # Exit codes follow the engine: 0 success, 1 operational error, 2 halt.
 #
-# Outside RUNNER_TEMP (e.g. local runs), the scratch dir is removed on success
-# and kept on failure so the halt report stays readable.
+# Outside RUNNER_TEMP the scratch dir is removed on success and kept on failure
+# so the halt report stays readable.
 
 set -euo pipefail
 
@@ -60,9 +58,8 @@ rm -rf "$GEN" "$SCRATCH"
 mkdir -p "$GEN"
 
 if [ "$MODE" = "mirror" ]; then
-  # Verbatim mirror: the upstream tip is already the finished product, so the
-  # tree is taken as-is. Remove any lingering report from a prior filter run
-  # so failure handlers never read stale halt data.
+  # The upstream tip is the finished product. Remove any report left by a
+  # prior filter run so failure handlers never read stale halt data.
   rm -f "$REPORT"
   FILTER_REV="mirror"
   TREE=$(git rev-parse "${UPSTREAM_SHA}^{tree}")

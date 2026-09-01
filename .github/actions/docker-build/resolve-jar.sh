@@ -1,27 +1,20 @@
 #!/usr/bin/env bash
 #
-# Resolve the service Spring Boot JAR to COPY into the image (ADR-037).
+# Resolves the Spring Boot JAR the Dockerfile COPYs (ADR-037).
 #
-# The caller passes REQUESTED_JAR — the conventional path
-# provider/<service>-azure/target/*-spring-boot.jar (or a SERVICE_TARGET_JAR override).
-# Most forks match it directly. A fork whose Azure module name deviates from the repo
-# name (e.g. entitlements -> entitlements-v2-azure) matches nothing; rather than fail the
-# build — and, post-W10, the required check — we discover the Azure Spring Boot JAR so a
-# fresh fork builds with no manual variable and no first failure. SERVICE_TARGET_JAR is
-# needed only to disambiguate a service that builds more than one Azure Spring Boot JAR.
+# REQUESTED_JAR is the conventional provider/<service>-azure/target/*-spring-boot.jar
+# or a SERVICE_TARGET_JAR override. A fork whose Azure module name deviates from the
+# repository name (entitlements -> entitlements-v2-azure) matches nothing, so the
+# script then discovers the Azure Spring Boot JAR and a fresh fork builds with no
+# manual variable. SERVICE_TARGET_JAR is only needed to disambiguate a service that
+# builds more than one Azure Spring Boot JAR.
 #
-# Paths resolve relative to BUILD_CONTEXT: the Dockerfile COPY is context-relative and the
-# build artifacts download into the context, so the emitted path must be context-relative too.
+# Paths resolve relative to BUILD_CONTEXT: the COPY is context-relative and the
+# build artifacts download into the context.
 #
-# Environment:
-#   REQUESTED_JAR  path/override glob relative to the build context; when empty, defaults to
-#                  the conventional provider/<IMAGE_NAME>-azure/target/*-spring-boot.jar
-#   IMAGE_NAME     service slug — the default-path stem and the multi-match tiebreaker
-#   BUILD_CONTEXT  Docker build context directory (default ".")
-#   GITHUB_OUTPUT  receives jar_file=<resolved path> when set
-#
-# Local test (from a dir containing provider/<svc>-azure/target/*-spring-boot.jar):
-#   IMAGE_NAME=partition GITHUB_OUTPUT=/dev/stdout ./resolve-jar.sh
+# Env: REQUESTED_JAR (optional), IMAGE_NAME (default-path stem and tiebreaker),
+#      BUILD_CONTEXT (default ".")
+# Local: IMAGE_NAME=partition GITHUB_OUTPUT=/dev/stdout ./resolve-jar.sh
 
 set -euo pipefail
 shopt -s nullglob
@@ -30,10 +23,8 @@ REQUESTED_JAR="${REQUESTED_JAR:-}"
 IMAGE_NAME="${IMAGE_NAME:-}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 
-# COPY is build-context-relative and artifacts download into the context: resolve there.
 cd "$BUILD_CONTEXT"
 
-# Fall back to the conventional path when the caller passes no jar_file.
 if [[ -z "$REQUESTED_JAR" ]]; then
   if [[ -z "$IMAGE_NAME" ]]; then
     echo "::error::Provide jar_file or image_name so the service JAR can be resolved."
@@ -44,7 +35,7 @@ fi
 
 resolved=""
 
-# 1. Honour the requested path when it resolves (common <name>-azure case + explicit override).
+# 1. The requested path, when it resolves.
 # shellcheck disable=SC2206  # deliberate: glob-expand the path/override into matches
 requested_matches=( $REQUESTED_JAR )
 if [[ ${#requested_matches[@]} -ge 1 ]]; then
@@ -53,13 +44,13 @@ if [[ ${#requested_matches[@]} -ge 1 ]]; then
     echo "::warning::'$REQUESTED_JAR' matched ${#requested_matches[@]} files; using $resolved"
   fi
 else
-  # 2. Deviant module path: discover the Azure Spring Boot JAR the build produced.
+  # 2. Discover the Azure Spring Boot JAR the build produced.
   discovered=( provider/*-azure/target/*-spring-boot.jar )
   if [[ ${#discovered[@]} -eq 1 ]]; then
     resolved="${discovered[0]}"
     echo "'$REQUESTED_JAR' matched no file; discovered Azure JAR: $resolved"
   elif [[ ${#discovered[@]} -gt 1 ]]; then
-    # 3. Tiebreak on the service slug; otherwise fail loud (never a cryptic COPY error).
+    # 3. Tiebreak on the service slug, otherwise fail here rather than at COPY.
     preferred=()
     for d in "${discovered[@]}"; do
       [[ "$d" == provider/*"${IMAGE_NAME}"*-azure/* ]] && preferred+=("$d")

@@ -1,30 +1,23 @@
 #!/usr/bin/env bash
 #
-# Setup Branch Protection Script
-#
-# Configures branch protection rules for fork management branches.
+# Configures branch protection for the fork management branches.
 #
 # Branches protected:
-#   - main: Requires PR reviews (production branch)
-#   - fork_upstream: Basic protection (automation pushes allowed)
-#   - fork_integration: NOT protected (allows direct pushes for cascade)
+#   - main: requires PR review
+#   - fork_upstream: basic protection, automation pushes allowed
+#   - fork_integration: not protected, the cascade pushes to it directly
 #
 # Arguments:
 #   $1 - Repository full name (owner/repo)
 #   $2 - Issue number for status comments (optional)
 #
-# Environment Variables:
-#   GH_TOKEN - Required (PAT with workflows permission)
-#   GITHUB_TOKEN - Used for issue comments if issue_number provided
-#   BRANCH_PROTECTION_SUCCESS - Output: Sets to "true" or "false"
-#
-# Usage:
-#   export GH_TOKEN="ghp_your_pat_token"
-#   ./setup-branch-protection.sh "owner/repo" "123"
+# Environment:
+#   GH_TOKEN - admin token for the protection API
+#   GITHUB_TOKEN - issue comments when an issue number is given
+#   BRANCH_PROTECTION_SUCCESS - output: written to GITHUB_ENV as "true" or "false"
 
 set -euo pipefail
 
-# Validate arguments
 if [[ $# -lt 1 ]]; then
   echo "Error: Missing required argument"
   echo "Usage: $0 <repo_full_name> [issue_number]"
@@ -38,7 +31,6 @@ BRANCH_PROTECTION_SUCCESS=true
 
 echo "Setting up branch protection for $REPO_FULL_NAME..."
 
-# Check if GH_TOKEN is available
 if [[ -z "${GH_TOKEN:-}" ]]; then
   echo "⚠️ GH_TOKEN not available, skipping branch protection setup"
 
@@ -57,7 +49,6 @@ EOF
   exit 0
 fi
 
-# Protect main branch (production) - requires PR reviews
 echo "Protecting main branch..."
 if ! GH_TOKEN=$GH_TOKEN gh api \
   --method PUT \
@@ -86,7 +77,6 @@ else
   echo "✅ Protected main branch with PR requirements"
 fi
 
-# Protect fork_upstream branch - allow automation pushes only
 echo "Protecting fork_upstream branch..."
 if ! GH_TOKEN=$GH_TOKEN gh api \
   --method PUT \
@@ -109,10 +99,8 @@ else
   echo "✅ Protected fork_upstream branch (automation pushes allowed)"
 fi
 
-# Do NOT protect fork_integration - it needs direct pushes for cascade workflow
 echo "✅ fork_integration branch left unprotected (allows direct pushes for cascade workflow)"
 
-# Store result
 if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "BRANCH_PROTECTION_SUCCESS=$BRANCH_PROTECTION_SUCCESS" >> "$GITHUB_ENV"
 fi

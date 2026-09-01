@@ -1,13 +1,7 @@
 version: 2
 updates:
-  # Maven Dependencies - Application Code
-  # Workflow and GitHub Actions updates are managed via template synchronization
-  #
-  # Strategy:
-  # - PATCHES ONLY: Major and minor updates are ignored for stability
-  # - GROUPED: Spring, logging, jackson, and Azure SDK patches are grouped
-  # - INDIVIDUAL: All other patches get individual PRs
-  # - EXCLUDED: Build tools are ignored entirely
+  # Maven only: workflow and action updates arrive through template sync.
+  # Patch updates only, with Spring, logging, Jackson, and Azure SDK grouped.
 
   - package-ecosystem: "maven"
     directories:
@@ -25,12 +19,11 @@ updates:
     labels:
       - "dependencies"
     ignore:
-      # Only allow patch updates for stability
       - dependency-name: "*"
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
-      # Ignore build tools entirely
+      # Build tooling is pinned by hand.
       - dependency-name: "org.jacoco:*"
       - dependency-name: "io.github.git-commit-id:*"
       - dependency-name: "org.projectlombok:lombok"

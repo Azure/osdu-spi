@@ -58,9 +58,8 @@ jobs:
 
       - name: "Verify GHCR visibility"
         env:
-          # Read-only check. GHCR has no API to change package visibility (verified — 404 on any
-          # token); it is governed by the org default and set once per package. This reports if a
-          # package is unexpectedly not public; the default GITHUB_TOKEN suffices to read it.
+          # Read-only: GHCR has no API to change package visibility, so this only reports a
+          # package that is not public. The default token suffices to read it.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           bash .github/scripts/settings-apply/reconcile-ghcr-visibility.sh \

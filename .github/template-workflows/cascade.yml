@@ -1,7 +1,7 @@
 name: Cascade Integration
 
 on:
-  workflow_dispatch:       # Allow manual trigger
+  workflow_dispatch:
     inputs:
       issue_number:
         description: 'GitHub issue number for the upstream sync (e.g., 123)'
@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: cascade-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false  # Never cancel cascade operations
+  cancel-in-progress: false
 
 jobs:
   cascade-to-integration:
@@ -43,33 +43,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Fetch all branches to get latest state
           git fetch origin --prune
           
-          # Check if fork_integration is ahead of main (integration in process)
           INTEGRATION_COMMITS=$(git rev-list --count origin/main..origin/fork_integration 2>/dev/null || echo "0")
           
-          # Check for open release PRs to main
           RELEASE_PRS=$(gh pr list --base main --head "release/upstream-*" --json number,title,headRefName 2>/dev/null || echo "[]")
           RELEASE_PR_COUNT=$(echo "$RELEASE_PRS" | jq length)
           
-          # Check for open conflict issues
           CONFLICT_ISSUES=$(gh issue list --label "conflict,cascade-blocked" --json number,title 2>/dev/null || echo "[]")
           CONFLICT_COUNT=$(echo "$CONFLICT_ISSUES" | jq length)
           
           if [ "$INTEGRATION_COMMITS" -gt 0 ] || [ "$RELEASE_PR_COUNT" -gt 0 ] || [ "$CONFLICT_COUNT" -gt 0 ]; then
-            # Self-healing: If fork_integration is ahead but there are no release PRs and
-            # no conflict issues, the divergence is likely stale (e.g., a manual integration
-            # PR was merged without the upstream-sync label, so cleanup never ran).
-            # Auto-reset fork_integration to main to unblock the pipeline.
+            # Ahead of main with no release PR and no conflict issue is usually stale
+            # (a manual PR merged without the upstream-sync label, so cleanup never ran).
             if [ "$INTEGRATION_COMMITS" -gt 0 ] && [ "$RELEASE_PR_COUNT" -eq 0 ] && [ "$CONFLICT_COUNT" -eq 0 ]; then
               echo "::notice::fork_integration is $INTEGRATION_COMMITS commits ahead of main with no active release PRs or conflicts"
               echo "::notice::Checking if this is a stale divergence that can be auto-healed..."
 
-              # Check if fork_upstream is already merged into fork_integration.
-              # If it is, this divergence is from a legitimate merge (possibly with
-              # manually resolved conflicts) — not stale. Skip the reset and let
-              # the cascade proceed to create the release PR.
+              # fork_upstream already merged in means a real in-progress cascade, not stale divergence.
               UPSTREAM_IN_INTEGRATION=$(git rev-list --count origin/fork_integration..origin/fork_upstream 2>/dev/null || echo "999")
               if [ "$UPSTREAM_IN_INTEGRATION" -eq 0 ]; then
                 echo "::notice::fork_upstream is already merged into fork_integration - this is a legitimate in-progress cascade, not stale divergence"
@@ -78,13 +69,11 @@ jobs:
                 exit 0
               fi
 
-              # Check if there are any open PRs from fork_integration to main
               INTEGRATION_PRS=$(gh pr list --base main --head fork_integration --json number 2>/dev/null || echo "[]")
               INTEGRATION_PR_COUNT=$(echo "$INTEGRATION_PRS" | jq length)
 
-              # Guard: never reset away real work. git cherry marks '+' for any
-              # non-merge commit on fork_integration with no patch-equivalent on
-              # main (e.g. a manual restore commit); stale divergence has none.
+              # Never reset away real work: git cherry marks '+' for a commit on
+              # fork_integration with no patch-equivalent on main.
               UNMATCHED_COMMITS=$(git cherry origin/main origin/fork_integration | grep -c '^+' || true)
               if [ "$UNMATCHED_COMMITS" -gt 0 ]; then
                 echo "::notice::fork_integration carries $UNMATCHED_COMMITS commits with no equivalent on main - not a stale divergence, skipping auto-reset"
@@ -99,7 +88,6 @@ jobs:
                 git push -f origin fork_integration
                 echo "::notice::fork_integration has been auto-reset to match main (${OLD_SHA:0:8} -> ${NEW_SHA:0:8})"
 
-                # Close any upstream-held issues
                 HELD_ISSUE=$(gh issue list --label "upstream-held" --json number 2>/dev/null | jq -r '.[0].number // empty')
                 if [ -n "$HELD_ISSUE" ]; then
                   printf -v COMMENT_BODY "Auto-healed - %s\n\nDetected stale divergence between fork_integration and main (no active release PRs or conflict issues). Auto-reset fork_integration to match main.\n\nReset: %s to %s\n\nPipeline is now clear for processing upstream changes." \
@@ -108,7 +96,6 @@ jobs:
                   gh issue close "$HELD_ISSUE"
                 fi
 
-                # Continue with cascade instead of blocking
                 echo "integration_in_process=false" >> $GITHUB_OUTPUT
                 exit 0
               fi
@@ -119,11 +106,9 @@ jobs:
             echo "  - $RELEASE_PR_COUNT release PRs open to main"
             echo "  - $CONFLICT_COUNT conflict issues blocking pipeline"
 
-            # Track held upstream changes
             HELD_ISSUE=$(gh issue list --label "upstream-held" --json number,title 2>/dev/null | jq -r '.[0].number // empty')
 
             if [ -n "$HELD_ISSUE" ]; then
-              # Update existing held issue
               echo "::notice::Updating existing upstream-held issue #$HELD_ISSUE"
               gh issue comment "$HELD_ISSUE" --body "🔄 **Additional upstream changes detected** - $(date '+%Y-%m-%d %H:%M:%S UTC')
 
@@ -134,7 +119,6 @@ jobs:
 
               These upstream changes will be processed once current integration completes."
             else
-              # Create new held issue
               echo "::notice::Creating new upstream-held tracking issue"
               gh issue create \
                 --title "🚫 Upstream Changes Held - Integration Pipeline Busy" \
@@ -161,7 +145,6 @@ jobs:
             exit 0
           fi
           
-          # Check if we have an upstream-held issue to update
           HELD_ISSUE=$(gh issue list --label "upstream-held" --json number 2>/dev/null | jq -r '.[0].number // empty')
           if [ -n "$HELD_ISSUE" ]; then
             echo "::notice::Integration cleared, updating held issue #$HELD_ISSUE"
@@ -179,13 +162,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use the provided issue number from workflow input
           ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
           
           if [ -n "$ISSUE_NUMBER" ]; then
             echo "Validating tracking issue #$ISSUE_NUMBER..."
             
-            # Check if issue exists and get its state
             ISSUE_STATE=$(gh issue view "$ISSUE_NUMBER" --json state,number --jq '.state' 2>/dev/null || echo "NOT_FOUND")
             
             if [ "$ISSUE_STATE" = "NOT_FOUND" ]; then
@@ -200,12 +181,10 @@ jobs:
               echo "Updating tracking issue #$ISSUE_NUMBER - cascade started"
               echo "issue_valid=true" >> $GITHUB_OUTPUT
               
-              # Update labels: remove human-required, add cascade-active
               gh issue edit "$ISSUE_NUMBER" \
                 --remove-label "human-required" \
                 --add-label "cascade-active"
               
-              # Add progress comment
               gh issue comment "$ISSUE_NUMBER" --body "🚀 **Cascade Integration Started** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
               
               Integration workflow has been triggered and is now processing upstream changes.
@@ -224,13 +203,10 @@ jobs:
       - name: Merge main into fork_integration
         if: steps.check_state.outputs.integration_in_process == 'false'
         run: |
-          # Fetch all branches
           git fetch origin --prune
           
-          # Checkout fork_integration
           git checkout fork_integration
           
-          # Merge latest from main to preserve local changes
           echo "Merging main into fork_integration to preserve local changes..."
           if git merge origin/main --no-edit; then
             echo "✅ Successfully merged main into fork_integration"
@@ -247,11 +223,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Merge fork_upstream into fork_integration
           echo "Merging upstream changes into fork_integration..."
           CONFLICTS_FOUND=false
 
-          # Check if fork_upstream is already merged (e.g., manual conflict resolution)
+          # A human may already have merged it and resolved conflicts by hand.
           UPSTREAM_PENDING=$(git rev-list --count HEAD..origin/fork_upstream 2>/dev/null || echo "999")
           if [ "$UPSTREAM_PENDING" -eq 0 ]; then
             echo "✅ fork_upstream is already merged into fork_integration - skipping merge"
@@ -262,18 +237,15 @@ jobs:
           if git merge origin/fork_upstream --no-edit; then
             echo "✅ Clean merge of upstream changes achieved"
           else
-            # Check if there are unresolved conflicts.
             # ls-files -u lists every unmerged path, including the modify/delete
-            # (UD/DU) states that a UU/AA/DD status grep misses.
+            # states that a status grep for UU/AA/DD misses.
             if [ -n "$(git ls-files -u)" ]; then
               echo "::warning::Merge conflicts detected"
               CONFLICTS_FOUND=true
               
-              # List conflicted files
               echo "Conflicted files:"
               git diff --name-only --diff-filter=U | tee conflicted_files.txt
               
-              # Create conflict resolution issue
               CONFLICT_BODY="Upstream merge conflicts detected in fork_integration branch.
               
               **Conflicted Files:**
@@ -294,7 +266,6 @@ jobs:
                 --body "$CONFLICT_BODY" \
                 --label "conflict,cascade-blocked,high-priority,human-required"
               
-              # Update tracking issue
               TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
               if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
                 gh issue edit "$TRACKING_ISSUE" \
@@ -324,11 +295,9 @@ jobs:
         env:
           SYNC_MODE: ${{ vars.SYNC_MODE }}
         run: |
-          # The assertion and stamp steps below are inert until the fork carries a config.
-          # In mirror mode (ADR-039) the config arrives through the mirror and describes
-          # the upstream repository, not this fork: there is no ownership split here, and
-          # a stamp rewrite would permanently diverge upstream-owned pom lines. Both
-          # steps stay off regardless of file presence.
+          # In mirror mode (ADR-039) the config describes the upstream repository, not this
+          # fork: there is no ownership split, and a stamp rewrite would permanently diverge
+          # upstream-owned pom lines. Both dependent steps stay off regardless of file presence.
           if [ "${SYNC_MODE:-}" = "mirror" ]; then
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "Mirror mode - skipping fork-owned path assertion and pom stamp"
@@ -381,7 +350,6 @@ jobs:
       - name: Push integration changes
         if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
         run: |
-          # Push the updated fork_integration
           git push origin fork_integration
           echo "✅ Integration branch updated successfully"
 
@@ -426,7 +394,6 @@ jobs:
         run: |
           echo "🔍 Running comprehensive validation checks on integration branch..."
           
-          # Comment on tracking issue about validation start
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
           if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
             gh issue comment "$TRACKING_ISSUE" --body "🔍 **Integration Validation Started** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -440,7 +407,6 @@ jobs:
             This ensures upstream changes integrate successfully before creating production PR."
           fi
           
-          # Basic validation - check if integration branch is ahead of main
           CHANGES=$(git rev-list --count origin/main..fork_integration)
           if [ "$CHANGES" = "0" ]; then
             echo "::notice::No changes to integrate - fork is up to date"
@@ -455,12 +421,10 @@ jobs:
           
           echo "Found $CHANGES commits to integrate"
           
-          # Initialize validation results
           VALIDATION_SUCCESS=true
           VALIDATION_DETAILS=""
           BUILD_OUTPUT=""
           
-          # Check if this is a Java project
           IS_JAVA_PROJECT=false
           if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f 2>/dev/null)" ]; then
             IS_JAVA_PROJECT=true
@@ -468,12 +432,10 @@ jobs:
             VALIDATION_DETAILS="${VALIDATION_DETAILS}✓ Java/Maven project detected\n"
           fi
           
-          # Run Java-specific validation if Java project
           if [ "$IS_JAVA_PROJECT" = "true" ]; then
             echo "🔧 Java environment already configured in previous steps"
             VALIDATION_DETAILS="${VALIDATION_DETAILS}✓ Java environment configured\n✓ Maven settings configured\n"
             
-            # Run Maven build and test
             if ! [[ "$MAVEN_PROFILE" =~ ^[A-Za-z0-9][A-Za-z0-9,._-]*$ ]]; then
               echo "::error::MAVEN_PROFILE '$MAVEN_PROFILE' is not a valid profile list"
               exit 1
@@ -517,7 +479,6 @@ jobs:
             VALIDATION_DETAILS="${VALIDATION_DETAILS}✓ Non-Java project - basic validation only\n"
           fi
           
-          # Set outputs based on validation results
           if [ "$VALIDATION_SUCCESS" = "true" ]; then
             echo "✅ All validation checks passed"
             echo "success=true" >> $GITHUB_OUTPUT
@@ -529,10 +490,7 @@ jobs:
           else
             echo "❌ Validation checks failed"
             echo "success=false" >> $GITHUB_OUTPUT
-            # Write build output and validation details to files instead of step outputs.
-            # IMPORTANT: Do NOT pass these through step outputs and expression substitution,
-            # because literal string substitution of build logs containing parentheses,
-            # quotes, and other special characters will break shell parsing.
+            # Files, not step outputs: build logs carry quotes and parentheses that break expression substitution.
             echo "$BUILD_OUTPUT" > /tmp/build_output.txt
             echo -e "$VALIDATION_DETAILS" > /tmp/validation_details.txt
           fi
@@ -544,10 +502,6 @@ jobs:
         run: |
           echo "🚨 Creating validation failure issue..."
 
-          # Read validation details and build output from files written by validate step.
-          # IMPORTANT: These are passed via files (not step outputs) because expression
-          # substitution of build logs breaks shell parsing when they contain parentheses,
-          # quotes, backticks, or other special characters.
           VALIDATION_DETAILS=""
           BUILD_OUTPUT=""
           if [ -f /tmp/validation_details.txt ]; then
@@ -557,21 +511,19 @@ jobs:
             BUILD_OUTPUT=$(cat /tmp/build_output.txt)
           fi
 
-          # Truncate build output if too long (GitHub issue limit)
+          # Stay under the GitHub issue body limit.
           if [ ${#BUILD_OUTPUT} -gt 50000 ]; then
             BUILD_OUTPUT="${BUILD_OUTPUT:0:50000}
 
             ... [Output truncated - see workflow logs for complete details]"
           fi
 
-          # Write issue body to file to safely handle special characters
           cat > /tmp/validation_issue_body.md << 'ISSUE_BODY_EOF'
           🚨 **Integration Validation Failed**
 
           The cascade integration process has encountered validation failures on the `fork_integration` branch. This indicates that upstream changes cannot be safely integrated without resolution.
           ISSUE_BODY_EOF
 
-          # Append dynamic content safely
           {
             echo ""
             echo "**Branch:** \`fork_integration\`"
@@ -618,10 +570,6 @@ jobs:
             --label "validation-failed,cascade-blocked,high-priority,human-required"
           rm -f /tmp/validation_issue_body.md /tmp/build_output.txt /tmp/validation_details.txt
           
-          # Update tracking issue if available
-          # Note: Context reference depends on workflow structure:
-          # - Template: uses steps.update_tracking_start.outputs.issue_valid (same job)
-          # - Fork: may need needs.cascade-to-integration.outputs.issue_valid (different job)
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
           if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
             gh issue edit "$TRACKING_ISSUE" \
@@ -681,13 +629,10 @@ jobs:
       - name: Verify integration state
         id: verify_integration
         run: |
-          # Fetch latest state
           git fetch origin --prune
           
-          # Switch to fork_integration to get latest changes
           git checkout fork_integration
           
-          # Compare fork_integration with main
           CHANGES=$(git rev-list --count origin/main..fork_integration)
           
           if [ "$CHANGES" = "0" ]; then
@@ -697,7 +642,6 @@ jobs:
             echo "Found $CHANGES commits ready to cascade to main"
             echo "needs_cascade=true" >> $GITHUB_OUTPUT
             
-            # Verify integration branch is in good state
             if git diff --quiet HEAD origin/fork_integration; then
               echo "✅ Integration branch is clean and ready"
             else
@@ -711,38 +655,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Create a temporary release branch from fork_integration to preserve the integration branch
           RELEASE_BRANCH="release/upstream-$(date +%Y%m%d-%H%M%S)"
           
-          # Ensure we're on fork_integration and it's up to date
           git checkout fork_integration
           
-          # Create release branch from fork_integration
           git checkout -b $RELEASE_BRANCH
           
-          # Push the release branch
           git push origin $RELEASE_BRANCH
           
-          # Get commit summary
           COMMIT_SUMMARY=$(git log --pretty=format:"- %s" origin/main..HEAD | head -20)
           if [ $(git rev-list --count origin/main..HEAD) -gt 20 ]; then
             COMMIT_SUMMARY="${COMMIT_SUMMARY} ... and $(( $(git rev-list --count origin/main..HEAD) - 20 )) more commits"
           fi
           
-          # Calculate diff size for auto-merge eligibility
           DIFF_LINES=$(git diff --stat origin/main..HEAD | tail -1 | awk '{print $4 + $6}' | tr -d ' ')
           if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
             DIFF_LINES=0
           fi
           
-          # Check for breaking changes
-          # Check for breaking changes
           BREAKING_CHANGES=false
           if git log origin/main..HEAD --grep="BREAKING CHANGE" --grep="!:" --oneline | head -1 | grep -q .; then
             BREAKING_CHANGES=true
           fi
           
-          # Create detailed PR body with commit summary and issue closure
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
           CLOSE_ISSUE_TEXT=""
           if [ -n "$TRACKING_ISSUE" ] && [ "${{ needs.cascade-to-integration.outputs.issue_valid }}" = "true" ]; then
@@ -770,7 +705,6 @@ jobs:
           
           > **Note:** The \`fork_integration\` branch is preserved for future use. This release branch can be safely deleted after merge."
           
-          # Get upstream SHA for consistent title format (from fork_upstream branch)
           UPSTREAM_SHA=$(git rev-parse origin/fork_upstream)
           
           PR_URL=$(gh pr create \
@@ -783,15 +717,9 @@ jobs:
           echo "Main PR created: $PR_URL"
           PR_NUMBER=$(basename $PR_URL)
 
-          # Arm auto-merge with merge-commit method. The human gate is preserved
-          # by the required approval rule on main (Default Branch Protection
-          # ruleset, required_approving_review_count: 1) — auto-merge waits for
-          # that approval before firing. This locks the merge method in code so
-          # release PRs cannot be squash-merged, which would break fork_upstream
-          # ancestry and trigger the cascade-monitor duplicate-PR loop.
-          # Capture combined output so a failure reason (auto-merge disabled,
-          # merge commits disabled, missing permissions, etc.) shows up in the
-          # warning — otherwise operators can't tell why arming failed.
+          # Auto-merge waits for the required approval on main, so the human gate stays.
+          # The merge method is fixed here because a squash breaks fork_upstream ancestry
+          # and sends cascade-monitor into a duplicate-PR loop. Output is kept for the warning.
           if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --auto --merge 2>&1); then
             echo "✅ Auto-merge armed with merge-commit method - awaiting human approval"
           else
@@ -799,12 +727,9 @@ jobs:
             echo "::warning::Could not arm auto-merge on PR #$PR_NUMBER. Reason: $MERGE_REASON Human must merge with 'Create a merge commit' (NOT squash) - squashing breaks the cascade ancestry check."
           fi
           
-          # Update original tracking issue
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
           if [ -n "$TRACKING_ISSUE" ] && [ "${{ needs.cascade-to-integration.outputs.issue_valid }}" = "true" ]; then
-            # Clean up any failure-state labels from a prior failed cascade attempt.
-            # The success path needs to remove cascade-blocked / cascade-failed so a
-            # recovered cascade leaves the tracking issue in a clean state.
+            # Drop failure labels from a prior attempt so a recovered cascade ends clean.
             gh issue edit "$TRACKING_ISSUE" \
               --remove-label "cascade-active" \
               --remove-label "cascade-blocked" \
@@ -833,7 +758,6 @@ jobs:
             - Ready for production: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           fi
           
-          # Close any upstream-held issues since cascade is now complete
           HELD_ISSUE=$(gh issue list --label "upstream-held" --json number 2>/dev/null | jq -r '.[0].number // empty')
           if [ -n "$HELD_ISSUE" ]; then
             echo "::notice::Closing upstream-held issue #$HELD_ISSUE - cascade complete"
@@ -866,7 +790,6 @@ jobs:
           
           if [ -n "$stale_issues" ]; then
             echo "$stale_issues" | jq -r '.number' | while read issue_number; do
-              # Create escalation issue
               gh issue create \
                 --title "🚨 ESCALATION: Cascade conflicts unresolved for 48+ hours" \
                 --body "Issue #$issue_number has unresolved conflicts blocking the cascade pipeline.
@@ -876,10 +799,8 @@ jobs:
                 **Impact:** Upstream changes cannot be integrated until resolved" \
                 --label "escalation,high-priority,cascade-escalated,human-required"
               
-              # Update issue with escalation notice
               gh issue comment $issue_number --body "⚠️ **SLA EXCEEDED:** This conflict has exceeded the 48-hour resolution SLA and has been escalated. Immediate action required."
               
-              # Add escalation label to issue
               gh issue edit $issue_number --add-label "cascade-escalated"
             done
           else
@@ -899,7 +820,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Determine failure type
           if [ "${{ needs.cascade-to-integration.result }}" = "failure" ]; then
             FAILURE_TYPE="Integration Failure"
             FAILURE_DETAILS="The cascade-to-integration job failed during upstream merge or validation."
@@ -932,12 +852,9 @@ jobs:
             --body "$ISSUE_BODY" \
             --label "high-priority,human-required")
           
-          # Update original tracking issue with failure information
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
-          # Check if we have a valid issue from the first job
           ISSUE_VALID="${{ needs.cascade-to-integration.outputs.issue_valid }}"
           if [ -n "$TRACKING_ISSUE" ] && [ "$ISSUE_VALID" = "true" ]; then
-            # Update tracking issue labels and add comment about failure
             gh issue edit "$TRACKING_ISSUE" \
               --remove-label "cascade-active" \
               --add-label "cascade-failed,human-required"

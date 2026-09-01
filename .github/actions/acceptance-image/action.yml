@@ -62,12 +62,10 @@ runs:
         RESOLVER: ${{ github.action_path }}/../acceptance-resolver/resolve.py
 
     - name: "Validate push prerequisites"
-      # After suite resolution: a fork with no suite skips the whole image, so it must not be
-      # made to supply a token that would never be consumed.
+      # After suite resolution: a fork with no suite must not be made to supply an unused token.
       if: ${{ steps.suite.outputs.buildable == 'true' && inputs.push == 'true' }}
       shell: bash
       run: |
-        # Fail fast: the push path needs a token for GHCR login and the visibility flip
         if [ -z "${GITHUB_TOKEN:-}" ]; then
           echo "::error::push=true requires github_token (GHCR login + visibility flip)."
           exit 1
@@ -79,8 +77,7 @@ runs:
       id: meta
       if: ${{ steps.suite.outputs.buildable == 'true' }}
       shell: bash
-      # Reuses the docker-build scripts (ADR-028): same metadata, tag, and visibility
-      # conventions as the service image, under the <service>-acceptance package name.
+      # Same metadata, tag, and visibility conventions as the service image (ADR-028).
       run: |
         "$GITHUB_ACTION_PATH/../docker-build/compute-metadata.sh" "$REGISTRY" "$ORG" "$IMAGE_NAME"
       env:
@@ -120,9 +117,8 @@ runs:
         context: ${{ inputs.build_context }}
         file: ${{ inputs.dockerfile_path }}
         push: ${{ inputs.push == 'true' }}
-        # amd64-only, deliberately: this build RUNs Maven (dependency:go-offline), which under
-        # QEMU arm64 emulation costs many minutes per push for no consumer — CI runners are
-        # amd64 and Apple Silicon runs the amd64 image under emulation (see the Dockerfile).
+        # amd64-only: this build runs Maven, which costs many minutes under QEMU arm64
+        # emulation for no consumer (see the Dockerfile).
         platforms: linux/amd64
         provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}
@@ -130,8 +126,7 @@ runs:
           SUITE_DIR=${{ steps.suite.outputs.suite_dir }}
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-        # Own cache scope: the suite layers share nothing with the service image, and a
-        # shared scope invites cross-image cache collisions.
+        # Own cache scope: the suite layers share nothing with the service image.
         cache-from: type=gha,scope=acceptance-image
         cache-to: type=gha,mode=max,scope=acceptance-image,ignore-error=true
 
@@ -148,7 +143,7 @@ runs:
     - name: "Summary"
       shell: bash
       run: |
-        # Never echoes the token. Mirrors to $GITHUB_STEP_SUMMARY beside the service image summary.
+        # Never echoes the token.
         if [ "$BUILDABLE" != "true" ]; then
           HEADING="🧪 Acceptance Image"
           MSG="Skipped: ${REASON}"

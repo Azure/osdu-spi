@@ -6,8 +6,8 @@ on:
   pull_request_target:
     types: [closed]
     branches:
-      - fork_upstream      # Monitor PRs merged into fork_upstream
-  workflow_dispatch:       # Allow manual trigger
+      - fork_upstream
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,13 +31,11 @@ jobs:
         run: |
           git fetch origin --prune
           
-          # Check if fork_upstream has commits that fork_integration doesn't
           UPSTREAM_COMMITS=$(git rev-list --count origin/fork_integration..origin/fork_upstream 2>/dev/null || echo "0")
           
           echo "Found $UPSTREAM_COMMITS commits in fork_upstream ahead of fork_integration"
           
           if [ "$UPSTREAM_COMMITS" -gt 0 ]; then
-            # Find the tracking issue (try different label combinations)
             ISSUE_NUMBER=$(gh issue list \
               --label "upstream-sync" \
               --state open \
@@ -48,10 +46,8 @@ jobs:
             if [ -n "$ISSUE_NUMBER" ]; then
               echo "Found missed cascade trigger for issue #$ISSUE_NUMBER - auto-initiating"
               
-              # Comment on issue about auto-trigger
               gh issue comment "$ISSUE_NUMBER" --body $'🤖 **Auto-Cascade Initiated** - '"$(date -u +%Y-%m-%dT%H:%M:%SZ)"$'\n\nSafety net detected that upstream PR was merged but cascade integration was not triggered manually.\n\n**Auto-Action:** Initiating cascade integration automatically as safety net\n**Found:** '"$UPSTREAM_COMMITS"$' commits in `fork_upstream` awaiting integration\n**Workflow:** [Monitor Progress]('"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"$')'
               
-              # Trigger cascade
               echo "Triggering cascade integration workflow..."
               if gh workflow run "Cascade Integration" --repo ${{ github.repository }} -f issue_number="$ISSUE_NUMBER"; then
                 echo "✅ Safety net cascade triggered successfully"
@@ -64,7 +60,6 @@ jobs:
               echo "Found pending upstream changes but no tracking issue - may need manual investigation"
               echo "Upstream commits pending: $UPSTREAM_COMMITS"
               
-              # Log recent commits for visibility
               echo "Recent commits in fork_upstream:"
               git log --oneline origin/fork_integration..origin/fork_upstream
             fi
@@ -99,14 +94,12 @@ jobs:
               pr_url=$(echo "$pr_data" | jq -r '.url')
               pr_created=$(echo "$pr_data" | jq -r '.createdAt')
               
-              # Check if already escalated
               existing_labels=$(gh pr view $pr_number --json labels --jq '.labels[].name')
               if echo "$existing_labels" | grep -q "cascade-escalated"; then
                 echo "PR #$pr_number already escalated, skipping"
                 continue
               fi
               
-              # Create escalation issue
               issue_url=$(gh issue create \
                 --title "🚨 ESCALATION: Cascade conflict unresolved for 48+ hours (PR #$pr_number)" \
                 --body "URGENT: PR #$pr_number has unresolved conflicts blocking the cascade pipeline. PR: $pr_url. Title: $pr_title. Created: $pr_created. SLA Status: EXCEEDED (48+ hours). The cascade pipeline is blocked. Assign a developer to resolve conflicts immediately." \
@@ -114,10 +107,8 @@ jobs:
               
               echo "Created escalation issue: $issue_url"
               
-              # Update PR with escalation notice
               gh pr comment $pr_number --body "ESCALATION: This conflict has exceeded the 48-hour SLA and has been escalated. Escalation Issue: $issue_url. Time Since Creation: >48 hours. Action Required: Immediate conflict resolution. Please resolve conflicts as soon as possible to unblock the cascade pipeline."
               
-              # Add escalation label to PR
               gh pr edit $pr_number --add-label "cascade-escalated"
               echo "Added escalation label to PR #$pr_number"
             done
@@ -136,7 +127,6 @@ jobs:
           echo "## Cascade Pipeline Health Report - $(date)"
           echo
           
-          # Check active cascades
           active_cascades=$(gh pr list \
             --repo ${{ github.repository }} \
             --label "cascade-active" \
@@ -149,7 +139,6 @@ jobs:
           fi
           echo
           
-          # Check blocked cascades
           blocked_cascades=$(gh pr list \
             --repo ${{ github.repository }} \
             --label "cascade-blocked" \
@@ -162,7 +151,6 @@ jobs:
           fi
           echo
           
-          # Check escalated issues
           escalated_issues=$(gh issue list \
             --repo ${{ github.repository }} \
             --label "cascade-escalated" \
@@ -176,7 +164,6 @@ jobs:
           fi
           echo
           
-          # Overall health status
           echo "### Overall Status"
           if [ "$blocked_count" -eq 0 ] && [ "$escalated_count" -eq 0 ]; then
             echo "✅ **HEALTHY**: Cascade pipeline is operating normally"
@@ -186,7 +173,6 @@ jobs:
             echo "🟡 **WARNING**: Cascade pipeline has blocked PRs"
           fi
           
-          # Save report to step summary
           {
             echo "# Cascade Pipeline Health Report"
             echo "Generated: $(date)"
@@ -217,7 +203,7 @@ jobs:
         run: |
           echo "Checking for issues ready for automatic cascade retry..."
           
-          # Find issues with cascade-failed but NOT human-required (human resolved)
+          # cascade-failed without human-required means a human has cleared the failure.
           RECOVERY_ISSUES=$(gh issue list \
             --label "cascade-failed" \
             --state open \
@@ -232,25 +218,20 @@ jobs:
           echo "Found recovery-ready issues:"
           echo "$RECOVERY_ISSUES" | jq .
           
-          # Process each recovery-ready issue
           echo "$RECOVERY_ISSUES" | jq -r '.number' | while read ISSUE_NUMBER; do
             echo "Processing recovery for issue #$ISSUE_NUMBER"
             
-            # Update issue labels: remove cascade-failed, add cascade-active
             gh issue edit "$ISSUE_NUMBER" \
               --remove-label "cascade-failed" \
               --add-label "cascade-active"
             
-            # Add comment about retry
             gh issue comment "$ISSUE_NUMBER" --body $'🔄 **Automatic Recovery Initiated** - '"$(date -u +%Y-%m-%dT%H:%M:%SZ)"$'\n\nThe monitoring system detected that the failure has been resolved (human-required label removed).\n\n**Auto-Action:** Initiating cascade integration retry automatically\n**Monitor Run:** ['"${{ github.run_id }}"$']('"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"$')\n\nThe cascade integration will be retried. If it fails again, a new failure issue will be created.'
             
-            # Trigger cascade retry
             echo "Triggering cascade integration retry for issue #$ISSUE_NUMBER"
             if gh workflow run "Cascade Integration" --repo ${{ github.repository }} -f issue_number="$ISSUE_NUMBER"; then
               echo "✅ Cascade retry triggered successfully for issue #$ISSUE_NUMBER"
             else
               echo "❌ Failed to trigger cascade retry for issue #$ISSUE_NUMBER"
-              # Revert labels on failure to trigger
               gh issue edit "$ISSUE_NUMBER" \
                 --remove-label "cascade-active" \
                 --add-label "cascade-failed,human-required"

@@ -29,18 +29,15 @@ jobs:
       - name: Check for code changes
         id: filter
         run: |
-          # For scheduled runs and workflow_dispatch, always run
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should-run=true" >> $GITHUB_OUTPUT
             echo "Running CodeQL: Scheduled or manual trigger"
             exit 0
           fi
 
-          # For push events, check against previous commit
           if [ "${{ github.event_name }}" = "push" ]; then
             BASE_SHA="${{ github.event.before }}"
             HEAD_SHA="${{ github.sha }}"
-          # For pull requests, check against base branch
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
@@ -49,7 +46,6 @@ jobs:
             exit 0
           fi
 
-          # Get list of changed files
           CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || echo "")
 
           if [ -z "$CHANGED_FILES" ]; then
@@ -58,14 +54,8 @@ jobs:
             exit 0
           fi
 
-          # Skip only when every changed file is Markdown. Markdown is not an
-          # analyzed language, so this can never hide a finding.
-          #
-          # The previous pattern anchored its alternation with $, so the
-          # .github/, .mvn/, devops/ and docs/ branches only matched those exact
-          # bare strings and never a real path. .github/** was ignored purely by
-          # the ^\..* dotfile catch-all, so a PR that rewrote workflows reported
-          # a green CodeQL with nothing analyzed at all (#142).
+          # Skip only when every changed file is Markdown. Markdown is not an analyzed
+          # language, so this can never hide a finding.
           SHOULD_RUN=false
           while IFS= read -r file; do
             [ -z "$file" ] && continue
@@ -100,12 +90,10 @@ jobs:
         run: |
           LANGUAGES='[]'
 
-          # Check for Java (Maven or Gradle)
           if [ -f "pom.xml" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
             LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["java-kotlin"]')
           fi
 
-          # Check for Python (exclude build directories and common generated code paths)
           if [ -f "setup.py" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || \
              find . -name "*.py" \
                -not -path "./.*" \
@@ -122,24 +110,21 @@ jobs:
             LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
           fi
 
-          # Check for JavaScript/TypeScript
           if [ -f "package.json" ] || find . -name "*.js" -o -name "*.ts" -not -path "./node_modules/*" -not -path "./.*" | grep -q .; then
             LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["javascript-typescript"]')
           fi
 
-          # Check for Go
           if [ -f "go.mod" ] || find . -name "*.go" -not -path "./.*" | grep -q .; then
             LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["go"]')
           fi
 
-          # Default to java-kotlin if no source language detected (OSDU is primarily Java)
+          # OSDU services are Java; an undetected tree still gets the Java analysis.
           if [ "$LANGUAGES" = "[]" ]; then
             LANGUAGES='["java-kotlin"]'
           fi
 
-          # actions is always analyzed. Every fork ships .github/workflows/, so
-          # detection would be pointless -- the answer is always yes -- and
-          # workflow YAML is precisely what this analysis exists to review (#142).
+          # actions is always analyzed: every fork ships .github/workflows/, and workflow
+          # YAML is precisely what this analysis exists to review.
           LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["actions"]')
 
           echo "languages=$LANGUAGES" >> $GITHUB_OUTPUT
@@ -183,8 +168,7 @@ jobs:
           cache: 'npm'
 
       - name: Initialize CodeQL
-        # Commit SHA, not the v4.30.8 annotated-tag object SHA: the tag object is not a
-        # commit, so the REST commits API cannot resolve it and Dependabot cannot bump it.
+        # Pinned to the commit, not the annotated tag object: Dependabot cannot resolve a tag object.
         uses: github/codeql-action/init@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
         with:
           languages: ${{ matrix.language }}
@@ -208,8 +192,7 @@ jobs:
         with:
           category: "/language:${{matrix.language}}"
 
-  # Summary job that always reports as "CodeQL" to satisfy required status checks
-  # This job name matches the required check context in repository rulesets
+  # Summary job reporting as "CodeQL", the required check context in the rulesets (ADR-030).
   CodeQL:
     name: CodeQL
     runs-on: ubuntu-latest
@@ -218,33 +201,28 @@ jobs:
     steps:
       - name: Report CodeQL Status
         run: |
-          # Check if check-paths succeeded
           if [ "${{ needs.check-paths.result }}" != "success" ]; then
             echo "❌ Code path check failed"
             exit 1
           fi
 
-          # Analysis is legitimately unnecessary only when every change is Markdown
           if [ "${{ needs.check-paths.outputs.should-run }}" = "false" ]; then
             echo "✅ CodeQL skipped - only Markdown files changed"
             exit 0
           fi
 
-          # If should-run is true, check that analysis completed successfully
           if [ "${{ needs.detect-languages.result }}" != "success" ]; then
             echo "❌ Language detection failed"
             exit 1
           fi
 
-          # actions is always in the language list, so it can never be empty.
-          # A skipped analyze at this point means the job never started, which
-          # is an infrastructure fault and must not be reported as a pass.
+          # The language list always holds actions, so a skipped analyze means the job
+          # never started: an infrastructure fault, not a pass.
           if [ "${{ needs.analyze.result }}" = "skipped" ]; then
             echo "❌ CodeQL analysis did not run despite non-Markdown changes"
             exit 1
           fi
 
-          # Check for actual failures
           if [ "${{ needs.analyze.result }}" = "failure" ] || [ "${{ needs.analyze.result }}" = "cancelled" ]; then
             echo "❌ CodeQL analysis failed or was cancelled"
             exit 1

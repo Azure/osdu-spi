@@ -1,22 +1,20 @@
 #!/bin/bash
-# Push Protection Error Detection and Reporting
-#
-# Analyzes git push output for push protection violations and creates
-# detailed GitHub issues with resolution guidance including secret allowlist URLs.
+# Reads a failed git push's output. A push protection violation becomes an
+# escalation issue carrying the secret allowlist URLs; any other failure is
+# reported on the initialization issue.
 #
 # Inputs (via environment):
-#   PUSH_OUTPUT_FILE - Path to file containing git push output
-#   ISSUE_NUMBER - GitHub issue number for commenting
-#   UPSTREAM_REPO - Upstream repository being synced
-#   GITHUB_TOKEN - GitHub token for API access
+#   PUSH_OUTPUT_FILE - captured git push output
+#   ISSUE_NUMBER - initialization issue to comment on
+#   UPSTREAM_REPO - upstream repository, quoted in the retry instructions
+#   GITHUB_TOKEN - gh CLI token
 #
-# Outputs (to GITHUB_OUTPUT and stdout):
-#   push_protected=true/false - Whether push protection was detected
-#   escalation_issue_url=<url> - URL of created escalation issue (if applicable)
+# Outputs (to GITHUB_OUTPUT):
+#   push_protected - true/false
+#   escalation_issue_url - created issue URL, empty otherwise
 
 set -euo pipefail
 
-# Validate required inputs
 if [ -z "${PUSH_OUTPUT_FILE:-}" ]; then
     echo "::error::PUSH_OUTPUT_FILE environment variable is required"
     exit 1
@@ -37,7 +35,6 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
     exit 1
 fi
 
-# Check for push protection violation
 if ! grep -q "GH013: Repository rule violations found" "$PUSH_OUTPUT_FILE"; then
     echo "push_protected=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
     echo "No push protection violation detected"
@@ -51,15 +48,14 @@ fi
 echo "::error::Push blocked by push protection due to secrets"
 echo "push_protected=true" >> "${GITHUB_OUTPUT:-/dev/stdout}"
 
-# Extract secret allowlist URLs (handles ANSI escape codes)
+# The push output carries ANSI escapes, so match the URL shape rather than the line.
 SECRETS_INFO=$(grep -Eo 'https://github\.com/.+/secret-scanning/unblock-secret/[A-Za-z0-9]+' \
                "$PUSH_OUTPUT_FILE" | head -20 || true)
 
-# Extract blob IDs (GitHub format: "blob id: <hash>")
+# GitHub prints each secret as "blob id: <hash>".
 BLOB_IDS=$(grep -Eo 'blob id: *[a-f0-9]+' "$PUSH_OUTPUT_FILE" \
            | sed -E 's/^blob id: *//' | head -20 || true)
 
-# Build escalation issue body
 ISSUE_BODY="## 🔒 Push Protection Blocking Initialization\n\n"
 ISSUE_BODY="${ISSUE_BODY}The initialization workflow was blocked by push protection. This is likely due to secrets detected in the upstream repository's git history.\n\n"
 ISSUE_BODY="${ISSUE_BODY}### Detected Issues\n\n"
@@ -102,7 +98,6 @@ ISSUE_BODY="${ISSUE_BODY}After resolving the push protection issue using one of 
 ISSUE_BODY="${ISSUE_BODY}1. Close this issue\n"
 ISSUE_BODY="${ISSUE_BODY}2. Re-run the initialization by commenting the upstream repository URL on the original initialization issue"
 
-# Create escalation issue
 ESCALATION_ISSUE_URL=$(printf "%b" "$ISSUE_BODY" | gh issue create \
     --title "🔒 Push Protection Blocking Initialization - Action Required" \
     --body-file - \
@@ -116,7 +111,6 @@ else
     COMMENT_MSG="❌ **Initialization blocked by push protection**\n\nThe upstream repository contains secrets that are being blocked by GitHub's push protection.\n\n**Next Steps:**\n1. 📋 I've created a detailed issue with allowlist URLs - check issues labeled 'escalation'\n2. 🔓 Visit each allowlist URL and click 'Allow secret'\n3. 🔄 Re-run initialization by commenting \`${UPSTREAM_REPO:-the upstream repository}\` again\n\nThe second run will succeed once secrets are allowlisted!"
 fi
 
-# Comment on original initialization issue
 printf "%b" "$COMMENT_MSG" | gh issue comment "$ISSUE_NUMBER" --body-file -
 
 echo "✅ Created escalation issue and commented on initialization issue"

@@ -30,7 +30,7 @@ runs:
         # On pull_request_target a ref-less checkout would silently replace the PR
         # head the calling workflow checked out with the base branch.
         ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-        fetch-depth: 0  # Required for Sonar analysis
+        fetch-depth: 0
 
     - name: "Assert the PR head is checked out"
       if: github.event_name == 'pull_request_target'
@@ -68,19 +68,16 @@ runs:
       id: build
       shell: bash
       run: |
-        # Set up Maven CLI options.
         # GITHUB_REF_NAME is "<n>/merge" on pull_request events; '/' is invalid in a Maven version.
         SAFE_REF="${GITHUB_REF_NAME//\//-}"
         MAVEN_CLI_OPTS="--batch-mode -Drevision=${SAFE_REF}-SNAPSHOT"
         
-        # Add settings file if it exists
         if [ -f ".mvn/community-maven.settings.xml" ]; then
           MAVEN_CLI_OPTS="$MAVEN_CLI_OPTS --settings=.mvn/community-maven.settings.xml"
         fi
 
-        # Restrict the build to the caller-supplied Maven profile(s) (ADR-035; comma-separated list allowed).
-        # Read from env (not direct interpolation) and validate the whole value (bash =~ anchors
-        # against the entire string, so an embedded newline cannot smuggle in a second option).
+        # Profiles come from env and are validated whole (ADR-035): bash =~ anchors against the
+        # entire string, so an embedded newline cannot smuggle in a second option.
         if [ -n "${MAVEN_PROFILE:-}" ]; then
           if [[ ! "$MAVEN_PROFILE" =~ ^[A-Za-z0-9][A-Za-z0-9._,-]*$ ]]; then
             echo "::error::Invalid maven_profile '${MAVEN_PROFILE}' (allowed characters: A-Z a-z 0-9 . _ , -)"
@@ -90,18 +87,15 @@ runs:
         fi
 
         if [[ "$GENERATE_COVERAGE" == "true" ]]; then
-          # Run build with coverage. Use `package` (not `test`) so the JARs are produced
-          # alongside coverage — the docker-build job downloads build-artifacts on PR events.
+          # package, not test: docker-build downloads the JARs on PR events too.
           mvn $MAVEN_CLI_OPTS clean package org.jacoco:jacoco-maven-plugin:0.8.11:report
           
-          # Generate coverage summary
           echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "## Summary" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           find . -name "index.html" -path "*/target/site/jacoco/*" -exec grep -o '<tfoot>.*</tfoot>' {} \; | sed 's/<[^>]*>//g' >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         else
-          # Regular build without coverage
           mvn $MAVEN_CLI_OPTS clean install
         fi
       env:

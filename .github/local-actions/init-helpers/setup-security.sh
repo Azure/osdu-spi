@@ -1,29 +1,18 @@
 #!/usr/bin/env bash
 #
-# Setup Security Features Script
-#
-# Configures security features and GitHub Copilot automatic code review.
-#
-# Features enabled:
-#   - Secret scanning, dependency alerts (via security-on.json)
-#   - GitHub Copilot automatic code review ruleset
+# Applies security-on.json and creates the GitHub Copilot code review ruleset.
 #
 # Arguments:
 #   $1 - Repository full name (owner/repo)
 #   $2 - Issue number for status comments (optional)
 #
-# Environment Variables:
-#   GH_TOKEN - Required (PAT with admin permissions)
-#   GITHUB_TOKEN - Used for issue comments if issue_number provided
-#   SECURITY_SUCCESS - Output: Sets to "true" or "false"
-#
-# Usage:
-#   export GH_TOKEN="ghp_your_pat_token"
-#   ./setup-security.sh "owner/repo" "123"
+# Environment:
+#   GH_TOKEN - admin token for repository settings and rulesets
+#   GITHUB_TOKEN - issue comments when an issue number is given
+#   SECURITY_SUCCESS - output: written to GITHUB_ENV as "true" or "false"
 
 set -euo pipefail
 
-# Validate arguments
 if [[ $# -lt 1 ]]; then
   echo "Error: Missing required argument"
   echo "Usage: $0 <repo_full_name> [issue_number]"
@@ -37,7 +26,6 @@ SECURITY_SUCCESS=true
 
 echo "Setting up security features for $REPO_FULL_NAME..."
 
-# Enable security features if security-on.json exists
 if [[ -f ".github/security-on.json" ]]; then
   if [[ -n "${GH_TOKEN:-}" ]]; then
     echo "Enabling security features from security-on.json..."
@@ -62,11 +50,9 @@ if [[ -f ".github/security-on.json" ]]; then
   fi
 fi
 
-# GitHub Copilot automatic code review configuration
 if [[ -n "${GH_TOKEN:-}" ]]; then
   echo "🤖 Creating GitHub Copilot automatic code review ruleset..."
 
-  # Step 1: Create basic ruleset
   RULESET_JSON=$(echo '{
     "name": "GitHub Copilot Code Review",
     "target": "branch",
@@ -80,8 +66,7 @@ if [[ -n "${GH_TOKEN:-}" ]]; then
     RULESET_ID=$(echo "$RULESET_JSON" | jq -r '.id')
     echo "Created basic ruleset with ID: $RULESET_ID"
 
-    # Step 2: Update with complete Copilot configuration
-    # Note: "~DEFAULT_BRANCH" is GitHub Rulesets API syntax for referencing the repository's default branch
+    # "~DEFAULT_BRANCH" is Rulesets API syntax for the repository's default branch.
     if echo '{
       "name": "GitHub Copilot Code Review",
       "target": "branch",
@@ -131,7 +116,6 @@ else
   fi
 fi
 
-# Store result
 if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "SECURITY_SUCCESS=$SECURITY_SUCCESS" >> "$GITHUB_ENV"
 fi

@@ -1,20 +1,8 @@
 #!/usr/bin/env bash
 #
-# Compute Image Metadata Script
+# Builds the GHCR repository path and short commit SHA for the docker-build action.
 #
-# Builds the GHCR repository path and short commit SHA used by the docker-build action.
-#
-# Arguments:
-#   $1 - registry host (e.g. ghcr.io)
-#   $2 - org/owner (e.g. my-org)
-#   $3 - image name / short service name (e.g. partition)
-#
-# Outputs (via GITHUB_OUTPUT):
-#   image_repository - lowercased "<registry>/<org>/<image_name>" (GHCR rejects uppercase)
-#   short_sha        - first 12 chars of GITHUB_SHA
-#
-# Local usage:
-#   GITHUB_SHA=abc123def4567 GITHUB_OUTPUT=/dev/stdout ./compute-metadata.sh ghcr.io MyOrg Partition
+# Local: GITHUB_SHA=abc123def4567 GITHUB_OUTPUT=/dev/stdout ./compute-metadata.sh ghcr.io MyOrg Partition
 
 set -euo pipefail
 

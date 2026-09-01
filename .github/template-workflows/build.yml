@@ -5,12 +5,12 @@ name: Build and Test
 on:
   push:
     branches: 
-      - '**'        # Run on any branch push
-      - '!main'     # Exclude main branch
-      - '!fork_integration'  # Exclude fork_integration as it's covered by validate
-      - '!fork_upstream'     # Exclude fork_upstream as it's covered by validate
-      - '!sync/**'           # Sync branches are covered by validate
-      - '!dependabot/**'     # Dependency branches are covered by dependabot-validation
+      - '**'
+      - '!main'
+      - '!fork_integration'
+      - '!fork_upstream'
+      - '!sync/**'
+      - '!dependabot/**'
     paths-ignore:
       - '.github/workflows/**'
       - '.github/template-workflows/**'
@@ -102,10 +102,8 @@ jobs:
         env:
           MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
         run: |
-          # Set up Maven CLI options
           MAVEN_CLI_OPTS="--batch-mode -Drevision=${GITHUB_REF_NAME}-SNAPSHOT"
-          
-          # Add settings file if it exists
+
           if [ -f ".mvn/community-maven.settings.xml" ]; then
             MAVEN_CLI_OPTS="$MAVEN_CLI_OPTS --settings=.mvn/community-maven.settings.xml"
           fi

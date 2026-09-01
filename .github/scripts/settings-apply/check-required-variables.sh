@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
 #
-# Check the deploy-onboarding readiness manifest and surface what's missing.
+# Checks that the secrets and variables the deploy and integration-test checks
+# need are present (names only, never values), and keeps one human-required
+# tracking issue in step with what is missing.
 #
-# Verifies presence (never values) of the secrets/variables a fork needs before
-# the deploy + integration-test required checks can be enabled. Opens/updates a
-# single `human-required` tracking issue listing what's missing and who owns it;
-# closes that issue when everything is present.
-#
-# SERVICE_NAME / MAVEN_PROFILE / SERVICE_TARGET_JAR are NOT listed: they default
-# at runtime (ADR-035/037), so they never block onboarding — only overrides.
+# SERVICE_NAME, MAVEN_PROFILE, and SERVICE_TARGET_JAR are not listed: they
+# default at runtime (ADR-035, ADR-037), so only overrides use them.
 #
 # Arguments:
 #   $1            Repository full name (owner/repo)
-#   --dry-run     Print the assessment without opening/closing the issue
+#   --dry-run     Print the assessment without touching the issue
 #
 # Environment:
-#   GH_TOKEN      Token with repo admin (read secret/variable names) + issues:write
-#
-# AZURE_CLIENT_ID is checked present-only; its value is never read or logged.
+#   GH_TOKEN      repo admin (secret and variable names) plus issues:write
 
 set -euo pipefail
 

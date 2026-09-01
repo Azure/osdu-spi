@@ -1,6 +1,6 @@
 name: GHCR Retention
 
-# Prunes old service-image tags from GHCR per design §8.5:
+# Prunes old service-image tags from GHCR:
 #   :sha-<short>        delete when older than 30 days
 #   :<branch>-snapshot  keep the newest 5 per protected branch
 #   :<version> (semver) keep forever (never deleted)
@@ -31,7 +31,6 @@ jobs:
       - name: "Prune old image tags"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Scheduled runs prune for real; manual runs honour the dry_run input (default true).
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           OWNER: ${{ github.repository_owner }}
           SERVICE_NAME: ${{ vars.SERVICE_NAME }}
@@ -59,18 +58,15 @@ jobs:
           NOW=$(date -u +%s)
           CUTOFF=$(( NOW - 30 * 24 * 3600 ))
 
-          # Protected = any version carrying a semver tag (e.g. a released image). Excluded from all buckets.
-          # Protect any semver-tagged version, including pre-release/build-metadata (e.g. 1.2.3-rc.1, 1.2.3+build.7).
+          # Any semver-tagged version is a release and leaves every bucket, pre-release and build metadata included.
           ELIGIBLE="$(echo "$VERSIONS" | jq '[ .[] | select((.metadata.container.tags // []) | any(test("^v?[0-9]+\\.[0-9]+\\.[0-9]+([-+].*)?$")) | not) ]')"
 
-          # sha-only versions older than 30 days
           SHA_IDS="$(echo "$ELIGIBLE" | jq -r --argjson cutoff "$CUTOFF" '
             .[]
             | select((.metadata.container.tags // []) | length > 0 and all(startswith("sha-")))
             | select((.created_at | fromdateiso8601) < $cutoff)
             | .id')"
 
-          # snapshot versions: keep newest 5 per branch, delete the rest
           SNAP_IDS="$(echo "$ELIGIBLE" | jq -r '
             [ .[] | select((.metadata.container.tags // []) | any(endswith("-snapshot"))) ]
             | group_by([ .metadata.container.tags[] | select(endswith("-snapshot")) ][0])

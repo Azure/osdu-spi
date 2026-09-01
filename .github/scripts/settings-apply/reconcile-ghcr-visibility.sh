@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 #
-# Verify a GHCR container package is public (ADR-033) so the shared spi-stack AKS
-# cluster can pull it without an imagePullSecret. Same check the docker-build action
-# runs post-push (.github/actions/docker-build/set-package-visibility.sh), invoked
-# here on the settings-apply cadence for existing forks.
+# Verifies a GHCR package is public so the shared spi-stack cluster can pull it
+# without an imagePullSecret (ADR-033). Same check docker-build runs after a
+# push, repeated here on the settings-apply cadence.
 #
-# GHCR exposes NO REST API to change package visibility (GET/DELETE only). Visibility
-# is governed by the owner's default package visibility and is sticky once set,
-# so this is a read-only verify that reports a fix; it never hard-blocks (soft-fail).
+# GHCR has no API to change visibility, so this only reports the fix and never
+# fails the run.
 #
 # Arguments:
-#   $1            org/owner (e.g. my-org)
-#   $2            package name == image name (e.g. partition)
+#   $1            org/owner
+#   $2            package name (same as the image name)
 #
 # Environment:
 #   GH_TOKEN | GITHUB_TOKEN - token with package read scope
@@ -46,7 +44,7 @@ if [[ "$CURRENT" == "public" ]]; then
   echo "✓ Package ${ORG}/${PACKAGE_NAME} is public."; exit 0
 fi
 
-# Not public, and GHCR has no API to flip visibility — report the one-time fix.
+# Report the one-time fix; visibility is sticky once set.
 echo "⚠️  Package ${ORG}/${PACKAGE_NAME} is '${CURRENT}', not public — cluster pulls will fail with ErrImagePull."
 echo "    GHCR has no API to change visibility. Make it public once (sticky) at:"
 echo "    ${SETTINGS_URL}"
