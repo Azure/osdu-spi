@@ -169,10 +169,15 @@ jobs:
           # unclassifiable sync never silently forces a minor bump.
           # The `!` marker is only meaningful on a subject line; scanning bodies for it
           # would let quoted prose force a major bump.
-          if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$(git log --format=%s "$BEFORE_SHA..$commit")" \
-             || grep -qE '^BREAKING[ -]CHANGE:' <<<"$(git log --format=%b "$BEFORE_SHA..$commit")"; then
+          # Read into variables rather than piping git into grep: grep -q short-circuits,
+          # and the resulting SIGPIPE makes the pipeline return 141 under pipefail, which
+          # would silently invert this decision.
+          UPSTREAM_SUBJECTS=$(git log --format=%s "$BEFORE_SHA..$commit")
+          UPSTREAM_BODIES=$(git log --format=%b "$BEFORE_SHA..$commit")
+          if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$UPSTREAM_SUBJECTS" \
+             || grep -qE '^BREAKING[ -]CHANGE:' <<<"$UPSTREAM_BODIES"; then
             META_COMMIT_MSG="feat!: sync upstream changes from $UPSTREAM_VERSION"$'\n\n'"BREAKING CHANGE: upstream $UPSTREAM_VERSION contains a breaking change"
-          elif grep -qE '^feat(\([^)]*\))?:' <<<"$(git log --format=%s "$BEFORE_SHA..$commit")"; then
+          elif grep -qE '^feat(\([^)]*\))?:' <<<"$UPSTREAM_SUBJECTS"; then
             META_COMMIT_MSG="feat: sync upstream changes from $UPSTREAM_VERSION"
           else
             META_COMMIT_MSG="fix: sync upstream changes from $UPSTREAM_VERSION"
@@ -265,7 +270,7 @@ jobs:
           # substitution which breaks when values contain quotes or special characters
           # (e.g. commit messages with double quotes cause shell parsing errors).
 
-          # Update PR title and regenerate description with all commits
+          # Update PR title and rebuild the description (capped at MAX_BODY_COMMITS)
           # Use --body-file to safely handle special characters in description
           printf '%s\n' "$PR_DESCRIPTION" > /tmp/pr_body.txt
           gh pr edit "$PR_NUMBER" \
