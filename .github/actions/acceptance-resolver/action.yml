@@ -110,10 +110,8 @@ runs:
         emit("secret_names", compact(report["key_vault"]["secret_names"]))
         emit("missing_count", len(report["missing"]))
         PY
-        # Secrets requested but no vault published: tell the caller in the step
-        # log to skip its fetch loop — run mode refuses with typed misses, and
-        # an az call against an empty vault name would fail unattributed. The
-        # action only runs bind or run; contract-only invokes the engine directly.
+        # Secrets requested but no vault published: warn so the caller skips its fetch loop,
+        # since an az call against an empty vault name would fail unattributed.
         if python3 -c "
         import json, sys
         kv = json.load(open(sys.argv[1]))['key_vault']

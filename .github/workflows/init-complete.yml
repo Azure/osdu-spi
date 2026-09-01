@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Checkout operations
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate upstream repository
         id: validate
@@ -65,11 +65,11 @@ jobs:
         with:
           comment_body: ${{ github.event.comment.body }}
           issue_number: ${{ github.event.issue.number }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set UPSTREAM_REPO_URL Variable
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Setting repository variables needs admin permission
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # App token: setting variables needs admin
         run: |
           REPO="${{ steps.validate.outputs.upstream_repo }}"
           if [[ "$REPO" == http* ]]; then
@@ -110,7 +110,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Checkout operations
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
         uses: ./.github/local-actions/configure-git
@@ -120,19 +120,18 @@ jobs:
       - name: Upstream Repository
         uses: ./.github/local-actions/init-helpers
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git operations and posting comments
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           operation: setup-upstream
-          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git operations and posting comments
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
           issue_number: ${{ github.event.issue.number }}
-          
+
       - name: Configure Variables
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Setting repository variables needs admin permission
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # App token: setting variables needs admin
           REPO_URL: ${{ env.REPO_URL }}
         run: |
-          # Set repository variables using GH_TOKEN (required for admin operations)
           VARIABLES_SUCCESS=true
           if [ -n "$GH_TOKEN" ]; then
             echo "Setting UPSTREAM_REPO_URL variable to: $REPO_URL"
@@ -141,8 +140,7 @@ jobs:
               echo "Failed to set UPSTREAM_REPO_URL variable"
               VARIABLES_SUCCESS=false
             fi
-            
-            # Configure GitHub Copilot firewall allowlist if configuration exists
+
             if [ -f ".github/fork-resources/copilot-firewall-config.json" ]; then
               echo "Configuring GitHub Copilot firewall allowlist..."
               FIREWALL_DOMAINS=$(jq -r '.firewall_additions | join(",")' .github/fork-resources/copilot-firewall-config.json)
@@ -162,9 +160,8 @@ jobs:
 
       - name: Check for prior completion
         run: |
-          # A retried run after the main push must not repeat the branch work:
-          # settings-apply may already have armed the rulesets, which would
-          # reject the direct pushes below. Resume with configuration only.
+          # A retry after the main push must not redo the branch work: settings-apply may
+          # already have armed the rulesets that would reject the direct pushes below.
           if [ "${{ vars.INITIALIZATION_COMPLETE }}" = "true" ]; then
             echo "::notice::Branches already pushed; resuming configuration steps only"
             echo "RESUME_ONLY=true" >> $GITHUB_ENV
@@ -175,14 +172,12 @@ jobs:
       - name: Branch Structure
         if: env.RESUME_ONLY != 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Used for git operations only
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Materialize the per-service filter config exactly once. Generation,
-          # seeding, stamping, and the planted copy all read this one file, so
-          # the planted config always matches the generated commit's Filter-Rev.
-          # HEAD is main and stays there for this whole step (the branch is
-          # built through plumbing); the escape-hatch test below is only valid
-          # because the worktree is main.
+          # One filter config for generation, seeding, stamping, and the planted copy, so the
+          # planted file always matches the generated commit's Filter-Rev. HEAD stays on main
+          # for this whole step (the branch is built through plumbing), which is what makes
+          # the hand-planted test below valid.
           FILTER_CONFIG="$RUNNER_TEMP/upstream-filter.yml"
           if [ -f ".github/upstream-filter.yml" ]; then
             echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
@@ -195,9 +190,8 @@ jobs:
           fi
           echo "FILTER_CONFIG=$FILTER_CONFIG" >> $GITHUB_ENV
 
-          # Generate the filtered fork_upstream tree (ADR-038). A branch left
-          # by a previous partial run becomes the base of an ordinary
-          # incremental generation, so a retry converges instead of colliding.
+          # Generate the filtered fork_upstream tree (ADR-038). A branch left by a partial
+          # run becomes the base of an incremental generation, so a retry converges.
           UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
           BASE_SHA=$(git rev-parse -q --verify origin/fork_upstream || true)
           bash .github/actions/upstream-filter/generate-branch.sh \
@@ -215,17 +209,14 @@ jobs:
             exit 1
           fi
 
-          # Try to push with error handling for push protection
           echo "::notice::Pushing fork_upstream branch..."
 
-          # Capture both stdout and stderr, and preserve exit code
-          set +e  # Don't exit on command failure
+          set +e
           git push -u origin fork_upstream 2>&1 | tee "$RUNNER_TEMP/push_output.txt"
           PUSH_EXIT_CODE=${PIPESTATUS[0]}
-          set -e  # Re-enable exit on error
+          set -e
 
           if [ $PUSH_EXIT_CODE -ne 0 ]; then
-            # Use push protection handler action
             echo "Push failed, checking for push protection violation..."
             echo "PUSH_EXIT_CODE=$PUSH_EXIT_CODE" >> $GITHUB_ENV
           else
@@ -240,7 +231,7 @@ jobs:
           push_output_file: ${{ runner.temp }}/push_output.txt
           issue_number: ${{ github.event.issue.number }}
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Exit if fork_upstream push failed
         if: env.RESUME_ONLY != 'true' && env.PUSH_EXIT_CODE != '0'
@@ -249,10 +240,9 @@ jobs:
       - name: Continue branch setup
         if: env.PUSH_EXIT_CODE == '0'
         run: |
-          # Create fork_integration from fork_upstream
           git checkout -b fork_integration fork_upstream
 
-          # Restore local actions from main branch since fork_integration lacks template's local actions
+          # fork_integration lacks the template's local actions; later steps need them.
           git checkout main -- .github/local-actions
 
       - name: Apply sync configuration
@@ -266,9 +256,8 @@ jobs:
       - name: Seed fork-owned trees and plant filter config
         if: env.PUSH_EXIT_CODE == '0'
         run: |
-          # HEAD is fork_integration. The seeded trees enter history here,
-          # after the branch point that becomes the cascade merge base, so
-          # upstream merges never see them and the fork owns them (ADR-038).
+          # HEAD is fork_integration. Seeded trees enter history after the branch point that
+          # becomes the cascade merge base, so upstream merges never see them (ADR-038).
           SERVICE_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" "$FILTER_CONFIG" | head -1)
           if [ -z "$SERVICE_SLUG" ]; then
             echo "::error::Could not read the service key from the filter config"
@@ -278,8 +267,7 @@ jobs:
           if git ls-files -- "provider/${SERVICE_SLUG}-azure" | grep -q . \
             && git ls-files -- "testing/${SERVICE_SLUG}-test-azure" | grep -q .; then
             echo "::notice::Fork-owned trees already present; skipping seed"
-            # A resumed run can find the trees without the config; the survival
-            # assertion below requires all three, so plant it here too.
+            # A resumed run can have the trees but not the config; the assertion below needs all three.
             cp "$FILTER_CONFIG" .github/upstream-filter.yml
             git add .github/upstream-filter.yml
             if ! git diff --cached --quiet; then
@@ -295,8 +283,7 @@ jobs:
               --seed-source "$seed_dir" \
               --report "$RUNNER_TEMP/upstream-filter-seed-report.json"
 
-            # Seeded poms carry the versions of the commit they were taken
-            # from; stamp against the current tree before anything builds them.
+            # Seeded poms carry the versions of the commit they came from; stamp before anything builds them.
             python3 .github/actions/upstream-filter/upstream_filter.py \
               --mode stamp --config "$FILTER_CONFIG" --checkout . \
               --report "$RUNNER_TEMP/upstream-filter-stamp-report.json"
@@ -320,9 +307,8 @@ jobs:
       - name: Push fork_integration branch
         if: env.PUSH_EXIT_CODE == '0'
         run: |
-          # Push fork_integration with error handling. Force: a retried run
-          # rebuilds the branch with fresh commit ids, and the integration
-          # ruleset only blocks deletion, never force-push.
+          # Force: a retried run rebuilds the branch with fresh commit ids, and the
+          # integration ruleset only blocks deletion, never force-push.
           echo "::notice::Pushing fork_integration branch..."
           set +e
           git push -u -f origin fork_integration 2>&1 | tee "$RUNNER_TEMP/push_integration_output.txt"
@@ -346,7 +332,7 @@ jobs:
           push_output_file: ${{ runner.temp }}/push_integration_output.txt
           issue_number: ${{ github.event.issue.number }}
           upstream_repo: ${{ needs.validate_and_setup.outputs.upstream_repo }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Exit if fork_integration push failed
         if: env.RESUME_ONLY != 'true' && env.PUSH_INTEGRATION_EXIT_CODE != '0'
@@ -364,16 +350,16 @@ jobs:
           target_branch: main
           commit_message: "chore: complete repository initialization"
           issue_number: ${{ github.event.issue.number }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Git merge operations and posting comments
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Finalize Initialization
         if: env.RESUME_ONLY != 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Available but not used (GitHub App token required for workflows)
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Pushing workflow files needs 'workflows' permission + setting variables needs admin
-          UPSTREAM_REPO_URL: ${{ vars.UPSTREAM_REPO_URL }}  # May be empty when the variable was set earlier in this same run; deploy-fork-resources.sh falls back to gh variable get
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # App token: pushing workflow files needs the workflows permission
+          UPSTREAM_REPO_URL: ${{ vars.UPSTREAM_REPO_URL }}  # May be empty when set earlier this run; the script falls back to gh variable get
         run: |
-          # Copy workflows from template-workflows before deploy-fork-resources deletes the directory
+          # Workflows must be copied before deploy-fork-resources deletes template-workflows.
           echo "Deploying production workflows from template..."
           if [ -d ".github/template-workflows" ]; then
             mkdir -p .github/workflows
@@ -387,31 +373,25 @@ jobs:
             echo "⚠️  Warning: .github/template-workflows directory not found"
           fi
 
-          # Save setup scripts and templates to temp location before cleanup deletes them
+          # The cleanup below deletes local-actions; later steps still need these files.
           echo "Preserving setup scripts and templates for post-push configuration..."
           mkdir -p /tmp/init-helpers /tmp/templates/manual-steps
           cp .github/local-actions/init-helpers/setup-security.sh /tmp/init-helpers/
-          # setup-rulesets.sh now lives durably at .github/scripts/settings-apply/ (survives cleanup,
-          # reused by settings-apply.yml) — no temp preservation needed.
           cp .github/local-actions/templates/initialization-complete.md /tmp/templates/
           cp .github/local-actions/templates/manual-steps/*.md /tmp/templates/manual-steps/
           chmod +x /tmp/init-helpers/*.sh
 
-          # Deploy fork-specific resources and clean up template files
           ./.github/local-actions/init-helpers/deploy-fork-resources.sh
 
-          # Add all changes to the merge commit
           git add -A
           if ! git diff --staged --quiet; then
             git commit --amend --no-edit
           fi
 
-          # Push using GH_TOKEN if available (needed for workflow permissions)
           if [ -n "$GH_TOKEN" ]; then
             echo "Pushing to main using GH_TOKEN (required for workflow deployment)..."
 
-            # Reconfigure git to use GH_TOKEN instead of GITHUB_TOKEN from checkout
-            # The checkout action's credential helper must be overridden
+            # The checkout action's credential helper would push with GITHUB_TOKEN; override it.
             git config --unset-all http.https://github.com/.extraheader || true
             git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
 
@@ -421,33 +401,29 @@ jobs:
             echo "::error::Workflows require a Personal Access Token with 'workflow' scope"
             exit 1
           fi
-          
-          # Set repository variable for initialization status
+
           if [ -n "$GH_TOKEN" ]; then
             GH_TOKEN=$GH_TOKEN gh variable set INITIALIZATION_COMPLETE --body "true"
           fi
 
       - name: Configure Security
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Security settings need admin permission
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # App token: security settings need admin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use preserved script from temp location
           /tmp/init-helpers/setup-security.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
 
       - name: Setup Repository Rulesets
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # GitHub App token: Ruleset creation needs admin permission
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # App token: rulesets need admin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Durable path (survives init cleanup); the same idempotent script settings-apply.yml runs
           bash .github/scripts/settings-apply/setup-rulesets.sh "${{ github.repository }}" "${{ github.event.issue.number }}"
 
       - name: Update Status
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Build status lines based on success flags
           if [ "$VARIABLES_SUCCESS" = "true" ]; then
             VARIABLE_STATUS="**Repository Variables:** UPSTREAM_REPO_URL and GitHub Copilot firewall allowlist configured"
           else
@@ -466,7 +442,6 @@ jobs:
             RULESET_STATUS="⚠️ **Repository Rulesets:** Requires manual setup"
           fi
 
-          # Assemble manual steps if needed (using preserved templates from /tmp)
           MANUAL_STEPS=""
           if [ "$VARIABLES_SUCCESS" != "true" ] || [ "$SECURITY_SUCCESS" != "true" ] || [ "$RULESET_SUCCESS" != "true" ]; then
             MANUAL_STEPS="## Manual Configuration Required
@@ -478,7 +453,6 @@ jobs:
             [ "$RULESET_SUCCESS" != "true" ] && MANUAL_STEPS+="- **Repository Rulesets:** Go to Settings → Rules → Rulesets and create rulesets based on configurations in \`.github/rulesets/\`"$'\n'
           fi
 
-          # Read template and substitute placeholders (using preserved template from /tmp)
           MESSAGE=$(cat /tmp/templates/initialization-complete.md)
           MESSAGE="${MESSAGE//\{VARIABLE_STATUS\}/$VARIABLE_STATUS}"
           MESSAGE="${MESSAGE//\{SECURITY_STATUS\}/$SECURITY_STATUS}"
@@ -486,23 +460,20 @@ jobs:
           MESSAGE="${MESSAGE//\{MANUAL_STEPS\}/$MANUAL_STEPS}"
           MESSAGE="${MESSAGE//\{UPSTREAM_REPO\}/${{ needs.validate_and_setup.outputs.upstream_repo }}}"
 
-          # Post completion message
           echo "$MESSAGE" | gh issue comment "${{ github.event.issue.number }}" --body-file -
 
       - name: Complete Initialization
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Closing issues
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Close the initialization issue
           gh issue close "${{ github.event.issue.number }}" --reason completed
 
       - name: Report initialization failure
         if: failure()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Standard token: Posting issue comments
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Surface engine halts (exit 2) from any of the three invocations;
-          # each writes its own report so none clobbers another.
+          # Each of the three engine invocations writes its own report, so none clobbers another.
           HALT_DETAIL=""
           for report in upstream-filter-report.json upstream-filter-seed-report.json upstream-filter-stamp-report.json; do
             if [ -f "$RUNNER_TEMP/$report" ]; then

@@ -1,26 +1,15 @@
 #!/usr/bin/env bash
 #
-# Record Evaluated Upstream SHA Script
-#
 # Persists the last upstream SHA that produced no fork-visible change into a
-# repository variable, so the next run can skip regenerating an identical tree.
+# repository variable so the next run can skip regenerating an identical tree.
 # This is the only sync state that outlives the tracking issue (ADR-024).
 #
 # The stored value is "<sha>:<generation-rev>". The revision half scopes the
-# result to the filter inputs that produced it, so changing the config or the
-# engine invalidates the cache instead of pinning a stale tree until upstream
-# happens to advance.
+# result to the filter inputs that produced it, so a config or engine change
+# invalidates the cache instead of pinning a stale tree until upstream moves.
 #
-# Arguments:
-#   $1 - Full upstream SHA that was evaluated
-#
-# Environment Variables:
-#   GITHUB_TOKEN - Required for gh CLI
-#   SYNC_MODE    - Passed through to generation-rev.sh
-#
-# Usage:
-#   export GITHUB_TOKEN="ghp_token"
-#   ./record-evaluated-sha.sh "0b8fd115ac1aeb283926830f6f6152b42783b220"
+# Env: GITHUB_TOKEN, SYNC_MODE (passed through to generation-rev.sh)
+# Local: ./record-evaluated-sha.sh <full_upstream_sha>
 
 set -euo pipefail
 

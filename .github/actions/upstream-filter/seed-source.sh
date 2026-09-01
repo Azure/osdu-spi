@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
 #
-# Materialize the seed source for the fork-owned Azure trees.
+# Materializes the seed source for the fork-owned Azure trees.
 #
-# For each of provider/<service>-azure and testing/<service>-test-azure,
-# resolves the newest upstream commit that still contains the tree and extracts
-# it into one scratch directory suitable for the engine's --seed-source input.
-# The two trees are resolved independently: upstream can delete them in
-# different commits, so no single commit need contain both.
+# For each of provider/<service>-azure and testing/<service>-test-azure, resolves
+# the newest upstream commit that still contains the tree and extracts it into
+# one scratch directory for the engine's --seed-source input. The two trees are
+# resolved independently: upstream can delete them in different commits.
 #
-# A path deleted through a merge is invisible to simplified history:
-# rev-list without --full-history returns nothing, and with it the newest
-# result is the deletion commit itself, whose first parent is not necessarily
-# the side that carried the tree. The walk below checks the commit, then each
-# of its parents, and takes the first that resolves the path.
+# A path deleted through a merge is invisible to simplified history: rev-list
+# without --full-history returns nothing, and with it the newest result is the
+# deletion commit itself, whose first parent is not necessarily the side that
+# carried the tree. The walk checks the commit, then each parent, and takes the
+# first that resolves the path.
 #
-# Usage:
-#   seed-source.sh <upstream_ref> <service> <out_file>
+# Usage: seed-source.sh <upstream_ref> <service> <out_file>
 #
 # Writes key=value lines to <out_file>:
 #   seed_dir=<directory holding both extracted trees>

@@ -1,7 +1,5 @@
 name: "Copilot Setup Steps"
 
-# Automatically run the setup steps when they are changed to allow for easy validation, and
-# allow manual testing through the repository's "Actions" tab
 on:
   workflow_dispatch:
   push:
@@ -12,18 +10,13 @@ on:
       - .github/workflows/copilot-setup-steps.yml
 
 jobs:
-  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  # Copilot only picks up a job named copilot-setup-steps.
   copilot-setup-steps:
     runs-on: ubuntu-latest
 
-    # Set the permissions to the lowest permissions possible needed for your steps.
-    # Copilot will be given its own token for its operations.
     permissions:
-      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
       contents: read
 
-    # You can define any steps you want, and they will run before the agent starts.
-    # If you do not check out your code, Copilot will do this for you.
     steps:
       - name: Checkout code
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -38,13 +31,9 @@ jobs:
       - name: Install Maven dependencies
         continue-on-error: true
         env:
-          # Fix for Maven 3.9+ network issues with Azure/GitHub Actions
-          # Limits connection lifetime to prevent stale connections from being reused
-          # Maven will retry connections 3 times by default
+          # Caps connection lifetime so Maven 3.9+ stops reusing stale connections on Actions runners.
           MAVEN_OPTS: "-Daether.connector.http.connectionMaxTtl=25"
         run: |
-          # Retry Maven dependency resolution to handle intermittent network failures
-          # This is especially important for large dependency trees or slower networks
           MAX_ATTEMPTS=3
           ATTEMPT=1
 

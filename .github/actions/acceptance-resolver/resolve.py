@@ -43,12 +43,10 @@ FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag")
 VALUE_SOURCES = ("static", "template")
 SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + ("user", "keyvault:<name>")
 
-# Envelope location per fact kind. `partition` and `legalTag` read the
-# primary entry of the partitions list (legal tags are partition-scoped).
-# openid is the OIDC v2.0 issuer URL, published explicitly by the stack --
-# never derived from tenant_id here. openid and legalTag are agreed with the
-# stack (osdu-spi-stack#131) but not yet published; until then they resolve
-# as env-not-ready.
+# `partition` and `legalTag` read the primary entry of the partitions list
+# (legal tags are partition-scoped). openid is the issuer URL the stack
+# publishes, never derived from tenant_id here. A fact the stack does not
+# publish yet resolves as env-not-ready.
 FACT_PATHS = {
     "gateway": ("base_url",),
     "openid": ("azure", "openid_issuer"),
@@ -750,10 +748,9 @@ def write_report(path, report):
 
 
 def write_env_file(path, resolved):
-    # The file can carry Key Vault secrets: create it owner-only, tighten a
-    # pre-existing destination, and never write through a symlink planted at
-    # the workspace-relative path. O_NOFOLLOW and fchmod are POSIX-only; on
-    # other platforms an islink pre-check keeps the refusal typed.
+    # The file can carry secrets: create it owner-only and never write through
+    # a symlink planted at the path. O_NOFOLLOW and fchmod are POSIX-only, so
+    # elsewhere an islink pre-check keeps the refusal typed.
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     if not nofollow and os.path.islink(path):
         raise Infra("ENV_FILE_SYMLINK",
@@ -802,10 +799,9 @@ def main(argv=None):
         args.mode = "contract-only"
     elif not (args.mode and args.facts and args.env_file):
         parser.error("--mode, --facts and --env-file are required unless --contract-only")
-    # An output aliasing another output, or any input, would overwrite what
-    # this run reads (or delete it via the failure cleanup); refuse up front.
-    # Contract-only runs carry no env file and may carry no facts, so only
-    # paths actually in play participate.
+    # An output aliasing another output or an input would overwrite what this
+    # run reads, or delete it in the failure cleanup. Only paths in play are
+    # checked; contract-only runs carry no env file and may carry no facts.
     if args.report and args.env_file and \
             os.path.realpath(args.report) == os.path.realpath(args.env_file):
         parser.error("--report and --env-file must name different paths")

@@ -97,8 +97,8 @@ jobs:
             '["❌ Dependency Update Build Failed"]' }}
 
   docker-build:
-    # Name must differ from validate.yml's "🐳 Docker Build (validate)", which also reports on
-    # these PRs. Advisory only: the required summary passes Dependabot through.
+    # The name must differ from validate.yml's "🐳 Docker Build (validate)", which also reports
+    # on these PRs. Advisory only: the required summary passes Dependabot through.
     name: "🐳 Dependabot Docker Build (validate)"
     needs: java-build
     if: needs.java-build.outputs.build_result == 'success'
@@ -139,16 +139,13 @@ jobs:
       - name: "Create Issue for Failed Build"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Pass PR metadata as environment variables to avoid ${{ }} literal
-          # substitution in shell, which breaks when values contain special characters.
+          # PR metadata via env, not ${{ }} in the script: a title with quotes would break the shell.
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          # Extract dependency details from PR title
           DEPENDENCY=$(echo "$PR_TITLE" | grep -oP 'bump \K[^ ]+ from [^ ]+ to [^ ]+' || echo "dependency")
 
-          # Write issue body to file to safely handle special characters
           cat > /tmp/issue_body.md << ISSUE_EOF
           ## Dependabot PR Build Failure
 
@@ -176,7 +173,6 @@ jobs:
           @${{ github.repository_owner }}
           ISSUE_EOF
 
-          # Create the issue using --body-file to safely handle special characters
           gh issue create \
             --title "🔴 Dependabot Build Failure: $DEPENDENCY" \
             --body-file /tmp/issue_body.md \

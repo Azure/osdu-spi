@@ -2,14 +2,13 @@ name: Sync Template
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Run daily at 8 AM UTC
-  workflow_dispatch:      # Allow manual trigger
+    - cron: '0 8 * * *'  # Daily at 08:00 UTC
+  workflow_dispatch:
 
 jobs:
   sync:
-    # Customer-tier mirror forks receive workflow and configuration updates
-    # through the mirror of their parent repository, never directly from the
-    # template; a second delivery channel would oscillate against it (ADR-039).
+    # Mirror forks get workflow and config updates through the mirror of their parent,
+    # never from the template; a second delivery channel would oscillate against it (ADR-039).
     if: vars.SYNC_MODE != 'mirror'
     runs-on: ubuntu-latest
     permissions:
@@ -40,22 +39,18 @@ jobs:
         env:
           TEMPLATE_REPO_URL: ${{ vars.TEMPLATE_REPO_URL || 'https://github.com/azure/osdu-spi.git' }}
         run: |
-          # Add template remote if it doesn't exist
           if ! git remote get-url template >/dev/null 2>&1; then
             git remote add template "$TEMPLATE_REPO_URL"
           fi
           
-          # Fetch latest from template with explicit branch reference
           git fetch template refs/heads/main:refs/remotes/template/main --prune
 
       - name: Check for template updates
         id: check-updates
         run: |
-          # Get the latest commit from template main branch
           TEMPLATE_COMMIT=$(git rev-parse refs/remotes/template/main)
           echo "Template latest commit: $TEMPLATE_COMMIT"
           
-          # Check if we have a record of the last synced template commit
           LAST_SYNC_FILE=".github/.template-sync-commit"
           if [ -f "$LAST_SYNC_FILE" ]; then
             LAST_SYNC_COMMIT=$(cat "$LAST_SYNC_FILE" 2>/dev/null || echo "")
@@ -71,11 +66,10 @@ jobs:
           fi
           
           if [ "${NEEDS_BOOTSTRAP:-false}" = "true" ]; then            
-            # Try to find a reasonable baseline - use the first commit that has .github files
+            # Baseline for a fork with no record: the first template commit touching .github/.
             BASELINE_COMMIT=$(git log refs/remotes/template/main --reverse --oneline -- .github/ | head -1 | cut -d' ' -f1)
             
             if [ -z "$BASELINE_COMMIT" ]; then
-              # Fallback: use first commit in template repository
               BASELINE_COMMIT=$(git log refs/remotes/template/main --reverse --oneline | head -1 | cut -d' ' -f1)
               echo "Using first template commit as baseline: $BASELINE_COMMIT"
             else
@@ -84,65 +78,53 @@ jobs:
             
             LAST_SYNC_COMMIT="$BASELINE_COMMIT"
             
-            # Create the tracking file immediately to avoid future bootstrap issues
             mkdir -p "$(dirname "$LAST_SYNC_FILE")"
             echo "$BASELINE_COMMIT" > "$LAST_SYNC_FILE"
             echo "Created tracking file with baseline commit"
           fi
           
-          # Ensure we have a valid LAST_SYNC_COMMIT
           if [ -z "$LAST_SYNC_COMMIT" ]; then
             echo "ERROR: Failed to determine last sync commit"
             exit 1
           fi
           
-          # Check if there are new commits in template
           if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ]; then
             echo "No template updates found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           
-          # Get sync configuration to know what files to check
           SYNC_CONFIG_EXISTS=$(git show refs/remotes/template/main:.github/sync-config.json >/dev/null 2>&1 && echo "true" || echo "false")
           
           if [ "$SYNC_CONFIG_EXISTS" = "true" ]; then
-            # Extract paths from sync configuration
             git show refs/remotes/template/main:.github/sync-config.json > temp-sync-config.json
             
-            # Build list of paths to check for changes
             SYNC_PATHS=""
-            # Add directories
             DIRECTORIES=$(jq -r '.sync_rules.directories[] | .path' temp-sync-config.json 2>/dev/null || echo "")
             for dir in $DIRECTORIES; do
               SYNC_PATHS="$SYNC_PATHS $dir"
             done
             
-            # Add files  
             FILES=$(jq -r '.sync_rules.files[] | .path' temp-sync-config.json 2>/dev/null || echo "")
             for file in $FILES; do
               SYNC_PATHS="$SYNC_PATHS $file"
             done
             
-            # Add workflows to check paths (template workflows will be processed differently)
             TEMPLATE_WORKFLOWS=$(jq -r '.sync_rules.workflows.template_workflows[]? | .path' temp-sync-config.json 2>/dev/null || echo "")
             for workflow in $TEMPLATE_WORKFLOWS; do
               [ -n "$workflow" ] && SYNC_PATHS="$SYNC_PATHS $workflow"
             done
             
-            # Add sync config itself
             SYNC_PATHS="$SYNC_PATHS .github/sync-config.json"
             
             rm -f temp-sync-config.json
             
             echo "Checking for changes in configured sync paths: $SYNC_PATHS"
           else
-            # Fallback to checking all .github files
             SYNC_PATHS=".github/"
             echo "No sync config found, checking all .github files"
           fi
           
-          # Check for changes in the configured paths
           GITHUB_CHANGES=""
           for path in $SYNC_PATHS; do
             CHANGES=$(git diff --name-only $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT -- "$path" 2>/dev/null || echo "")
@@ -167,7 +149,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Ensure the template-sync label exists (required for PR detection and creation)
           if ! gh label list --json name --jq '.[].name' | grep -q "^template-sync$"; then
             echo "Creating template-sync label..."
             gh label create "template-sync" \
@@ -185,7 +166,6 @@ jobs:
         run: |
           echo "Detecting existing template sync PRs..."
 
-          # Query for open PRs with template-sync label targeting main branch
           EXISTING_PR=$(gh pr list \
             --state open \
             --label "template-sync" \
@@ -209,27 +189,22 @@ jobs:
         if: steps.check-updates.outputs.has_updates == 'true'
         run: |
           if [ "${{ steps.detect-existing.outputs.has_existing_pr }}" = "true" ]; then
-            # Reuse existing branch
             SYNC_BRANCH="${{ steps.detect-existing.outputs.existing_pr_branch }}"
             echo "🔄 Reusing existing branch: $SYNC_BRANCH"
 
-            # Clean up any untracked files created during bootstrap (e.g., .template-sync-commit)
-            # These would conflict with checkout since the existing branch also has them
+            # A bootstrap may have written the tracking file untracked; the existing branch
+            # already carries it, and checkout would refuse to overwrite it.
             git clean -f -- .github/.template-sync-commit
 
-            # Fetch and checkout existing branch
             git fetch origin $SYNC_BRANCH
             git checkout -b $SYNC_BRANCH origin/$SYNC_BRANCH
 
-            # Reset to main to get clean state
             git reset --hard refs/heads/main
           else
-            # Create new sync branch with timestamp
             DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
             SYNC_BRANCH="template-sync/${DATE_SUFFIX}"
             echo "🆕 Creating new branch: $SYNC_BRANCH"
 
-            # Create and checkout sync branch from main
             git checkout -b $SYNC_BRANCH refs/heads/main
           fi
 
@@ -241,39 +216,33 @@ jobs:
           TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
           LAST_SYNC_COMMIT="${{ steps.check-updates.outputs.last_sync_commit }}"
           
-          # Get sync configuration from template
           git show refs/remotes/template/main:.github/sync-config.json > temp-sync-config.json
           
           echo "Syncing template files using configuration..."
           
-          # Check if sync configuration itself has changed
+          # A changed config may name new items, so everything configured is re-synced.
           CONFIG_CHANGED=false
           if git diff --name-only $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT -- ".github/sync-config.json" | grep -q .; then
             echo "⚠️ Sync configuration has changed - will sync all configured items to catch new templates"
             CONFIG_CHANGED=true
           fi
           
-          # Sync directories (excluding staging areas)
           DIRECTORIES=$(jq -r '.sync_rules.directories[] | select(.path != ".github/fork-resources") | .path' temp-sync-config.json 2>/dev/null || echo "")
           for dir in $DIRECTORIES; do
             SHOULD_SYNC=false
             
-            # Always sync if config changed (to catch newly added templates)
             if [ "$CONFIG_CHANGED" = "true" ]; then
               echo "Syncing directory (config changed): $dir"
               SHOULD_SYNC=true
-            # Otherwise only sync if directory contents changed
             elif git diff --name-only $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT -- "$dir/" | grep -q .; then
               echo "Syncing directory (content changed): $dir"
               SHOULD_SYNC=true
             fi
             
             if [ "$SHOULD_SYNC" = "true" ]; then
-              # Remove existing directory and copy fresh from template
               rm -rf "$dir"
               mkdir -p "$(dirname "$dir")"
               
-              # Copy directory from template (if it exists)
               if git show refs/remotes/template/main:"$dir" >/dev/null 2>&1; then
                 git archive refs/remotes/template/main "$dir" | tar -x || echo "Failed to sync directory $dir"
               fi
@@ -282,26 +251,21 @@ jobs:
             fi
           done
           
-          # Sync individual files
           FILES=$(jq -r '.sync_rules.files[] | .path' temp-sync-config.json 2>/dev/null || echo "")
           for file in $FILES; do
             SHOULD_SYNC=false
             
-            # Always sync if config changed (to catch newly added templates)
             if [ "$CONFIG_CHANGED" = "true" ]; then
               echo "Syncing file (config changed): $file"
               SHOULD_SYNC=true
-            # Otherwise only sync if file changed
             elif git diff --name-only $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT -- "$file" | grep -q .; then
               echo "Syncing file (content changed): $file"
               SHOULD_SYNC=true
             fi
             
             if [ "$SHOULD_SYNC" = "true" ]; then
-              # Create directory if it doesn't exist
               mkdir -p "$(dirname "$file")"
               
-              # Copy file from template
               if git show refs/remotes/template/main:"$file" > "$file" 2>/dev/null; then
                 git add "$file"
               else
@@ -310,35 +274,29 @@ jobs:
             fi
           done
           
-          # Process template workflows - move from template-workflows/ to workflows/
+          # Template workflows land in .github/workflows/ under their basename (ADR-015).
           echo "Processing template workflow updates..."
           TEMPLATE_WORKFLOWS=$(jq -r '.sync_rules.workflows.template_workflows[]? | .path' temp-sync-config.json 2>/dev/null || echo "")
           
           for template_workflow in $TEMPLATE_WORKFLOWS; do
-            # Skip empty entries
             [ -z "$template_workflow" ] && continue
             
-            # Extract filename from template path
             WORKFLOW_FILE=$(basename "$template_workflow")
             FINAL_WORKFLOW_PATH=".github/workflows/$WORKFLOW_FILE"
             
             SHOULD_SYNC=false
             
-            # Always sync if config changed (to catch newly added templates)
             if [ "$CONFIG_CHANGED" = "true" ]; then
               echo "Syncing template workflow (config changed): $template_workflow -> $FINAL_WORKFLOW_PATH"
               SHOULD_SYNC=true
-            # Otherwise only sync if template workflow changed
             elif git diff --name-only $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT -- "$template_workflow" | grep -q .; then
               echo "Syncing template workflow (content changed): $template_workflow -> $FINAL_WORKFLOW_PATH"
               SHOULD_SYNC=true
             fi
             
             if [ "$SHOULD_SYNC" = "true" ]; then
-              # Create workflows directory if it doesn't exist
               mkdir -p ".github/workflows"
               
-              # Copy template workflow to final location
               if git show refs/remotes/template/main:"$template_workflow" > "$FINAL_WORKFLOW_PATH" 2>/dev/null; then
                 git add "$FINAL_WORKFLOW_PATH"
                 echo "Updated workflow: $FINAL_WORKFLOW_PATH"
@@ -348,22 +306,20 @@ jobs:
             fi
           done
           
-          # Process fork-resources staging area - check if fork-resources content has changed
+          # Staged resources deploy to their final fork locations (ADR-018); the staging
+          # directory itself is never copied.
           echo "Processing fork-resources staging area..."
           FORK_RESOURCES_CHANGED=false
           
-          # Always process if config changed (to catch newly added templates)
           if [ "$CONFIG_CHANGED" = "true" ]; then
             echo "Processing fork-resources (config changed)"
             FORK_RESOURCES_CHANGED=true
-          # Otherwise only process if fork-resources contents changed
           elif git diff --name-only $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT -- ".github/fork-resources/" | grep -q .; then
             echo "Processing fork-resources (content changed)"
             FORK_RESOURCES_CHANGED=true
           fi
           
           if [ "$FORK_RESOURCES_CHANGED" = "true" ]; then
-            # Process issue templates
             if git show refs/remotes/template/main:".github/fork-resources/ISSUE_TEMPLATE" >/dev/null 2>&1; then
               echo "Updating issue templates from fork-resources..."
               mkdir -p ".github/ISSUE_TEMPLATE"
@@ -371,28 +327,24 @@ jobs:
               git add ".github/ISSUE_TEMPLATE/" || true
             fi
             
-            # Process copilot instructions
             if git show refs/remotes/template/main:".github/fork-resources/copilot-instructions.md" >/dev/null 2>&1; then
               echo "Updating copilot instructions from fork-resources..."
               git show refs/remotes/template/main:".github/fork-resources/copilot-instructions.md" > ".github/copilot-instructions.md"
               git add ".github/copilot-instructions.md"
             fi
             
-            # Process copilot firewall config
             if git show refs/remotes/template/main:".github/fork-resources/copilot-firewall-config.json" >/dev/null 2>&1; then
               echo "Updating copilot firewall config from fork-resources..."
               git show refs/remotes/template/main:".github/fork-resources/copilot-firewall-config.json" > ".github/copilot-firewall-config.json"
               git add ".github/copilot-firewall-config.json"
             fi
 
-            # Process dependabot configuration
             if git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" >/dev/null 2>&1; then
               echo "Updating dependabot configuration from fork-resources..."
               git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
               git add ".github/dependabot.yml"
             fi
 
-            # Process triage prompt
             if git show refs/remotes/template/main:".github/fork-resources/triage.prompt.md" >/dev/null 2>&1; then
               echo "Updating triage prompt from fork-resources..."
               mkdir -p ".github/prompts"
@@ -401,10 +353,9 @@ jobs:
             fi
           fi
 
-          # Plant the upstream filter config if the fork lacks one. Create-if-missing
-          # only, and outside the changed-guard above: the file is fork-owned after
-          # planting, so a sync must never overwrite it, but a fork without one
-          # should receive it regardless of what changed this cycle.
+          # Plant the filter config only when missing, and outside the changed-guard: the
+          # file is fork-owned once planted, so a sync must never overwrite it, but a fork
+          # without one should receive it whatever changed this cycle.
           if [ ! -f ".github/upstream-filter.yml" ] && git show refs/remotes/template/main:".github/fork-resources/upstream-filter.yml" >/dev/null 2>&1; then
             UPSTREAM_URL="${{ vars.UPSTREAM_REPO_URL }}"
             if [ -n "$UPSTREAM_URL" ]; then
@@ -419,27 +370,21 @@ jobs:
             fi
           fi
 
-          # Note: fork-resources directory should NOT be copied to the fork repository
-
-          # Always sync the configuration file itself
           echo "Syncing sync configuration file"
           git show refs/remotes/template/main:.github/sync-config.json > .github/sync-config.json
           git add .github/sync-config.json
           
           rm -f temp-sync-config.json
           
-          # Update the sync commit tracking file
           echo "$TEMPLATE_COMMIT" > .github/.template-sync-commit
           git add .github/.template-sync-commit
           
-          # Check if there are any changes to commit
           if git diff --staged --quiet; then
             echo "No actual file changes detected"
             echo "has_changes=false" >> $GITHUB_ENV
           else
             echo "has_changes=true" >> $GITHUB_ENV
             
-            # Commit changes
             git commit -m "chore: sync template updates"$'\n\n'"Updated .github files from template repository."$'\n\n'"Template commit: $TEMPLATE_COMMIT"$'\n'"Previous sync: $LAST_SYNC_COMMIT"
           fi
 
@@ -447,11 +392,9 @@ jobs:
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
         run: |
           if [ "${{ steps.detect-existing.outputs.has_existing_pr }}" = "true" ]; then
-            # Force push to update existing branch
             git push -f origin $SYNC_BRANCH
             echo "🔄 Force-pushed updates to existing branch"
           else
-            # Normal push for new branch
             git push origin $SYNC_BRANCH
             echo "🆕 Pushed new sync branch"
           fi
@@ -459,11 +402,9 @@ jobs:
       - name: Prepare template sync PR body
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
         run: |
-          # Get the changes for PR description
           TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
           LAST_SYNC_COMMIT="${{ steps.check-updates.outputs.last_sync_commit }}"
           
-          # Generate change summary - use printf to safely format the output
           BODY_FILE="$RUNNER_TEMP/template-sync-body.md"
           echo "BODY_FILE=$BODY_FILE" >> $GITHUB_ENV
 
@@ -471,8 +412,8 @@ jobs:
           printf "This PR syncs the latest changes from the template repository to keep our workflows and GitHub configuration up to date.\n\n" >> "$BODY_FILE"
           printf "### Changed Files\n" >> "$BODY_FILE"
           
-          # Capture first: a `while read` loop over empty input exits 0, so an
-          # `|| echo placeholder` after the loop can never fire.
+          # Captured first: a `while read` loop over empty input exits 0, so a trailing
+          # `|| echo placeholder` could never fire.
           CHANGED_FILES=$(git diff --name-only "refs/heads/main...$SYNC_BRANCH")
           if [ -n "$CHANGED_FILES" ]; then
             while read -r file; do printf -- "- %s\n" "$file"; done <<<"$CHANGED_FILES" >> "$BODY_FILE"
@@ -494,8 +435,8 @@ jobs:
           printf -- "- Previous sync: \`%s\`\n" "$LAST_SYNC_COMMIT" >> "$BODY_FILE"
           printf "\nThese changes help maintain consistency with the latest template improvements and bug fixes.\n" >> "$BODY_FILE"
           
-          # GitHub rejects a PR body over 65536 characters; a fork that has drifted
-          # far from the template can produce a long changed-files list.
+          # GitHub rejects a PR body over 65536 characters; a fork that has drifted far
+          # from the template can produce a long changed-files list.
           BODY=$(cat "$BODY_FILE")
           if [ "${#BODY}" -gt 60000 ]; then
             printf '%s\n\n_Description truncated._\n' "${BODY:0:60000}" > "$BODY_FILE"
@@ -511,7 +452,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Conventional prefix required: forks' Validate Commit Messages check gates PR titles.
+          # Conventional prefix required: the Validate Commit Messages check gates PR titles.
           PR_URL=$(gh pr create \
             --base main \
             --head "$SYNC_BRANCH" \
@@ -531,14 +472,12 @@ jobs:
           TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
           LAST_SYNC_COMMIT="${{ steps.check-updates.outputs.last_sync_commit }}"
 
-          # Check if labels.json changed in this template update
+          # Labels are not synced automatically (ADR-008); a change opens a human-required issue.
           if git diff $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT refs/remotes/template/main -- .github/labels.json | grep -q "^[+-]"; then
             echo "📋 Label configuration changes detected"
 
-            # Get the diff for the issue body
             LABEL_DIFF=$(git diff $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT refs/remotes/template/main -- .github/labels.json)
 
-            # Write issue to file
             printf "## Label Configuration Changes Detected\n\n" > /tmp/issue.md
             printf "The template has updated labels.json. Manual review required.\n\n" >> /tmp/issue.md
             printf '### Label Diff\n\n```diff\n' >> /tmp/issue.md
@@ -571,13 +510,11 @@ jobs:
           PR_NUMBER="${{ steps.detect-existing.outputs.existing_pr_number }}"
           TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
 
-          # Update PR title and description. The prefix must lead the title:
-          # the semantic-pr check reads the type from the first characters.
+          # The conventional prefix must lead the title; the semantic-pr check reads the type from it.
           gh pr edit "$PR_NUMBER" \
             --title "chore(template-sync): sync template updates (updated $(date +%Y-%m-%d))" \
             --body-file "$BODY_FILE"
 
-          # Add comment to the PR about the update
           gh pr comment "$PR_NUMBER" --body "🔄 **Template Sync Updated**
 
           The template repository has new changes since this PR was created. This branch has been updated with the latest template changes.
@@ -587,7 +524,6 @@ jobs:
 
           Please review the updated changes and merge when ready."
 
-          # Set outputs for consistency
           echo "pr-url=${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
 
           echo "✅ Updated existing PR #$PR_NUMBER with new template changes"

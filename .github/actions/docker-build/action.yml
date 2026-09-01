@@ -56,7 +56,6 @@ runs:
       if: ${{ inputs.push == 'true' }}
       shell: bash
       run: |
-        # Fail fast: the push path needs a token for GHCR login and the visibility flip
         if [ -z "${GITHUB_TOKEN:-}" ]; then
           echo "::error::push=true requires github_token (GHCR login + visibility flip)."
           exit 1
@@ -67,8 +66,7 @@ runs:
     - name: "Compute image metadata"
       id: meta
       shell: bash
-      # Inputs are passed via env (never interpolated into the script body) so a value
-      # containing $(...) or backticks cannot be shell-evaluated.
+      # Inputs arrive via env, never interpolated into the script, so $(...) or backticks cannot run.
       run: |
         "$GITHUB_ACTION_PATH/compute-metadata.sh" "$REGISTRY" "$ORG" "$IMAGE_NAME"
       env:
@@ -86,8 +84,6 @@ runs:
     - name: "Resolve service JAR path"
       id: jar
       shell: bash
-      # Honours the conventional/override path, else discovers the Azure JAR so a deviant-module
-      # fork (e.g. entitlements-v2-azure) builds with no manual variable (ADR-037).
       run: "$GITHUB_ACTION_PATH/resolve-jar.sh"
       env:
         REQUESTED_JAR: ${{ inputs.jar_file }}
@@ -106,7 +102,7 @@ runs:
         PUSH: ${{ inputs.push }}
 
     - name: "Set up QEMU"
-      # Only needed for the emulated linux/arm64 leg, which runs on the push path (multi-arch).
+      # Only the push path builds the emulated linux/arm64 leg.
       if: ${{ inputs.push == 'true' }}
       uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
 
@@ -128,24 +124,21 @@ runs:
         context: ${{ inputs.build_context }}
         file: ${{ inputs.dockerfile_path }}
         push: ${{ inputs.push == 'true' }}
-        # Multi-arch only on the push path (release images). The validate-only build (push:false) stays
-        # amd64-only to avoid QEMU emulation cost on every PR; the Dockerfile is arch-agnostic (no RUN),
-        # so the push build still validates arm64 before release. provenance:false keeps the pushed index
-        # to the two real platforms — the unknown/unknown attestation manifest makes a bare `docker pull` miss on arm64.
+        # Multi-arch only on the push path; validate-only builds skip the QEMU cost on every PR.
+        # provenance:false keeps the pushed index to the two real platforms: the unknown/unknown
+        # attestation manifest makes a bare docker pull miss on arm64.
         platforms: ${{ inputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
         provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}
         build-args: |
           JAR_FILE=${{ steps.jar.outputs.jar_file }}
           ${{ inputs.build_args }}
-        # Links the package to its repo in the GHCR UI (source link). Visibility is governed
-        # by the org default, not this label — repo-linkage inherits permissions, not visibility.
+        # Links the package to its repo in the GHCR UI; this inherits permissions, not visibility.
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
         cache-from: type=gha
-        # ignore-error: two runs of the same PR build an identical image, so their
-        # content-addressed cache keys collide and the loser cannot reserve them.
-        # A cache write must never fail an image that built successfully.
+        # ignore-error: two runs of the same PR build an identical image and collide on the
+        # cache keys; a cache write must never fail an image that built successfully.
         cache-to: type=gha,mode=max,ignore-error=true
 
     - name: "Verify package visibility"
@@ -161,8 +154,7 @@ runs:
     - name: "Summary"
       shell: bash
       run: |
-        # Never echoes the token. Mirror to $GITHUB_STEP_SUMMARY so the validate-only
-        # required check (and the push job's digest) are legible in the PR Checks UI.
+        # Never echoes the token.
         if [ "$PUSH" = "true" ]; then
           HEADING="🐳 Docker Push"
           MSG="Image pushed: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`"

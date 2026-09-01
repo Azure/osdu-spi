@@ -331,7 +331,7 @@ fi
 grep -Fq '"add_reminder")' "$WORKFLOW" || die "compatibility decision is not logged"
 
 RECORD_LINE=$(grep -nF 'record-evaluated-sha.sh "$UPSTREAM_SHA"' "$WORKFLOW" | cut -d: -f1)
-CLASSIFY_LINE=$(grep -nF '# Classify the sync for Release Please' "$WORKFLOW" | cut -d: -f1)
+CLASSIFY_LINE=$(grep -nF 'UPSTREAM_SUBJECTS=$(git log --format=%s' "$WORKFLOW" | cut -d: -f1)
 [[ "$RECORD_LINE" -gt "$EARLY_EXIT_LINE" && "$RECORD_LINE" -lt "$CLASSIFY_LINE" ]] ||
   die "evaluated SHA is not recorded inside the no-change exit"
 

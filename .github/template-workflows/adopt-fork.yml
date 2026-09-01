@@ -1,21 +1,16 @@
 name: Adopt Fork
 
-# Customer-tier bootstrap (ADR-039). A GitHub fork of an initialized service
-# repository inherits every deployed workflow but none of the initialization
-# machinery (the init workflows are deleted at the parent's own init). This
-# workflow replaces initialization for such forks: it creates the sync branches
-# at the fork point, applies labels, rulesets, and merge settings, and arms
-# mirror-mode sync. It refuses to run on initialized repositories.
+# Customer-tier bootstrap (ADR-039). A GitHub fork of an initialized service repository
+# inherits every deployed workflow but none of the initialization machinery, so this
+# workflow replaces initialization: sync branches at the fork point, labels, rulesets,
+# merge settings, and mirror-mode sync. It refuses to run on initialized repositories.
 #
-# Deliberately absent compared to initialization: no filtered generation or
-# seeding (the parent's main is already the finished product), no fork-resources
-# deploy and no .template-sync-commit or filter-config planting (template sync
-# is off at this tier; every file arrives through fork creation and the mirror),
-# no workflow deployment (inherited from the parent's main).
+# Deliberately absent: filtered generation and seeding (the parent's main is already the
+# finished product), fork-resources deploy, tracking-file and filter-config planting
+# (template sync is off at this tier), and workflow deployment (inherited from the parent).
 #
-# Ordering is the idempotency design: INITIALIZATION_COMPLETE is both the entry
-# guard and the last mutation, so a partially failed run can simply be
-# re-dispatched and every completed step skips or reconciles.
+# INITIALIZATION_COMPLETE is both the entry guard and the last mutation, so a partially
+# failed run can be re-dispatched and every completed step skips or reconciles.
 
 on:
   workflow_dispatch:
@@ -90,11 +85,9 @@ jobs:
           UPSTREAM_URL: ${{ steps.upstream.outputs.upstream_url }}
         run: |
           set -euo pipefail
-          # Pin both branches at the merge base with the upstream's default
-          # branch: for a fresh fork that is HEAD itself, and for a fork whose
-          # main was customized before adoption it is the fork point. Local
-          # commits must never enter the fork_upstream lineage, or the first
-          # mirror sync's three-way merge would revert them off main.
+          # Both branches start at the merge base with upstream: HEAD for a fresh fork, the
+          # fork point for a main customized before adoption. Local commits must never enter
+          # the fork_upstream lineage, or the first mirror sync would revert them off main.
           git fetch "$UPSTREAM_URL" HEAD
           MERGE_BASE=$(git merge-base HEAD FETCH_HEAD || true)
           if [ -z "$MERGE_BASE" ]; then
@@ -124,9 +117,8 @@ jobs:
             name=$(_jq '.name')
             description=$(_jq '.description')
             color=$(_jq '.color')
-            # --force updates an existing label instead of erroring, while a
-            # real failure (permissions, rate limit) still fails the step
-            # before adoption finalizes, keeping the run re-dispatchable.
+            # --force updates an existing label, while a real failure (permissions, rate
+            # limit) still fails the step before adoption finalizes.
             gh label create "$name" --force \
               --description "$description" \
               --color "$color"
@@ -149,10 +141,9 @@ jobs:
 
       - name: Verify rulesets applied
         run: |
-          # setup-rulesets.sh exits 0 on API failures and reports only through
-          # RULESET_SUCCESS (its settings-cadence contract). Adoption must not
-          # finalize with unprotected branches: the entry guard would then
-          # block the re-dispatch that could repair them.
+          # setup-rulesets.sh exits 0 on API failures and reports through RULESET_SUCCESS.
+          # Adoption must not finalize with unprotected branches: the entry guard would
+          # then block the re-dispatch that could repair them.
           if [ "${RULESET_SUCCESS:-}" != "true" ]; then
             echo "::error::Ruleset reconciliation failed (see the step above). Fix the cause and re-dispatch; adoption has not finalized."
             exit 1
@@ -162,10 +153,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Cascade release PRs arm auto-merge with the merge-commit method.
-          # GitHub creates forks with has_issues=false; sync tracking issues
-          # (ADR-022), cascade escalation (ADR-019), and the human-required
-          # label workflow (ADR-020) all depend on Issues being enabled.
+          # Cascade release PRs arm auto-merge with the merge-commit method. GitHub creates
+          # forks with has_issues=false, and the tracking issues (ADR-022), escalation
+          # (ADR-019), and human-required label (ADR-020) all need Issues on.
           gh api --method PATCH "repos/$GITHUB_REPOSITORY" \
             -F allow_auto_merge=true -F allow_merge_commit=true -F has_issues=true > /dev/null
           echo "Enabled auto-merge, merge commits, and Issues"
@@ -183,19 +173,16 @@ jobs:
           fi
 
       - name: Enable fork-disabled workflows
-        # GITHUB_TOKEN, not the App token: enabling a workflow needs the App's
-        # Actions permission, which is distinct from Workflows (that one only
-        # covers editing workflow files) and is not in the permission set the
-        # adoption guide asks customers to grant.
+        # GITHUB_TOKEN, not the App token: enabling a workflow needs the Actions permission,
+        # distinct from Workflows, and the adoption guide does not ask customers to grant it.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Forking sets every schedule-triggered workflow to disabled_fork, which
-          # also suppresses workflow_dispatch. Sync Upstream is the customer tier's
-          # only delivery channel and CodeQL is a required check on main, so both
-          # must come back on. sync-template.yml stays off (ADR-039 gates template
-          # sync off in mirror mode); scorecard.yml is inert outside the template.
+          # Forking sets every scheduled workflow to disabled_fork, which also suppresses
+          # workflow_dispatch. Sync Upstream is this tier's only delivery channel and CodeQL
+          # is a required check, so both come back on. Template sync stays off in mirror
+          # mode (ADR-039); scorecard.yml is inert outside the template.
           KEEP_DISABLED="sync-template.yml scorecard.yml"
 
           DISABLED=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows" \

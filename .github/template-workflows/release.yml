@@ -6,7 +6,6 @@ on:
     paths-ignore:
       - '.github/**'
 
-# Add workflow-level permissions
 permissions:
   contents: write
   pull-requests: write
@@ -25,7 +24,6 @@ jobs:
       - name: "Verify Initialization Status"
         id: check
         run: |
-          # Check repository variable instead of file
           if [ "${{ vars.INITIALIZATION_COMPLETE }}" = "true" ]; then
             echo "initialized=true" >> $GITHUB_OUTPUT
           else
@@ -98,19 +96,16 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Get the latest release tag
           RELEASE_TAG=$(gh release list -L 1 | cut -f 3)
           
-          # Create correlation tag with upstream reference (additive approach)
+          # Additive: the release tag itself is never moved.
           CORRELATION_TAG="${RELEASE_TAG}-upstream-${UPSTREAM_VERSION}"
           
-          # Only create correlation tag if it doesn't already exist
           if ! git tag -l "${CORRELATION_TAG}" | grep -q .; then
             git tag $CORRELATION_TAG
             git push origin $CORRELATION_TAG
           fi
           
-          # Update release notes without changing the original tag
           RELEASE_NOTES=$(gh release view $RELEASE_TAG --json body -q .body)
           gh release edit $RELEASE_TAG \
             --notes "${RELEASE_NOTES}
@@ -150,13 +145,12 @@ jobs:
           OWNER_LC=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
           SERVICE=$(printf '%s' "${SERVICE_NAME:-$REPO_NAME}" | tr '[:upper:]' '[:lower:]')
           REPO="ghcr.io/${OWNER_LC}/${SERVICE}"
-          # Source the immutable :sha-<short> of THIS commit — not the mutable :main-snapshot, which can
-          # still point at the prior commit until validate.yml's concurrent docker-push catches up.
+          # Source the immutable :sha-<short> of this commit, not :main-snapshot, which can still
+          # point at the prior commit until validate.yml's concurrent docker-push catches up.
           SRC="${REPO}:sha-${GITHUB_SHA:0:12}"
 
-          # Wait for the concurrent docker-push (validate.yml, same push to main) to publish this image.
-          # A full Maven + Docker build can take many minutes on a cold cache, so poll generously; the
-          # loop breaks the moment the image appears, so a warm build still completes near-instantly.
+          # validate.yml's docker-push for this same push may still be building (many minutes on
+          # a cold cache); the loop exits as soon as the image appears.
           found=false
           for attempt in $(seq 1 60); do
             if docker buildx imagetools inspect "$SRC" >/dev/null 2>&1; then found=true; break; fi
@@ -173,9 +167,8 @@ jobs:
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
 
       - name: "Resolve acceptance suite"
-        # Ordered after the service retag deliberately: a malformed .spi/service.yaml exits 2,
-        # and the service image — which the descriptor has nothing to do with — must still get
-        # its :<version> tag before that failure surfaces.
+        # After the service retag on purpose: a malformed .spi/service.yaml exits 2, and the
+        # service image, which the descriptor has nothing to do with, must be tagged first.
         id: suite
         run: .github/actions/acceptance-image/resolve-suite.sh
         env:
@@ -183,9 +176,8 @@ jobs:
           RESOLVER: .github/actions/acceptance-resolver/resolve.py
 
       - name: "Tag acceptance image with semver"
-        # The acceptance image rides the same commit (design §8), so "prove release X on stack Y"
-        # stays one command months later. docker-push publishes it right after the service image,
-        # which the step above already waited out, so this poll is normally instant.
+        # Same commit as the service image, so "prove release X on stack Y" stays one command
+        # later. docker-push publishes it right after the service image, so this poll is normally instant.
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           REPO: ${{ steps.service_tag.outputs.repo }}

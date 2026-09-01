@@ -1,25 +1,18 @@
 #!/usr/bin/env bash
 #
-# Setup Upstream Repository Script
-#
-# Adds upstream remote and detects the default branch (main, master, or other).
+# Adds the upstream remote and detects its default branch.
 #
 # Arguments:
-#   $1 - Upstream repository (URL or owner/repo format)
+#   $1 - Upstream repository (URL or owner/repo)
 #   $2 - Issue number for status comments (optional)
 #
-# Environment Variables:
-#   GITHUB_TOKEN - Required for gh CLI if issue_number provided
-#   DEFAULT_BRANCH - Output: Sets this environment variable to detected branch
-#   REPO_URL - Output: Sets this environment variable to full URL
-#
-# Usage:
-#   ./setup-upstream.sh "https://github.com/azure/osdu-infrastructure.git" "123"
-#   ./setup-upstream.sh "azure/osdu-infrastructure"
+# Environment:
+#   GITHUB_TOKEN - issue comments when an issue number is given
+#   DEFAULT_BRANCH - output: written to GITHUB_ENV
+#   REPO_URL - output: written to GITHUB_ENV as the full clone URL
 
 set -euo pipefail
 
-# Validate arguments
 if [[ $# -lt 1 ]]; then
   echo "Error: Missing required argument"
   echo "Usage: $0 <upstream_repo> [issue_number]"
@@ -31,7 +24,6 @@ ISSUE_NUMBER="${2:-}"
 
 echo "Setting up upstream repository: $UPSTREAM_REPO"
 
-# Convert to URL format
 if [[ "$UPSTREAM_REPO" == http* ]]; then
   REPO_URL="$UPSTREAM_REPO"
   if [[ ! "$REPO_URL" == *.git ]]; then
@@ -43,27 +35,22 @@ fi
 
 echo "Repository URL: $REPO_URL"
 
-# Store repo URL for use in subsequent steps
 if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "REPO_URL=$REPO_URL" >> "$GITHUB_ENV"
 fi
 
-# Add upstream remote
 git remote add upstream "$REPO_URL"
 git fetch upstream --prune --tags
 
-# Get all branches from upstream
 BRANCHES=$(git branch -r | grep upstream | sed 's/upstream\///' | grep -v HEAD | tr '\n' ' ' || echo "")
 echo "Available branches: $BRANCHES"
 
-# Determine default branch
 if git rev-parse --verify upstream/main >/dev/null 2>&1; then
   DEFAULT_BRANCH="main"
 elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
   DEFAULT_BRANCH="master"
 else
-  # Try to detect default branch from HEAD
-  # Using @ as sed delimiter to avoid escaping slashes in path
+  # @ delimiter: the ref contains slashes.
   DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/upstream/HEAD 2>/dev/null | sed 's@^refs/remotes/upstream/@@' || echo "")
 
   if [[ -z "$DEFAULT_BRANCH" ]]; then
@@ -96,12 +83,10 @@ fi
 
 echo "✅ Detected default branch: $DEFAULT_BRANCH"
 
-# Store default branch for use in subsequent steps
 if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> "$GITHUB_ENV"
 fi
 
-# Post success comment if issue number provided
 if [[ -n "$ISSUE_NUMBER" ]] && [[ -n "${GITHUB_TOKEN:-}" ]]; then
   echo "✅ Using default branch: $DEFAULT_BRANCH" | gh issue comment "$ISSUE_NUMBER" --body-file -
 fi

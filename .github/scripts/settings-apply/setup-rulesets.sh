@@ -1,29 +1,21 @@
 #!/usr/bin/env bash
 #
-# Setup / reconcile repository rulesets (idempotent).
+# Creates or updates the rulesets in .github/rulesets/*.json by name, so it is
+# safe to run at init and again on the settings-apply cadence.
 #
-# Creates the branch-protection rulesets from .github/rulesets/*.json, or updates
-# them in place when they already exist (GET-by-name -> PUT, else POST). Safe to
-# run repeatedly — used both at fresh-fork init and on the settings-apply cadence.
-#
-# Per-fork required-check filter: the canonical default-branch.json lists the
-# fully-onboarded check set. On a fork that is not yet deploy-ready, the
-# deploy/integration-test checks are stripped from the payload so they don't block
-# every PR on checks that can't pass yet. The docker-build check is always kept.
+# default-branch.json lists the fully onboarded check set. On a fork that is
+# not yet deploy-ready the deploy and integration-test checks are stripped from
+# the payload so PRs are not blocked on checks that cannot pass yet.
 #
 # Arguments:
 #   $1            Repository full name (owner/repo)
 #   $2            Issue number for status comments (optional)
-#   --dry-run     Print planned actions (create/update/no-op + filter decision); no mutations
+#   --dry-run     Print planned actions and the filter decision; no mutations
 #
 # Environment:
-#   GH_TOKEN      Required for mutations (PAT/app token with admin permissions)
-#   GITHUB_TOKEN  Used for issue comments if an issue number is provided
-#   RULESET_SUCCESS  Output via GITHUB_ENV: "true" or "false"
-#
-# Usage:
-#   GH_TOKEN=*** ./setup-rulesets.sh "owner/repo" "123"
-#   GH_TOKEN=*** ./setup-rulesets.sh "owner/repo" --dry-run
+#   GH_TOKEN      admin token for ruleset mutations
+#   GITHUB_TOKEN  issue comments when an issue number is given
+#   RULESET_SUCCESS  output: written to GITHUB_ENV as "true" or "false"
 
 set -euo pipefail
 
@@ -43,7 +35,7 @@ REPO_FULL_NAME="${ARGS[0]}"
 ISSUE_NUMBER="${ARGS[1]:-}"
 RULESET_SUCCESS=true
 
-# Deploy/integration-test required checks are stripped on forks that are not deploy-ready.
+# Stripped from the required checks on forks that are not deploy-ready.
 DEPLOY_CHECKS=("🚀 Deploy to spi-stack" "🧪 Integration Tests")
 
 echo "Reconciling repository rulesets for $REPO_FULL_NAME (dry_run: $DRY_RUN)..."
@@ -60,8 +52,8 @@ if [[ -z "${GH_TOKEN:-}" ]] && [[ "$DRY_RUN" != "true" ]]; then
 fi
 export GH_TOKEN
 
-# Deploy-readiness gate. SERVICE_NAME / MAVEN_PROFILE default at runtime (ADR-035/037), so they
-# do NOT gate deploy; only the genuinely-required deploy/test inputs do.
+# SERVICE_NAME and MAVEN_PROFILE default at runtime (ADR-035, ADR-037), so they
+# do not gate deploy; only the inputs with no default do.
 deploy_ready() {
   local ready=true name
   local secret_names variable_names
@@ -77,7 +69,7 @@ deploy_ready() {
 if deploy_ready; then DEPLOY_READY=true; else DEPLOY_READY=false; fi
 echo "Deploy-ready: $DEPLOY_READY (controls whether deploy/integration-test checks are required)"
 
-# Build the ruleset payload, stripping deploy/test checks when the fork isn't deploy-ready.
+# Strips the deploy and test checks from the payload when the fork is not deploy-ready.
 build_payload() {
   local config_file="$1"
   if [[ "$DEPLOY_READY" == "true" ]]; then

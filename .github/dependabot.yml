@@ -1,24 +1,9 @@
 version: 2
 updates:
-  # ========================================================================
-  # TEMPLATE REPOSITORY CONFIGURATION
-  # ========================================================================
-  # This configuration is for the TEMPLATE repository (azure/osdu-spi)
-  # which serves as the engineering system/platform.
-  #
-  # ARCHITECTURE DECISION:
-  # - Template owns: Engineering system (.github workflows and actions)
-  # - Forks own: Application code (Maven dependencies)
-  # - Updates flow: Template → sync-template → Forks
-  #
-  # Fork repositories receive .github updates via sync-template workflow,
-  # NOT via their own dependabot. This eliminates race conditions and
-  # duplicate PRs while maintaining clear separation of concerns.
-  # ========================================================================
+  # Template repository only. The template owns the engineering system (.github
+  # workflows and actions); forks own application code and receive .github
+  # updates through sync-template, never through their own Dependabot.
 
-  # GitHub Actions - Engineering System (Template Responsibility)
-  # Monitors ALL .github subdirectories recursively for workflow/action updates
-  # Includes: workflows/, template-workflows/, actions/, local-actions/
   - package-ecosystem: "github-actions"
     directory: "/.github"
     schedule:
@@ -38,11 +23,9 @@ updates:
     cooldown:
       default-days: 7
 
-  # Docker base image - Canonical service Dockerfile (Engineering System, ADR-037)
-  # Template-only: bumps the digest pinned in build/Dockerfile; template-sync then propagates the
-  # updated Dockerfile to every fork. Forks carry no docker ecosystem, so they never author their
-  # own base-image bump. The App Insights agent (ADD --checksum) is not a FROM ref, so Dependabot
-  # does not track it — agent version bumps stay manual.
+  # Bumps the base image digest in build/Dockerfile; template-sync carries the
+  # updated Dockerfile to every fork (ADR-037). The App Insights agent is an ADD
+  # with a checksum, not a FROM, so its version bump stays manual.
   - package-ecosystem: "docker"
     directory: "/build"
     schedule:
@@ -57,7 +40,5 @@ updates:
           - "*"
     open-pull-requests-limit: 5
 
-  # Python/doc dependencies removed to prevent fork initialization issues
-  # Issue: Forks inherit this config momentarily before deploy-fork-resources.sh runs,
-  # causing Dependabot to cache the pip/doc ecosystem even after replacement
-  # Template documentation updates can be monitored separately if needed
+  # No pip ecosystem for doc/: a fork inherits this file until
+  # deploy-fork-resources.sh replaces it, and Dependabot caches the ecosystem.

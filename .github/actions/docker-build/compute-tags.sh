@@ -1,26 +1,14 @@
 #!/usr/bin/env bash
 #
-# Compute Image Tags Script
-#
-# Computes the container image tags for the docker-build action.
-#
-# Arguments:
-#   $1 - image repository (e.g. ghcr.io/org/partition)
-#   $2 - short commit SHA (12 chars)
-#   $3 - git ref name (branch or tag, from github.ref_name)
-#   $4 - push flag (true/false)
-#
-# Tagging strategy:
+# Computes the image tags for the docker-build action:
 #   :sha-<short>        always
-#   :<branch>-snapshot  only when push=true AND branch is protected (main, fork_integration, fork_upstream)
-#   :<version>          NOT emitted here — release.yml (W7) owns the version retag
+#   :<branch>-snapshot  only when push=true and the branch is protected
+#   :<version>          never here; release.yml owns the version retag
 #
-# Outputs (via GITHUB_OUTPUT):
-#   image_tags  - comma-separated tag list (human/log use only)
-#   docker_tags - newline-separated tag list (fed to docker/build-push-action `tags:`)
+# docker_tags (newline-separated) feeds docker/build-push-action; image_tags
+# (comma-separated) is for logs only.
 #
-# Local usage:
-#   GITHUB_OUTPUT=/dev/stdout ./compute-tags.sh ghcr.io/org/partition abc123def456 main true
+# Local: GITHUB_OUTPUT=/dev/stdout ./compute-tags.sh ghcr.io/org/partition abc123def456 main true
 
 set -euo pipefail
 
@@ -37,8 +25,7 @@ PUSH="$4"
 
 TAGS=("${IMAGE_REPOSITORY}:sha-${SHORT_SHA}")
 
-# Branch-snapshot tag only on the push path for protected branches
-# (matches the Maven -Drevision=<branch>-SNAPSHOT convention)
+# Snapshot tags mirror the Maven -Drevision=<branch>-SNAPSHOT convention.
 if [[ "$PUSH" == "true" ]]; then
   case "$REF_NAME" in
     main|fork_integration|fork_upstream)

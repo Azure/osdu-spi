@@ -7,7 +7,6 @@ on:
 permissions:
   contents: read
 
-# Only run in the template repository
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

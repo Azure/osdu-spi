@@ -18,8 +18,8 @@ concurrency:
 jobs:
   update-integration-branch:
     name: "🔄 Update Fork Integration"
-    # Run if PR was merged AND either has upstream-sync label OR came from integration/release branches
-    # This prevents fork_integration from getting stuck when manual PRs are merged without the label
+    # Also match by head branch: a manual PR merged without the upstream-sync
+    # label would otherwise leave fork_integration stuck ahead of main.
     if: >
       github.event.pull_request.merged == true && (
         contains(github.event.pull_request.labels.*.name, 'upstream-sync') ||
@@ -45,7 +45,6 @@ jobs:
           echo "Fetching latest branch states..."
           git fetch origin --prune
 
-          # Check that required branches exist before attempting checkout
           if ! git show-ref --verify --quiet refs/remotes/origin/main; then
             echo "❌ Error: origin/main branch not found"
             exit 1
@@ -58,7 +57,6 @@ jobs:
           echo "Checking out fork_integration branch..."
           git checkout -b fork_integration --track origin/fork_integration 2>/dev/null || git checkout fork_integration
 
-          # Check current state
           COMMITS_BEHIND=$(git rev-list --count fork_integration..origin/main)
           COMMITS_AHEAD=$(git rev-list --count origin/main..fork_integration)
 
@@ -73,7 +71,6 @@ jobs:
           fi
 
           echo "Resetting fork_integration to match main..."
-          # Fast-forward fork_integration to main (or reset if diverged)
           git reset --hard origin/main
 
           echo "Pushing updated fork_integration..."
@@ -89,7 +86,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find any upstream-held issues
           HELD_ISSUES=$(gh issue list --label "upstream-held" --json number,title --state open)
           HELD_COUNT=$(echo "$HELD_ISSUES" | jq 'length')
 

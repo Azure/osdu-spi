@@ -1,17 +1,7 @@
 #!/usr/bin/env bash
 #
-# Update Sync Issue Body Script
-#
-# Refreshes the human-readable sync summary and writes one canonical full-SHA
-# marker at the end of the issue body.
-#
-# Arguments:
-#   $1 - Input issue body file
-#   $2 - Output issue body file
-#   $3 - Human-readable upstream version
-#   $4 - Full upstream SHA
-#   $5 - Commit count
-#   $6 - Sync branch name
+# Refreshes the human-readable sync summary in an issue body and writes one
+# canonical full-SHA marker at the end.
 
 set -euo pipefail
 

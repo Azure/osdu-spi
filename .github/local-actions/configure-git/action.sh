@@ -1,18 +1,14 @@
 #!/bin/bash
-# Configure Git Identity
-#
-# Configures git user identity for GitHub Actions bot commits.
+# Sets the github-actions[bot] commit identity.
 #
 # Inputs (via environment):
-#   PULL_REBASE - Set pull.rebase configuration (true/false/empty)
+#   PULL_REBASE - sets pull.rebase when "true" or "false"
 
 set -euo pipefail
 
-# Always configure bot identity
 git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 
-# Configure pull behavior if requested
 if [[ "${PULL_REBASE:-}" == "true" ]]; then
     git config pull.rebase true
 elif [[ "${PULL_REBASE:-}" == "false" ]]; then

@@ -1,9 +1,7 @@
 name: CodeQL Analysis
 
-# Advanced setup rather than code scanning default setup: default setup does not
-# analyze pull requests from forks, which leaves the required "CodeQL" check
-# permanently absent on fork PRs and unmergeable (the ruleset has no bypass).
-# See issue #138.
+# Advanced setup, not default setup: default setup skips pull requests from forks, which
+# leaves the required "CodeQL" check absent and the PR unmergeable (the ruleset has no bypass).
 
 on:
   push:
@@ -43,8 +41,7 @@ jobs:
           python-version: '3.x'
 
       - name: Initialize CodeQL
-        # Commit SHA, not the v4.30.8 annotated-tag object SHA: the tag object is not a
-        # commit, so the REST commits API cannot resolve it and Dependabot cannot bump it.
+        # Commit SHA, not the annotated-tag object SHA: Dependabot cannot resolve or bump a tag object.
         uses: github/codeql-action/init@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
         with:
           languages: ${{ matrix.language }}
@@ -60,12 +57,10 @@ jobs:
         with:
           category: "/language:${{matrix.language}}"
 
-  # Forks receive .github/template-workflows/*.yml as .github/workflows/*.yml and the actions
-  # extractor only reads that path, so without this job the template never analyzes what it
-  # ships (#164). Stage the files where a fork keeps them, run the forks' suite, and fail on any
-  # finding. No SARIF or database is uploaded: the findings belong to the forks' own scans.
-  # Diff-informed analysis is off: the staged paths never appear in a PR diff, and PR runs would
-  # otherwise keep only the non-dataflow findings.
+  # The actions extractor only reads .github/workflows/, so template-workflows/ is staged there
+  # and analyzed as a fork would see it. Nothing is uploaded: the findings belong to the forks'
+  # own scans. Diff-informed analysis is off because the staged paths never appear in a PR diff,
+  # and PR runs would otherwise keep only the non-dataflow findings.
   template-workflows:
     name: Analyze Template Workflows
     runs-on: ubuntu-latest
@@ -127,9 +122,8 @@ jobs:
           fi
           echo "✅ template-workflows are clean"
 
-  # Summary job reporting as "CodeQL" to satisfy the required status check
-  # (ADR-030). always() so the context reports even when the matrix does not
-  # complete; a required check that never arrives wedges the PR.
+  # Summary job for the required "CodeQL" check (ADR-030). always() so the context reports
+  # even when the matrix does not complete; a check that never arrives wedges the PR.
   CodeQL:
     name: CodeQL
     runs-on: ubuntu-latest

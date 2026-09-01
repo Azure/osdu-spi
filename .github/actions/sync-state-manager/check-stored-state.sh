@@ -1,29 +1,14 @@
 #!/usr/bin/env bash
 #
-# Check Stored State Script
-#
-# Reads sync state for the current sync cycle. When a tracking issue exists its
-# hidden marker is authoritative, so an open cycle keeps driving branch updates.
-# With no tracking issue the durable repository variable is consulted instead,
-# which is what stops a filtered no-op SHA from being re-generated (ADR-024).
+# Reads the sync state for this cycle. A tracking issue's hidden marker is
+# authoritative while the issue is open, so an open cycle keeps driving branch
+# updates. Without an issue the durable repository variable is read instead,
+# which is what stops a filtered no-op SHA from being regenerated (ADR-024).
 # That value carries the generation revision that produced it, so a filter
-# config or engine change invalidates it rather than pinning a stale tree.
+# config or engine change invalidates it instead of pinning a stale tree.
 #
-# Arguments:
-#   $1 - Existing issue number (can be empty if no issue exists)
-#
-# Environment Variables:
-#   GITHUB_TOKEN - Required for gh CLI
-#   SYNC_MODE    - Passed through to generation-rev.sh
-#
-# Outputs:
-#   last_upstream_sha - Last synced upstream SHA
-#   current_issue_number - Issue number (same as input)
-#   last_sync_timestamp - Timestamp of last sync
-#
-# Usage:
-#   export GITHUB_TOKEN="ghp_token"
-#   ./check-stored-state.sh "123"
+# Env: GITHUB_TOKEN, SYNC_MODE (passed through to generation-rev.sh)
+# Local: ./check-stored-state.sh <existing_issue_number>
 
 set -euo pipefail
 
@@ -43,7 +28,6 @@ echo "Reading sync state from existing issue description..."
 if [[ -n "$EXISTING_ISSUE_NUMBER" ]]; then
   echo "Found existing issue #$EXISTING_ISSUE_NUMBER, parsing state from description..."
 
-  # Get issue body and extract the machine-readable upstream SHA
   ISSUE_BODY=$(gh issue view "$EXISTING_ISSUE_NUMBER" --json body --jq '.body')
 
   LAST_UPSTREAM_SHA=$(awk '
@@ -58,7 +42,6 @@ if [[ -n "$EXISTING_ISSUE_NUMBER" ]]; then
     }
   ' <<< "$ISSUE_BODY")
 
-  # Extract timestamp from issue creation/update
   LAST_SYNC_TIMESTAMP=$(gh issue view "$EXISTING_ISSUE_NUMBER" --json updatedAt --jq '.updatedAt')
 
   echo "Parsed from issue:"
@@ -103,7 +86,6 @@ else
   LAST_SYNC_TIMESTAMP=""
 fi
 
-# Output to GITHUB_OUTPUT if running in GitHub Actions
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
     echo "last_upstream_sha=$LAST_UPSTREAM_SHA"
@@ -112,9 +94,8 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   } >> "$GITHUB_OUTPUT"
 fi
 
-# Also output to stdout for local testing. A consumer that stops reading after the
-# first line must not fail the run, so SIGPIPE is ignored for these writes; nothing
-# is spawned after this point, so no child inherits the disposition.
+# A consumer that stops reading after the first line must not fail the run, so
+# SIGPIPE is ignored here; nothing is spawned afterwards to inherit it.
 trap '' PIPE
 {
   echo "last_upstream_sha=$LAST_UPSTREAM_SHA"

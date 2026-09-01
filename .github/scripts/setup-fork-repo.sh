@@ -24,22 +24,13 @@ set -euo pipefail
 #     [--template-repo <url>] \
 #     [--dry-run]
 #
-# Examples:
-#   # Setup partition service
+# Example:
 #   .github/scripts/setup-fork-repo.sh \
 #     --repo Azure/osdu-spi-partition \
 #     --upstream https://community.opengroup.org/osdu/platform/system/partition.git \
 #     --vault-name my-vault
 #
-#   # Dry run to verify
-#   .github/scripts/setup-fork-repo.sh \
-#     --repo Azure/osdu-spi-partition \
-#     --upstream https://community.opengroup.org/osdu/platform/system/partition.git \
-#     --vault-name my-vault \
-#     --dry-run
-#
 
-# Defaults
 REPO=""
 UPSTREAM=""
 VAULT_NAME="${AZURE_VAULT_NAME:-}"
@@ -121,7 +112,6 @@ fi
 az account show &> /dev/null || { echo "ERROR: Not logged in to Azure. Run: az login"; exit 1; }
 gh auth status &> /dev/null || { echo "ERROR: Not logged in to GitHub. Run: gh auth login"; exit 1; }
 
-# Verify repo exists and we have access
 if ! gh api "repos/$REPO" --jq '.full_name' &> /dev/null; then
   echo "ERROR: Cannot access repository $REPO. Check permissions."
   exit 1
@@ -154,7 +144,6 @@ fetch_secret() {
   printf '%s' "$value"
 }
 
-# GitHub App secrets
 APP_ID=$(fetch_secret "github-app-id")
 APP_KEY=$(fetch_secret "github-app-private-key")
 
@@ -204,15 +193,10 @@ echo ""
 
 # ── Repository settings ────────────────────────────────────────────
 #
-# allow_auto_merge: required for the cascade workflow to arm auto-merge on
-# release PRs. Without this, the workflow falls back to requiring humans to
-# manually click "Create a merge commit" on each release PR — which is the
-# foot-gun that caused the squash-merge cascade incident on osdu-spi-partition.
-#
-# allow_merge_commit: also required because the workflow (and the documented
-# human fallback) uses merge commits. Enabling auto-merge alone still leaves
-# "Create a merge commit" unavailable on repos where merge commits are disabled
-# by org policy or manual toggle.
+# The cascade arms auto-merge with the merge-commit method on release PRs, and
+# a squash merge breaks the fork_upstream ancestry check. Both settings are
+# needed: auto-merge alone leaves "Create a merge commit" unavailable where
+# merge commits are disabled by org policy.
 
 echo "==> Configuring repository settings..."
 

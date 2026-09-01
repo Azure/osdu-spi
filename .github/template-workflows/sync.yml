@@ -2,8 +2,8 @@ name: Sync Upstream
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Run daily at midnight
-  workflow_dispatch:      # Allow manual trigger
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+  workflow_dispatch:
 
 jobs:
   sync:
@@ -35,7 +35,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Add upstream remote using stored variable
           if [ -z "${{ vars.UPSTREAM_REPO_URL }}" ]; then
             echo "::error::UPSTREAM_REPO_URL variable is not configured. Please set it in repository settings."
             echo "This variable should contain the URL of your upstream repository (e.g., https://github.com/Azure/osdu-infrastructure.git)"
@@ -50,10 +49,8 @@ jobs:
 
       - name: Fetch Upstream
         run: |
-          # Fetch latest from upstream
           git fetch upstream --prune
 
-          # Determine default branch
           if git rev-parse --verify upstream/main >/dev/null 2>&1; then
             DEFAULT_BRANCH="main"
           elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
@@ -100,25 +97,20 @@ jobs:
 
       - name: Sync upstream changes
         id: sync-changes
-        # Only run if we should create a PR or update an existing branch
         if: steps.sync-state.outputs.should_create_pr == 'true' || steps.sync-state.outputs.should_update_branch == 'true'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          # mirror = customer tier (ADR-039): generate-branch.sh takes the
-          # upstream tip verbatim and never runs the filter engine.
+          # mirror is the customer tier (ADR-039): the upstream tip is taken verbatim, no filter engine.
           SYNC_MODE: ${{ vars.SYNC_MODE }}
         run: |
           echo "Sync mode: ${SYNC_MODE:-filter}"
 
-          # Generate branch names with timestamp for uniqueness or use existing branch
           DATE_SUFFIX=$(date +%Y%m%d-%H%M%S)
 
           if [ "${{ steps.sync-state.outputs.should_update_branch }}" = "true" ]; then
-            # Use existing branch name
             SYNC_BRANCH="${{ steps.sync-state.outputs.existing_branch_name }}"
             echo "🔄 Updating existing sync branch: $SYNC_BRANCH"
           else
-            # Create new branch name
             SYNC_BRANCH="sync/upstream-${DATE_SUFFIX}"
             echo "🆕 Creating new sync branch: $SYNC_BRANCH"
           fi
@@ -136,8 +128,7 @@ jobs:
           UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
           echo "Captured pre-sync state: $BEFORE_SHA"
 
-          # Export sync identity before generation so no-change updates can still
-          # persist the upstream SHA and avoid repeating the same comparison.
+          # Exported before generation so a no-change run can still record the evaluated SHA.
           echo "SYNC_BRANCH=$SYNC_BRANCH" >> "$GITHUB_ENV"
           echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_ENV"
           echo "UPSTREAM_VERSION=$UPSTREAM_VERSION" >> "$GITHUB_ENV"
@@ -150,10 +141,9 @@ jobs:
           if [ "$has_changes" = "false" ]; then
             echo "No changes to sync from upstream"
             echo "has_changes=false" >> $GITHUB_OUTPUT
-            # Recorded only here: on the has_changes=true path a later failure
-            # would leave state claiming this SHA was handled with no PR to show.
-            # An open sync PR carries a tree this comparison never saw, so its
-            # cycle must finish before any SHA is treated as fully evaluated.
+            # Recorded only on the no-change path: a later failure with changes would
+            # claim the SHA was handled with no PR to show. An open sync PR carries a
+            # tree this comparison never saw, so its cycle must finish first.
             if [ "${{ steps.sync-state.outputs.should_create_pr }}" = "true" ]; then
               bash .github/actions/sync-state-manager/record-evaluated-sha.sh "$UPSTREAM_SHA"
             else
@@ -162,16 +152,11 @@ jobs:
             exit 0
           fi
 
-          # Classify the sync for Release Please. A rule, not a model: the same
-          # commit range must always produce the same version bump, and a wrong
-          # bump has to be a bug someone can fix rather than a sampling artifact.
-          # Non-conventional upstream commits fall through to fix/patch so an
-          # unclassifiable sync never silently forces a minor bump.
-          # The `!` marker is only meaningful on a subject line; scanning bodies for it
-          # would let quoted prose force a major bump.
-          # Read into variables rather than piping git into grep: grep -q short-circuits,
-          # and the resulting SIGPIPE makes the pipeline return 141 under pipefail, which
-          # would silently invert this decision.
+          # Release Please classification is a rule, not a model: the same commit range
+          # always yields the same bump, and non-conventional commits fall through to fix.
+          # The `!` marker only counts on a subject line; quoted prose in a body must not
+          # force a major bump. Read into variables first: grep -q short-circuits, and the
+          # SIGPIPE makes a git|grep pipeline return 141 under pipefail, inverting the test.
           UPSTREAM_SUBJECTS=$(git log --format=%s "$BEFORE_SHA..$commit")
           UPSTREAM_BODIES=$(git log --format=%b "$BEFORE_SHA..$commit")
           if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$UPSTREAM_SUBJECTS" \
@@ -184,12 +169,11 @@ jobs:
           fi
           echo "Meta commit: $(head -n1 <<<"$META_COMMIT_MSG")"
 
-          # Empty meta commit for Release Please, carrying the generated tree unchanged
+          # Empty meta commit for Release Please; the generated tree is carried unchanged.
           META=$(git commit-tree "${commit}^{tree}" -p "$commit" -m "$META_COMMIT_MSG")
           echo "✅ Added meta commit for Release Please integration"
 
-          # Local refs keep the diff/log expressions below and in later steps
-          # working without ever checking either branch out.
+          # Local refs so later diff/log expressions work without checking either branch out.
           git branch -f "$SYNC_BRANCH" "$META"
           git branch -f fork_upstream "$BEFORE_SHA"
 
@@ -198,18 +182,15 @@ jobs:
           git push -f origin "$META:refs/heads/$SYNC_BRANCH"
           echo "Pushed generated sync branch $SYNC_BRANCH"
 
-          # Body must stay under GitHub's 65536-character limit: this is the only
-          # description path, so overflowing it would fail the job outright on
-          # exactly the largest syncs.
+          # GitHub rejects a PR body over 65536 characters, and this is the only description
+          # path, so the largest syncs would fail outright without a cap.
           MAX_BODY_COMMITS=200
-          # Range ends at the upstream tip, not the sync branch: the branch also
-          # reaches the meta and generation commits this job just wrote, which are
-          # not upstream changes. Ending at $UPSTREAM_SHA rather than the previous
-          # Upstream-Sha trailer also stays correct when upstream rewrites history.
+          # Range ends at the upstream tip, not the sync branch: the branch also reaches the
+          # meta and generation commits just written, which are not upstream changes.
           TOTAL_COMMITS=$(git rev-list --count "fork_upstream..$UPSTREAM_SHA")
           if [ "$TOTAL_COMMITS" -eq 0 ]; then
             # Tree changed with no new upstream commits, so a generation input moved
-            # (generation-rev.sh). Say so; an empty list reads like a broken body.
+            # (generation-rev.sh). An empty list would read like a broken body.
             CHANGES="* _No new upstream commits; tree regenerated at $UPSTREAM_VERSION (filter-rev $filter_rev)._"
           else
             CHANGES=$(git log -n "$MAX_BODY_COMMITS" --pretty=format:"* %s" "fork_upstream..$UPSTREAM_SHA")
@@ -223,8 +204,8 @@ jobs:
             PR_DESCRIPTION="${PR_DESCRIPTION:0:60000}"$'\n\n'"_Description truncated._"
           fi
 
-          # Randomized delimiter: a commit subject that is literally "EOF" would
-          # close the block early and the rest would parse as env assignments.
+          # Randomized delimiter: a commit subject that is literally "EOF" would close the
+          # block early and the rest would parse as env assignments.
           PR_DESCRIPTION_DELIM="EOF_$(openssl rand -hex 16)"
           {
             echo "PR_DESCRIPTION<<$PR_DESCRIPTION_DELIM"
@@ -238,13 +219,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # SYNC_BRANCH, UPSTREAM_VERSION, and PR_DESCRIPTION are already
-          # available as environment variables via $GITHUB_ENV from the sync step.
-          # IMPORTANT: Do NOT use ${{ env.X }} for these - it performs literal string
-          # substitution which breaks when values contain quotes or special characters
-          # (e.g. commit messages with double quotes cause shell parsing errors).
-
-          # Create the PR using --body-file to safely handle special characters
+          # Read from the environment, not ${{ env.X }}: expression substitution
+          # breaks on quotes in commit subjects.
           echo "Creating PR from branch $SYNC_BRANCH to fork_upstream"
           printf '%s\n' "$PR_DESCRIPTION" > /tmp/pr_body.txt
           PR_URL=$(gh pr create \
@@ -257,13 +233,9 @@ jobs:
 
           echo "PR created: $PR_URL"
 
-          # Extract PR number for output
           PR_NUMBER=$(basename "$PR_URL")
           echo "PR number: $PR_NUMBER"
 
-          # PR number will be tracked via issue description updates
-
-          # Set outputs for next step
           echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
           echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
 
@@ -274,25 +246,15 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
-          # SYNC_BRANCH, UPSTREAM_VERSION, and PR_DESCRIPTION are already
-          # available as environment variables via $GITHUB_ENV from the sync step.
-          # IMPORTANT: Do NOT use ${{ env.X }} for these - it performs literal string
-          # substitution which breaks when values contain quotes or special characters
-          # (e.g. commit messages with double quotes cause shell parsing errors).
-
-          # Update PR title and rebuild the description (capped at MAX_BODY_COMMITS)
-          # Use --body-file to safely handle special characters in description
           printf '%s\n' "$PR_DESCRIPTION" > /tmp/pr_body.txt
           gh pr edit "$PR_NUMBER" \
             --title "⬆️ Sync with upstream $UPSTREAM_VERSION (Updated)" \
             --body-file /tmp/pr_body.txt
           rm -f /tmp/pr_body.txt
           
-          # Check for existing "Sync Updated" comments to prevent duplicates
           EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.body | contains("🔄 **Sync Updated**")) | .body' | grep -c "New upstream version.*$UPSTREAM_VERSION" || echo "0")
           
           if [ "$EXISTING_COMMENT" = "0" ]; then
-            # Add comment to the PR about the update
             gh pr comment "$PR_NUMBER" --body "🔄 **Sync Updated**
             
             The upstream repository has advanced since this PR was created. This branch has been updated with the latest changes from upstream.
@@ -307,7 +269,6 @@ jobs:
             echo "ℹ️ Skipping duplicate comment - sync update for $UPSTREAM_VERSION already exists"
           fi
           
-          # Set outputs for consistency
           echo "pr-url=${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUMBER" >> $GITHUB_OUTPUT
           echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
           
@@ -320,15 +281,11 @@ jobs:
         run: |
           PR_URL="${{ steps.create-pr.outputs.pr-url }}"
           PR_NUMBER="${{ steps.create-pr.outputs.pr-number }}"
-          # UPSTREAM_VERSION, UPSTREAM_SHA, and SYNC_BRANCH are available via $GITHUB_ENV
 
-          # Get commit count for the notification
           COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH)
 
-          # Build the full notification body upfront and create the issue in a
-          # single call. This avoids a create-then-edit race condition where the
-          # GraphQL API hasn't indexed the new issue yet, causing gh issue edit
-          # to fail with "Could not resolve to an issue or pull request".
+          # One create call with the full body: a create-then-edit races the GraphQL index
+          # and gh issue edit fails with "Could not resolve to an issue or pull request".
           WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/workflows/cascade.yml"
           printf -v NOTIFICATION_BODY '%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s' \
             "📥 **Upstream Sync Ready for Review**" \
@@ -372,7 +329,6 @@ jobs:
             "- **Sync detected**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`" \
             "- **Current status**: Awaiting PR review and merge"$'\n\n'"<!-- upstream-sha: $UPSTREAM_SHA -->"
 
-          # Create the issue with the complete body in a single call
           printf '%s\n' "$NOTIFICATION_BODY" > /tmp/issue_body.txt
           ISSUE_URL=$(gh issue create \
             --title "📥 Upstream Sync Ready for Review - $(date +%Y-%m-%d)" \
@@ -389,9 +345,7 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           ISSUE_NUMBER="${{ steps.sync-state.outputs.existing_issue_number }}"
-          # UPSTREAM_VERSION, UPSTREAM_SHA, and SYNC_BRANCH are available via $GITHUB_ENV
 
-          # Guard: skip if no tracking issue exists (issue may have been closed by cascade)
           if [ -z "$ISSUE_NUMBER" ]; then
             echo "⚠️ No open tracking issue found (issue may have been closed by cascade validation)"
             echo "Skipping issue description update - no replacement tracking issue will be created in this workflow path"
@@ -403,7 +357,6 @@ jobs:
           echo "Repository: $GH_REPO"
           echo "Parameters: UPSTREAM_VERSION=$UPSTREAM_VERSION, UPSTREAM_SHA=$UPSTREAM_SHA, SYNC_BRANCH=$SYNC_BRANCH"
           
-          # Get current issue body using GitHub API (avoids argument parsing issues)
           echo "Fetching current issue body..."
           CURRENT_BODY=$(gh api "repos/$GH_REPO/issues/$ISSUE_NUMBER" --jq '.body')
           
@@ -412,18 +365,15 @@ jobs:
             exit 1
           fi
           
-          # Calculate current commit count - handle case where SYNC_BRANCH might not exist
           if [ -n "$SYNC_BRANCH" ] && git rev-parse --verify "$SYNC_BRANCH" >/dev/null 2>&1; then
             COMMIT_COUNT=$(git rev-list --count fork_upstream..$SYNC_BRANCH 2>/dev/null || echo "0")
           else
-            # Filtered no-change updates do not create a local branch ref, so
-            # count the commits from the existing remote sync branch instead.
+            # A no-change update creates no local branch ref; count from the remote branch.
             COMMIT_COUNT=$(git rev-list --count fork_upstream..origin/$SYNC_BRANCH 2>/dev/null || echo "0")
           fi
           
           echo "Calculated commit count: $COMMIT_COUNT"
           
-          # Update the display fields and canonical machine-readable SHA marker.
           printf '%s\n' "$CURRENT_BODY" > /tmp/current_body.txt
 
           bash .github/actions/sync-state-manager/update-issue-body.sh \
@@ -434,11 +384,9 @@ jobs:
             "$COMMIT_COUNT" \
             "$SYNC_BRANCH"
           
-          # Update the issue description using the file
           echo "Updating issue description..."
           gh issue edit "$ISSUE_NUMBER" --body-file /tmp/updated_body.txt
           
-          # Clean up
           rm -f /tmp/current_body.txt /tmp/updated_body.txt
           
           echo "✅ Updated issue description with current sync status:"
@@ -485,8 +433,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # A filter halt is persistent: without dedup the nightly schedule would
-          # open one identical issue per day until someone classifies the change.
+          # A filter halt persists, so without dedup the nightly schedule would open one
+          # identical issue per day until someone classifies the change.
           HALT_DETAIL=""
           if [ -f "$RUNNER_TEMP/upstream-filter-report.json" ]; then
             HALT_DETAIL=$(jq -r '[.halts[]? | "\(.code): \(.detail)"] | join("; ")' "$RUNNER_TEMP/upstream-filter-report.json" 2>/dev/null || echo "")

@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
 #
-# Generation Revision Script
-#
 # Prints the identity of every input, other than the upstream commit itself,
 # that determines the generated tree. Durable no-op state is only trusted while
 # this value still matches: a filter config or engine change makes a previously
 # no-op upstream commit produce a different tree (ADR-024, ADR-038).
 #
-# Arguments:
-#   $1 - Repository root (optional, defaults to the enclosing git work tree)
-#
-# Environment Variables:
-#   SYNC_MODE - "mirror" for the customer tier (ADR-039), otherwise filter mode
-#
-# Usage:
-#   ./generation-rev.sh
+# Arguments: $1 repository root (optional, defaults to the enclosing work tree)
+# Env: SYNC_MODE ("mirror" for the customer tier, ADR-039; otherwise filter)
 
 set -euo pipefail
 
