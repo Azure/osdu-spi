@@ -41,9 +41,18 @@ python3 resolve.py --mode {bind|run}
                    [--expect-gateway <url>]
                    [--expect-partition <name>]
                    [--report <path>]
+
+python3 resolve.py --contract-only
+                   --descriptor .spi/service.yaml
+                   [--report <path>]
 ```
 
-The composite `action.yml` wraps exactly this invocation.
+The composite `action.yml` wraps exactly the first invocation.
+`--contract-only` validates the descriptor and reports the contract fields
+(suite path, Maven argv, requires, secret names) with no facts, no
+resolution, and no env file — it is how the build lane reads the descriptor
+where no environment exists (e.g. selecting the suite module the acceptance
+image bakes). Descriptor violations exit 2 exactly as in the full modes.
 
 ## Modes: two audiences
 

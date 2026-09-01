@@ -34,6 +34,9 @@ jobs:
       - name: Run acceptance resolver harness
         run: bash .github/local-actions/acceptance-resolver-tests/run-tests.sh
 
+      - name: Run acceptance image harness
+        run: bash .github/local-actions/acceptance-image-tests/run-tests.sh
+
   validate:
     name: Validate Template
     runs-on: ubuntu-latest

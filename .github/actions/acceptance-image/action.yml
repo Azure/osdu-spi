@@ -1,0 +1,176 @@
+name: 'Acceptance Image Build'
+description: 'Build the acceptance test image (suite source + pre-resolved dependencies) beside the service image and optionally push it to GHCR'
+
+inputs:
+  image_name:
+    description: 'Short service name (e.g. partition); the image is named <image_name>-acceptance. Required.'
+    required: true
+  descriptor:
+    description: 'Path to the fork-owned service descriptor; its tests.acceptance.path selects the suite when present'
+    required: false
+    default: '.spi/service.yaml'
+  dockerfile_path:
+    description: 'Path to the acceptance Dockerfile. Defaults to the canonical one the engineering system syncs to every fork (ADR-037 posture).'
+    required: false
+    default: 'build/acceptance.Dockerfile'
+  build_context:
+    description: 'Docker build context directory'
+    required: false
+    default: '.'
+  registry:
+    description: 'Container registry host'
+    required: false
+    default: 'ghcr.io'
+  org:
+    description: 'Registry organisation/owner. Falls back to the workflow github.repository_owner at runtime when omitted.'
+    required: false
+  push:
+    description: 'When true, log in to GHCR, push the image, and flip package visibility. When false, build only. The caller must set this explicitly per job.'
+    required: false
+    default: 'true'
+  github_token:
+    description: 'Token for GHCR login and the package-visibility flip. Only consumed on the push path.'
+    required: false
+
+outputs:
+  skipped:
+    description: '"true" when no acceptance suite directory exists and the image build was skipped'
+    value: ${{ steps.suite.outputs.buildable != 'true' }}
+  suite_dir:
+    description: 'Suite module directory baked into the image'
+    value: ${{ steps.suite.outputs.suite_dir }}
+  image_repository:
+    description: 'Full registry path, e.g. ghcr.io/<org>/<service>-acceptance (empty when skipped)'
+    value: ${{ steps.meta.outputs.image_repository }}
+  image_digest:
+    description: 'sha256:... digest of the pushed image (empty when skipped or push is not true)'
+    value: ${{ inputs.push == 'true' && steps.build.outputs.digest || '' }}
+  image_tags:
+    description: 'Comma-separated tags pushed; for human/log use only'
+    value: ${{ steps.tags.outputs.image_tags }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Resolve acceptance suite"
+      id: suite
+      shell: bash
+      run: "$GITHUB_ACTION_PATH/resolve-suite.sh"
+      env:
+        SERVICE_NAME: ${{ inputs.image_name }}
+        DESCRIPTOR_PATH: ${{ inputs.descriptor }}
+        RESOLVER: ${{ github.action_path }}/../acceptance-resolver/resolve.py
+
+    - name: "Validate push prerequisites"
+      # After suite resolution: a fork with no suite skips the whole image, so it must not be
+      # made to supply a token that would never be consumed.
+      if: ${{ steps.suite.outputs.buildable == 'true' && inputs.push == 'true' }}
+      shell: bash
+      run: |
+        # Fail fast: the push path needs a token for GHCR login and the visibility flip
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "::error::push=true requires github_token (GHCR login + visibility flip)."
+          exit 1
+        fi
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: "Compute image metadata"
+      id: meta
+      if: ${{ steps.suite.outputs.buildable == 'true' }}
+      shell: bash
+      # Reuses the docker-build scripts (ADR-028): same metadata, tag, and visibility
+      # conventions as the service image, under the <service>-acceptance package name.
+      run: |
+        "$GITHUB_ACTION_PATH/../docker-build/compute-metadata.sh" "$REGISTRY" "$ORG" "$IMAGE_NAME"
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        ORG: ${{ inputs.org || github.repository_owner }}
+        IMAGE_NAME: ${{ inputs.image_name }}-acceptance
+
+    - name: "Compute image tags"
+      id: tags
+      if: ${{ steps.suite.outputs.buildable == 'true' }}
+      shell: bash
+      run: |
+        "$GITHUB_ACTION_PATH/../docker-build/compute-tags.sh" "$IMAGE_REPOSITORY" "$SHORT_SHA" "$REF_NAME" "$PUSH"
+      env:
+        IMAGE_REPOSITORY: ${{ steps.meta.outputs.image_repository }}
+        SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+        REF_NAME: ${{ github.ref_name }}
+        PUSH: ${{ inputs.push }}
+
+    - name: "Set up Docker Buildx"
+      if: ${{ steps.suite.outputs.buildable == 'true' }}
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+    - name: "Log in to GHCR"
+      if: ${{ steps.suite.outputs.buildable == 'true' && inputs.push == 'true' }}
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: "Build acceptance image"
+      id: build
+      if: ${{ steps.suite.outputs.buildable == 'true' }}
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+      with:
+        context: ${{ inputs.build_context }}
+        file: ${{ inputs.dockerfile_path }}
+        push: ${{ inputs.push == 'true' }}
+        # amd64-only, deliberately: this build RUNs Maven (dependency:go-offline), which under
+        # QEMU arm64 emulation costs many minutes per push for no consumer — CI runners are
+        # amd64 and Apple Silicon runs the amd64 image under emulation (see the Dockerfile).
+        platforms: linux/amd64
+        provenance: false
+        tags: ${{ steps.tags.outputs.docker_tags }}
+        build-args: |
+          SUITE_DIR=${{ steps.suite.outputs.suite_dir }}
+        labels: |
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        # Own cache scope: the suite layers share nothing with the service image, and a
+        # shared scope invites cross-image cache collisions.
+        cache-from: type=gha,scope=acceptance-image
+        cache-to: type=gha,mode=max,scope=acceptance-image,ignore-error=true
+
+    - name: "Verify package visibility"
+      if: ${{ steps.suite.outputs.buildable == 'true' && inputs.push == 'true' && steps.build.outcome == 'success' }}
+      shell: bash
+      run: |
+        "$GITHUB_ACTION_PATH/../docker-build/set-package-visibility.sh" "$ORG" "$IMAGE_NAME"
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        ORG: ${{ inputs.org || github.repository_owner }}
+        IMAGE_NAME: ${{ inputs.image_name }}-acceptance
+
+    - name: "Summary"
+      shell: bash
+      run: |
+        # Never echoes the token. Mirrors to $GITHUB_STEP_SUMMARY beside the service image summary.
+        if [ "$BUILDABLE" != "true" ]; then
+          HEADING="🧪 Acceptance Image"
+          MSG="Skipped: ${REASON}"
+        elif [ "$PUSH" = "true" ]; then
+          HEADING="🧪 Acceptance Image Push"
+          MSG="Image pushed: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\` (suite: \`${SUITE_DIR}\`)"
+        else
+          HEADING="🧪 Acceptance Image Build"
+          MSG="Dockerfile validated for suite \`${SUITE_DIR}\`; no GHCR push (validate-only job)"
+        fi
+        echo "$MSG"
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "### ${HEADING}"
+            echo ""
+            echo "- ${MSG}"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+      env:
+        BUILDABLE: ${{ steps.suite.outputs.buildable }}
+        REASON: ${{ steps.suite.outputs.reason }}
+        SUITE_DIR: ${{ steps.suite.outputs.suite_dir }}
+        IMAGE_REPOSITORY: ${{ steps.meta.outputs.image_repository }}
+        IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        PUSH: ${{ inputs.push }}

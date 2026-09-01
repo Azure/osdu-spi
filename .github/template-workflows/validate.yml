@@ -309,6 +309,14 @@ jobs:
           # SERVICE_NAME falls back to the repo name; SERVICE_TARGET_JAR forces a specific path (ADR-037).
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
 
+      - name: "Acceptance Image (validate-only)"
+        # Same commit, no push: proves the suite's go-offline build before the trusted lane
+        # bakes it for real. Skips itself cleanly when no acceptance suite module exists.
+        uses: ./.github/actions/acceptance-image
+        with:
+          push: 'false'
+          image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+
   docker-push:
     name: "🐳 Docker Push"
     needs: [check-initialization, check-repo-state, java-build, docker-build]
@@ -334,6 +342,9 @@ jobs:
     outputs:
       image_repository: ${{ steps.push.outputs.image_repository }}
       image_digest: ${{ steps.push.outputs.image_digest }}
+      acceptance_image_repository: ${{ steps.acceptance.outputs.image_repository }}
+      acceptance_image_digest: ${{ steps.acceptance.outputs.image_digest }}
+      acceptance_skipped: ${{ steps.acceptance.outputs.skipped }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
@@ -350,6 +361,17 @@ jobs:
           # module name (e.g. entitlements-v2-azure) doesn't match, so a fresh fork needs no variable.
           # SERVICE_NAME falls back to the repo name; SERVICE_TARGET_JAR forces a specific path (ADR-037).
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
+
+      - name: "Acceptance Image Build and Push"
+        # The suite ships as an image from the same commit as the service image (design §8, D5):
+        # ghcr.io/<org>/<svc>-acceptance:sha-<sha>. Rides this job to inherit the ADR-036 trust
+        # gate; skips itself cleanly when no acceptance suite module exists.
+        id: acceptance
+        uses: ./.github/actions/acceptance-image
+        with:
+          push: 'true'
+          image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   code-validation:
     name: "✅ Code Quality Checks"
