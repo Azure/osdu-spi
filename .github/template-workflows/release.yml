@@ -135,7 +135,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
       - name: "Tag release image with semver"
+        id: service_tag
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           OWNER: ${{ github.repository_owner }}
@@ -166,4 +169,44 @@ jobs:
           fi
 
           docker buildx imagetools create --tag "${REPO}:${VERSION}" "$SRC"
-          echo "Tagged \`${REPO}:${VERSION}\` from \`${SRC}\`" >> "$GITHUB_STEP_SUMMARY" 
+          echo "Tagged \`${REPO}:${VERSION}\` from \`${SRC}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: "Resolve acceptance suite"
+        # Ordered after the service retag deliberately: a malformed .spi/service.yaml exits 2,
+        # and the service image — which the descriptor has nothing to do with — must still get
+        # its :<version> tag before that failure surfaces.
+        id: suite
+        run: .github/actions/acceptance-image/resolve-suite.sh
+        env:
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          RESOLVER: .github/actions/acceptance-resolver/resolve.py
+
+      - name: "Tag acceptance image with semver"
+        # The acceptance image rides the same commit (design §8), so "prove release X on stack Y"
+        # stays one command months later. docker-push publishes it right after the service image,
+        # which the step above already waited out, so this poll is normally instant.
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+          REPO: ${{ steps.service_tag.outputs.repo }}
+          ACCEPTANCE_BUILDABLE: ${{ steps.suite.outputs.buildable }}
+        run: |
+          set -euo pipefail
+          if [ "${ACCEPTANCE_BUILDABLE}" != "true" ]; then
+            echo "No acceptance suite on this commit; acceptance image retag skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          ACC_REPO="${REPO}-acceptance"
+          ACC_SRC="${ACC_REPO}:sha-${GITHUB_SHA:0:12}"
+          acc_found=false
+          for attempt in $(seq 1 60); do
+            if docker buildx imagetools inspect "$ACC_SRC" >/dev/null 2>&1; then acc_found=true; break; fi
+            echo "Acceptance ${ACC_SRC} not present yet (attempt ${attempt}/60); waiting for its push…"
+            sleep 20
+          done
+          if [ "$acc_found" != "true" ]; then
+            echo "::error::Acceptance image ${ACC_SRC} did not appear within ~20 min; the acceptance push may have failed for this commit."
+            exit 1
+          fi
+          docker buildx imagetools create --tag "${ACC_REPO}:${VERSION}" "$ACC_SRC"
+          echo "Tagged \`${ACC_REPO}:${VERSION}\` from \`${ACC_SRC}\`" >> "$GITHUB_STEP_SUMMARY"

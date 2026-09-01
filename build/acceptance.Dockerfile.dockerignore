@@ -1,0 +1,6 @@
+# BuildKit prefers <dockerfile>.dockerignore over the context-root .dockerignore, and this
+# build needs that: the root file is upstream-owned (filter `keep`) and excludes `.*` plus
+# **/*.yml and **/*.md, which strips .mvn/community-maven.settings.xml — the settings the
+# suite's pom needs to resolve ${repo.releases.url} — and the suite's own yaml/md resources.
+.git/
+**/target/
