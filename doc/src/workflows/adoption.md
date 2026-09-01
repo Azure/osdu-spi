@@ -50,7 +50,6 @@ On the fork (`Settings > Secrets and variables > Actions`):
 |---|---|---|
 | `RELEASE_APP_ID` | Yes | Your GitHub App's ID |
 | `RELEASE_APP_PRIVATE_KEY` | Yes | Your GitHub App's private key (PEM) |
-| `AZURE_API_KEY`, `AZURE_API_BASE`, `AZURE_API_VERSION` | Optional | AI-enhanced PR descriptions; everything degrades to templated text without them |
 
 OSDU Maven dependencies use public read access, so Java builds require no Maven registry secrets. Maven publication is outside the scope of these workflows and would require separate authenticated configuration.
 

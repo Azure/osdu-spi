@@ -19,13 +19,20 @@ Fork management requires synchronizing upstream commits that don't follow conven
 4. **Manual Release Management**: Bypass automation for upstream changes
 
 ## Decision
-Implement **Meta Commit Strategy** using AIPR 1.4.0's commit range analysis capability.
+Implement **Meta Commit Strategy**, classifying the bump with a deterministic rule over the
+upstream commit range.
+
+> **Revised 2026-09-01 (#162).** This ADR originally delegated classification to `aipr commit`.
+> That call crashed on every run and the `feat:` fallback fired every time, so every sync forced
+> a minor bump regardless of content — the reference fork shipped v1.1.0 → v1.2.0 with no patch
+> release ever. A published version number is a contract: the same range must always yield the
+> same bump, and a wrong bump must be a fixable bug rather than a sampling artifact.
 
 ### Implementation Approach
 1. **Preserve Upstream History**: Merge upstream commits with `--no-edit` to maintain original attribution
-2. **Generate Meta Commit**: Use AI to analyze upstream changes and create conventional commit
+2. **Generate Meta Commit**: Classify the upstream range by rule — max severity wins
 3. **Release Please Integration**: Meta commit drives versioning decisions while history remains intact
-4. **Robust Fallback**: Default to `feat:` if AI analysis fails
+4. **Conservative Default**: Non-conventional upstream commits classify as `fix:` (patch), never `feat:`
 
 ### Technical Implementation
 ```yaml
@@ -35,8 +42,17 @@ BEFORE_SHA=$(git rev-parse fork_upstream)
 # Complete merge preserving upstream history
 git merge upstream/$DEFAULT_BRANCH -X theirs --no-edit
 
-# Generate conventional meta commit with AI analysis
-META_COMMIT_MSG=$(aipr commit --from $BEFORE_SHA --context "upstream sync")
+# Classify by rule: breaking > feat > fix, defaulting to fix.
+# `!` is only meaningful on a subject; the BREAKING CHANGE footer lives in the body.
+RANGE="$BEFORE_SHA..HEAD"
+if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$(git log --format=%s "$RANGE")" \
+   || grep -qE '^BREAKING[ -]CHANGE:' <<<"$(git log --format=%b "$RANGE")"; then
+  META_COMMIT_MSG="feat!: sync upstream changes from $UPSTREAM_VERSION"
+elif grep -qE '^feat(\([^)]*\))?:' <<<"$(git log --format=%s "$RANGE")"; then
+  META_COMMIT_MSG="feat: sync upstream changes from $UPSTREAM_VERSION"
+else
+  META_COMMIT_MSG="fix: sync upstream changes from $UPSTREAM_VERSION"
+fi
 
 # Add meta commit for Release Please
 git commit --allow-empty -m "$META_COMMIT_MSG"
@@ -56,7 +72,7 @@ git commit --allow-empty -m "$META_COMMIT_MSG"
 **Automation Requirements Met:**
 
 - ✅ Release Please works seamlessly with meta commits
-- ✅ Accurate conventional commit categorization via AI
+- ✅ Reproducible, auditable conventional commit categorization
 - ✅ Automated semantic versioning continues
 - ✅ Changelog generation remains functional
 
@@ -65,7 +81,7 @@ git commit --allow-empty -m "$META_COMMIT_MSG"
 - ✅ Simple 4-step implementation
 - ✅ No complex git history rewriting
 - ✅ Robust error handling with fallbacks
-- ✅ Uses AIPR exactly as designed
+- ✅ No external tool or API dependency
 
 ### Why Not Other Solutions
 
@@ -89,31 +105,22 @@ git commit --allow-empty -m "$META_COMMIT_MSG"
 
 ## Implementation Details
 
-### AI Integration
+### Classification Rule
 
-- **Tool**: AIPR 1.4.0+ with `--from <SHA>` capability
-- **Analysis Scope**: Changes between last sync point and current HEAD
-- **Context**: "upstream sync" helps AI categorize appropriately
-- **Timeout**: 60 seconds to prevent workflow hanging
+- **Scope**: Commit messages between the last sync point and the generated tree
+- **Precedence**: a subject `!` or a `BREAKING CHANGE:` body footer → major; any `feat:` subject → minor; otherwise patch
+- **Determinism**: No network call, no timeout, no fallback path
 
 ### Error Handling Strategy
 
-```yaml
-# Comprehensive fallback chain
-if timeout 60s aipr commit --from $BEFORE_SHA --context "upstream sync"; then
-  # Use AI-generated conventional commit
-else
-  # Fallback to conservative feat: message
-  META_COMMIT_MSG="feat: sync upstream changes from $UPSTREAM_VERSION"
-fi
-```
+The rule has no failure mode: an empty or wholly non-conventional range classifies as `fix:`,
+which bumps patch. There is nothing to time out and nothing to fall back to.
 
 ### Validation Requirements
 
 - Conventional commit format: `type: description` with non-empty description
 - Supported types: `feat|fix|chore|docs|style|refactor|perf|test|build|ci`
-- Minimum description length validation
-- Graceful handling of AI service outages
+- Non-conventional upstream commits classify as `fix:`; there is no failure path
 
 ## Consequences
 
@@ -122,14 +129,14 @@ fi
 - **Reliable Automation**: Release Please integration works consistently
 - **Preserved History**: Complete upstream commit attribution maintained
 - **Enterprise Compliance**: Audit trail requirements satisfied
-- **AI Enhancement**: Intelligent categorization when services available
-- **Fallback Reliability**: Workflow never fails due to AI issues
+- **Reproducible Versioning**: The same commit range always yields the same bump
+- **No External Dependency**: No API key, no network call, nothing to time out
 
 ### Negative
 
 - **Mixed Commit History**: Developers see conventional + non-conventional commits
 - **Additional Complexity**: Meta commit logic adds workflow steps
-- **AI Dependency**: Optimal categorization requires external AI services
+- **Coarse Categorization**: A rule cannot read intent the way a reviewer can; an upstream repo that does not use conventional commits will always classify as patch
 
 ### Neutral
 
@@ -143,12 +150,11 @@ fi
 
 - Release Please correctly versions based on meta commits
 - No workflow failures due to conventional commit validation
-- AI analysis success rate > 80% (with graceful fallback)
 - Complete upstream history preservation verified
 
 ### Monitoring Points
 
-- AIPR success/failure rates in workflow logs
+- Bump classification emitted in workflow logs on every sync
 - Release Please version bumping accuracy
 - Meta commit format compliance
 - Upstream sync completion times
@@ -157,7 +163,6 @@ fi
 
 ### Potential Enhancements
 
-- Enhanced AI context with upstream repository analysis
 - Custom conventional commit type mappings for specific file patterns
 - Integration with upstream release notes for better categorization
 - Advanced conflict resolution strategies for complex merges
@@ -173,7 +178,6 @@ fi
 
 ## References
 
-- [AIPR 1.4.0 Documentation](https://pypi.org/project/pr-generator-agent/)
 - [Release Please Documentation](https://github.com/googleapis/release-please)
 - [Conventional Commits Specification](https://www.conventionalcommits.org/)
 - [ADR-001: Three-Branch Strategy](001-three-branch-strategy.md)

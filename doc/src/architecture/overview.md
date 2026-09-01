@@ -84,21 +84,9 @@ graph TD
 
     ---
 
-    Event-driven automation with AI-enhanced capabilities for synchronization, validation, and release management.
+    Event-driven automation for synchronization, validation, and release management.
 
     [:octicons-arrow-right-24: Explore workflow architecture](workflow_system.md)
-
-</div>
-
-<div class="grid cards" markdown>
-
--   :material-brain:{ .lg .middle } **AI Integration**
-
-    ---
-
-    Optional Azure AI support for sync commit messages and PR descriptions, with deterministic template fallback.
-
-    [:octicons-arrow-right-24: Discover AI capabilities](ai_integration.md)
 
 </div>
 

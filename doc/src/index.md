@@ -19,7 +19,7 @@ Complete automation framework for enterprise fork management:
   <div class="solution-card" markdown="1">
 :material-merge: **Smart Synchronization**
 
-Automated daily upstream integration with AI-enhanced conflict detection and resolution guidance.
+Automated daily upstream integration with conflict detection and resolution guidance.
   </div>
 
   <div class="solution-card" markdown="1">

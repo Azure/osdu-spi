@@ -2,7 +2,7 @@
 
 The upstream synchronization workflow keeps the fork's shared service code synchronized with the upstream OSDU repository. It does not mirror the upstream tree: it deterministically generates the provider-less `fork_upstream` tree defined by the fork's filter configuration.
 
-The workflow includes sophisticated duplicate prevention that avoids creating multiple PRs for the same upstream state. When changes are detected, it either creates a new sync PR or updates an existing one, ensuring a clean workflow without PR proliferation. The system intelligently uses AI for change analysis on reasonably-sized diffs (under 20,000 lines) while falling back to standard templates for massive changes to avoid token limits.
+The workflow includes sophisticated duplicate prevention that avoids creating multiple PRs for the same upstream state. When changes are detected, it either creates a new sync PR or updates an existing one, ensuring a clean workflow without PR proliferation.
 
 The transform avoids recurring modify/delete conflicts by excluding provider source before a sync branch is created. If upstream introduces unclassified shared content, the filter halts rather than guessing and opens a `sync-failed,human-required` issue.
 
@@ -21,7 +21,7 @@ The workflow follows a systematic process to safely integrate upstream changes:
 2. **Generates a filtered tree** - Keeps shared code, removes provider and `devops/` source, and injects references to fork-owned Azure modules
 3. **Verifies classification** - Halts on unknown shared modules or missing expected paths
 4. **Creates or updates a sync branch** - Serializes the generated tree as a merge-shaped commit without checking out `fork_upstream`
-5. **Generates a PR** - Uses Azure AI when configured and the diff is below 20,000 lines; otherwise uses a deterministic template
+5. **Generates a PR** - Body is computed from the upstream commit range, capped so it stays within GitHub's body limit
 6. **Creates a tracking issue** - Links the PR with `human-required` and `upstream-sync` labels
 7. **Waits for human review** - The team merges the PR into `fork_upstream` to continue the cascade
 
@@ -68,7 +68,7 @@ flowchart TD
     D -->|Yes| F[Update Existing PR]
     E -->|Yes| G[Create Filtered PR]
     E -->|No| H[Halt and Open Failure Issue]
-    G --> I[AI Description < 20k lines]
+    G --> I[Compose PR Body]
     F --> I
     I --> J[Ready for Human Review]
 ```
@@ -76,20 +76,19 @@ flowchart TD
 The workflow produces different outcomes based on what it discovers:
 - **Filtered changes**: Creates a PR containing only the generated upstream-owned tree
 - **Filter halt**: Opens or updates a failure issue when upstream content is not classified
-- **Large changes**: Uses standard templates instead of AI for diffs over 20,000 lines
 - **Existing PR updates**: Updates the existing sync PR rather than creating duplicates
 
 ## When You Need to Act
 
 Look for `human-required,upstream-sync` issues for sync PR review and `human-required,sync-failed` issues for filter halts:
 
-- **Clean sync** - Review AI summary and merge PR if changes look safe
+- **Clean sync** - Review the upstream change list and merge PR if changes look safe
 - **Filter halt** - Update `.github/upstream-filter.yml` on `main`, then rerun sync
 
 ## How to Respond
 
 ### For Clean Syncs
-1. **Review the PR** - Check AI-generated summary of upstream changes
+1. **Review the PR** - Check the upstream change list, following the linked upstream merge requests where the change is not obvious
 2. **Verify compatibility** - Ensure no breaking changes for your fork
 3. **Merge PR** - Approve and merge to `fork_upstream` branch
 4. **Monitor cascade** - The cascade monitor dispatches automatically; run "Cascade Integration" manually with the issue number only if that dispatch fails
@@ -105,19 +104,10 @@ Look for `human-required,upstream-sync` issues for sync PR review and `human-req
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Schedule** | `0 0 * * *` | Daily at midnight UTC |
-| **AI Provider** | Azure Foundry | Primary AI for PR descriptions |
-| **AI Diff Limit** | 20,000 lines | Uses standard templates above this limit |
 | **Duplicate Prevention** | Enabled | Prevents multiple PRs for same upstream state |
 | **Monitor Trigger** | 6 hours | Auto-cascade if human trigger missed |
 | **State Persistence** | Issues and open PRs | Tracks the active upstream SHA and sync branch |
 | **Filter Configuration** | `.github/upstream-filter.yml` | Explicit per-service classification |
-
-### AI Configuration
-To enable AI-generated PR descriptions, configure these secrets:
-- `AZURE_API_KEY` + `AZURE_API_BASE` (primary)
-- `AZURE_API_VERSION` (optional API version)
-
-When Azure credentials are absent or generation fails, the workflow uses its built-in template.
 
 ## Troubleshooting
 

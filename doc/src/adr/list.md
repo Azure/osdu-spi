@@ -21,7 +21,7 @@ Architecture Decision Records for Fork Management Template
 | 011 | Configuration-Driven Template Synchronization | [ADR-011](011-configuration-driven-template-sync.md) |
 | 012 | Template Update Propagation Strategy       | [ADR-012](012-template-update-propagation-strategy.md) |
 | 013 | Reusable GitHub Actions Pattern for PR Creation | [ADR-013](013-reusable-github-actions-pattern.md) |
-| 014 | AI-Enhanced Development Workflow Integration | [ADR-014](014-ai-enhanced-development-workflow.md) |
+| 014 | AI-Enhanced Development Workflow Integration *(superseded)* | [ADR-014](014-ai-enhanced-development-workflow.md) |
 | 015 | Template-Workflows Separation Pattern      | [ADR-015](015-template-workflows-separation-pattern.md) |
 | 016 | Initialization Security Handling           | [ADR-016](016-initialization-security-handling.md) |
 | 018 | Fork-Resources Staging Pattern             | [ADR-018](018-fork-resources-staging-pattern.md) |
@@ -95,13 +95,11 @@ These Architecture Decision Records document the key design choices made in the 
 - Solves template drift problem for forked repositories
 
 **Reusable GitHub Actions (ADR-013)**
-- Custom composite action for AI-enhanced PR creation
 - DRY principle for common workflow functionality
-- Centralized AI integration with multiple provider support
+- Composite actions for shared workflow logic
 
-**AI-Enhanced Workflows (ADR-014)**
-- Multi-provider AI support (Azure OpenAI, OpenAI)
-- AI-powered security analysis and PR description generation
+**AI-Enhanced Workflows (ADR-014, superseded)**
+- Removed in #162: the AI path never functioned in production and was deleted rather than replaced
 
 **Template-Workflows Separation (ADR-015)**
 - Clean separation between template development and fork production workflows
@@ -147,8 +145,8 @@ These Architecture Decision Records document the key design choices made in the 
 
 **Meta Commit Strategy for Release Please (ADR-023)**
 - Preserves complete upstream commit history while enabling automated versioning
-- AIPR analyzes commit ranges to generate conventional meta commits
-- Fallback to conservative `feat:` commits when AI unavailable
+- A deterministic rule over the upstream commit range picks the bump: breaking > feat > fix
+- Non-conventional upstream commits classify as `fix:` so an unclassifiable sync bumps patch
 - Solves conflict between upstream non-conventional commits and Release Please requirements
 
 **Sync Workflow Duplicate Prevention Architecture (ADR-024)**

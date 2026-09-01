@@ -1,7 +1,19 @@
 # ADR-014: AI-Enhanced Development Workflow Integration
 
 ## Status
-**Accepted** - 2025-10-01
+**Superseded** - 2026-09-01 by the removal in #162.
+
+The AI path never worked in production. `aipr pr` ran inside a `git worktree add --detach`
+worktree and crashed on `repo.active_branch.name`; `sync-template.yml` never installed the
+tool at all. Every failure was swallowed by `2>&1` capture and `|| echo ""`, so the
+"graceful degradation" below was the only path that ever executed — for the entire life of
+the reference fork, across eight months of green daily runs. Reviewers merged the fallback
+bodies without complaint.
+
+Descriptions are now deterministic. The meta-commit classification this ADR delegated to a
+model is a rule (see ADR-023). No replacement model was adopted: GitHub Models was retired
+2026-07-30, the Copilot coding-agent API rejects GitHub App installation tokens, and
+Copilot's PR summary has no API surface.
 
 ## Context
 

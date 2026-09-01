@@ -2,7 +2,11 @@
 
 ## Status
 
-**Accepted** - 2025-10-01
+**Accepted** - 2025-10-01. **Partially superseded** 2026-09-01 by #162: the
+`create-enhanced-pr` and `llm-provider-detect` actions this ADR specifies were deleted with
+the AI path (see ADR-014). The reusable-composite-action pattern still stands and is used by
+`upstream-filter`, `sync-state-manager`, and `acceptance-resolver`; the PR-creation worked
+example below is historical.
 
 ## Context
 

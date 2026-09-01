@@ -255,21 +255,17 @@ graph LR
 
 ## Workflow Integration Patterns
 
-### AI-Enhanced Automation
+### Deterministic Descriptions
 
 <div class="grid cards" markdown>
 
--   :material-microsoft-azure:{ .lg .middle } **Azure Foundry**
+-   :material-file-document:{ .lg .middle } **Workflow-Owned Bodies**
 
     ---
 
-    Optional AIPR provider for synchronization commit messages and PR descriptions
-
--   :material-file-document:{ .lg .middle } **Template Fallback**
-
-    ---
-
-    Workflow-owned output used when Azure credentials are absent, the diff is too large, or generation fails
+    PR bodies and commit classification are computed from git, with no model and no external
+    service. The same commit range always produces the same output. See ADR-014 (superseded)
+    for why the previous AI path was removed.
 
 </div>
 

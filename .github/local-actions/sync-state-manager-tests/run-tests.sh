@@ -331,8 +331,8 @@ fi
 grep -Fq '"add_reminder")' "$WORKFLOW" || die "compatibility decision is not logged"
 
 RECORD_LINE=$(grep -nF 'record-evaluated-sha.sh "$UPSTREAM_SHA"' "$WORKFLOW" | cut -d: -f1)
-WORKTREE_LINE=$(grep -nF 'SYNC_WORKTREE="$RUNNER_TEMP/sync-worktree"' "$WORKFLOW" | cut -d: -f1)
-[[ "$RECORD_LINE" -gt "$EARLY_EXIT_LINE" && "$RECORD_LINE" -lt "$WORKTREE_LINE" ]] ||
+CLASSIFY_LINE=$(grep -nF '# Classify the sync for Release Please' "$WORKFLOW" | cut -d: -f1)
+[[ "$RECORD_LINE" -gt "$EARLY_EXIT_LINE" && "$RECORD_LINE" -lt "$CLASSIFY_LINE" ]] ||
   die "evaluated SHA is not recorded inside the no-change exit"
 
 GATE_LINE=$(grep -nF 'if [ "${{ steps.sync-state.outputs.should_create_pr }}" = "true" ]; then' "$WORKFLOW" | cut -d: -f1 || true)
