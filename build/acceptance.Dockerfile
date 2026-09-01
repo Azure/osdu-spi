@@ -3,9 +3,16 @@
 # owned by the engineering system, synced to every fork; services do not supply their own).
 #
 # Bakes the acceptance suite SOURCE from the same commit as the service image, with Maven
-# dependencies pre-resolved at build time (dependency:go-offline) — so "this release passed
-# acceptance" stays a re-runnable claim months later, largely insulated from registry drift
-# (go-offline pre-resolves declared dependencies; it is not a guarantee of a fully offline run).
+# dependencies prewarmed at build time (dependency:go-offline) — so "run the tests that shipped
+# with release X" stays one command months later.
+#
+# What the image pins is the suite source and a warmed local repository; dependency RESOLUTION
+# is not pinned. The run is online by design, and where the upstream graph carries version
+# ranges (os-core-test pulls io.cucumber ranges today) a later run can resolve a different set:
+# go-offline caches artifacts, not the range metadata a resolve consults. Registry availability
+# is still required — `--offline` fails on those ranges. A fork wanting a frozen dependency set
+# must pin the ranges in its own suite pom.
+#
 # The suite executes at container run time against a live gateway:
 #
 #   docker run --env-file .env ghcr.io/<org>/<svc>-acceptance:sha-<sha> [maven argv...]

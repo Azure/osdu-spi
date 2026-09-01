@@ -2,9 +2,9 @@
 
 Builds the acceptance test image beside the service image (design §8, D5;
 ADR-040): the suite's *source* from the same commit, with Maven dependencies
-pre-resolved at build time, published as
-`ghcr.io/<org>/<service>-acceptance:sha-<sha>`. "This release passed
-acceptance" stays a re-runnable claim months later:
+prewarmed at build time, published as
+`ghcr.io/<org>/<service>-acceptance:sha-<sha>`, so "run the tests that shipped
+with release X" stays one command months later:
 
 ```bash
 docker run --env-file .env ghcr.io/<org>/partition-acceptance:sha-<sha>          # descriptor default: verify
@@ -13,6 +13,15 @@ docker run --env-file .env ghcr.io/<org>/partition-acceptance:sha-<sha> verify -
 
 Arguments after the image are Maven argv tokens — the lane passes the
 descriptor's `mavenArguments` array verbatim, never a shell string.
+
+## What the image pins
+
+The suite source and a warmed local repository — not dependency *resolution*.
+The run is online by design; `dependency:go-offline` caches artifacts, not the
+metadata a version range consults, so `--offline` fails wherever the upstream
+graph carries ranges (`os-core-test` pulls `io.cucumber` ranges today) and a
+later run can resolve a different set. Registry availability is still required.
+A fork that needs a frozen set pins those ranges in its own suite pom.
 
 ## Suite selection
 

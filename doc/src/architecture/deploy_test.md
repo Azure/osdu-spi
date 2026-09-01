@@ -138,7 +138,7 @@ Adopts stack ADR-032 wholesale — designed there and unbuilt:
 
 ## §8 Tests as images; the developer and release loops
 
-CI builds `<svc>-acceptance:<sha>` beside the service image, from the same commit, with dependencies pre-resolved at build time (`dependency:go-offline`) — subgroup-core's proven pattern and its rationale: *"this release passed acceptance" must stay re-runnable months later*. The engineering system owns the canonical acceptance Dockerfile, exactly as it owns the service Dockerfile (ADR-037). The suite runs on the GitHub runner via `docker run --env-file` against the gateway — inside the cluster it would need create-verbs the fork identity deliberately lacks.
+CI builds `<svc>-acceptance:<sha>` beside the service image, from the same commit, with dependencies prewarmed at build time (`dependency:go-offline`) — subgroup-core's proven pattern and its rationale: *"run the tests that shipped with release X" must stay one command months later*. The image pins the suite source and a warmed local repository, not dependency resolution: the run is online, and version ranges in the upstream graph can still resolve differently later. The engineering system owns the canonical acceptance Dockerfile, exactly as it owns the service Dockerfile (ADR-037). The suite runs on the GitHub runner via `docker run --env-file` against the gateway — inside the cluster it would need create-verbs the fork identity deliberately lacks.
 
 The developer loop uses the same three contracts with no CI in the path:
 

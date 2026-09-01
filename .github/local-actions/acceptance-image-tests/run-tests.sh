@@ -128,4 +128,13 @@ grep -qE '^COPY \.mvn\*/ ' "$DOCKERFILE" || die "COPY of root .mvn must glob —
 grep -q 'else' "$DOCKERFILE" || die "settings-less fallback branch lost"
 ok "optional .mvn keeps the fallback live"
 
+note "a suiteless fork skips before the push path demands a token"
+ACTION="$HERE/../../actions/acceptance-image/action.yml"
+suite_at="$(grep -n 'id: suite' "$ACTION" | head -1 | cut -d: -f1)"
+gate_at="$(grep -n 'Validate push prerequisites' "$ACTION" | head -1 | cut -d: -f1)"
+[ -n "$suite_at" ] && [ -n "$gate_at" ] || die "suite resolution or push gate step missing"
+[ "$gate_at" -gt "$suite_at" ] || die "push validation must follow suite resolution, or push=true breaks the documented clean skip"
+grep -qF "buildable == 'true' && inputs.push == 'true'" "$ACTION" || die "push gate must also require a buildable suite"
+ok "push token requirement gated on a buildable suite"
+
 printf '\nAll acceptance image harness checks passed.\n'
