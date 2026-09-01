@@ -115,10 +115,10 @@ jobs:
           fi
           total=0
           for sarif in "${sarifs[@]}"; do
-            count=$(jq '[.runs[].results[]] | length' "$sarif")
+            count=$(jq '[.runs[] | (.results // [])[]] | length' "$sarif")
             # Point the annotation at the template file, not the staged copy.
-            jq -r '.runs[].results[]
-              | "::error file=\(.locations[0].physicalLocation.artifactLocation.uri | sub("^\\.github/workflows/"; ".github/template-workflows/")),line=\(.locations[0].physicalLocation.region.startLine)::\(.ruleId): \(.message.text | gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A"))"' "$sarif"
+            jq -r '.runs[] | (.results // [])[]
+              | "::error file=\((.locations[0].physicalLocation.artifactLocation.uri // "unknown") | sub("^\\.github/workflows/"; ".github/template-workflows/")),line=\(.locations[0].physicalLocation.region.startLine // 0)::\(.ruleId // "unknown"): \((.message.text // "") | gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A"))"' "$sarif"
             total=$((total + count))
           done
           if [ "$total" -gt 0 ]; then
