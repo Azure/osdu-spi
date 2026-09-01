@@ -1,7 +1,7 @@
 # ADR-008: Centralized Label Management Strategy
 
 ## Status
-Accepted
+**Accepted** - 2025-09-23
 
 ## Context
 The Fork Management Template uses GitHub labels extensively to track workflow states, issue types, and PR statuses across multiple automated workflows. Initially, each workflow created its own labels when first run:
@@ -23,8 +23,8 @@ We will implement a centralized label management strategy where:
 
 1. All system labels are defined in `.github/labels.json`
 2. The initialization workflow creates all labels during repository setup
-3. Workflows assume labels exist and do not create them
-4. Label documentation is maintained in `doc/label-strategy.md`
+3. Workflows should assume labels exist rather than create them. Two exceptions remain: `dependabot-validation.yml` and `sync-template.yml` still create the labels they need on first use, and `adopt-fork.yml` recreates the full set because an adopted repository never ran initialization.
+4. `.github/labels.json` is the label reference; there is no separate label document
 
 ## Consequences
 
@@ -32,12 +32,9 @@ We will implement a centralized label management strategy where:
 - **Reliability**: All labels exist from repository initialization
 - **Consistency**: Single source of truth for label definitions
 - **Maintainability**: Easy to add, update, or remove labels
-- **Documentation**: Clear reference for label usage
 - **Automation**: Workflows can depend on label existence
-- **Visibility**: Complete label set visible from day one
 
 ### Negative
-- **Initial Setup**: Slightly longer initialization process
 - **Migration**: Existing repositories need manual label sync
 - **Coupling**: Workflows depend on initialization running first
 

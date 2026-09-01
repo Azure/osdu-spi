@@ -6,257 +6,82 @@
 
 ## Context
 
-During implementation of the initialization workflows, we discovered a fundamental architectural challenge with workflow distribution in GitHub template repositories:
+GitHub template repositories need two distinct kinds of workflows:
 
-**The Workflow Pollution Problem:**
+1. **Template development workflows**: for managing the template itself (initialization, CI, releases, docs)
+2. **Fork production workflows**: for the repositories created from the template (sync, build, validate, release)
 
-GitHub template repositories need two distinct types of workflows:
+When every workflow lived in `.github/workflows/`, forks inherited template development workflows such as `init.yml` that serve no purpose there, and there was no clear boundary between template infrastructure and fork functionality.
 
-1. **Template Development Workflows**: For managing the template itself (init, testing, releases)
-2. **Fork Production Workflows**: For the repositories created from the template (sync, build, validate)
+Initialization also hit a permission constraint: a token without the `workflows` permission cannot push workflow files. The error is `refusing to allow a GitHub App to create or update workflow .github/workflows/build.yml without workflows permission`. Writing fork workflows therefore needs a token that carries that permission.
 
-**Previous Approach Issues:**
-
-- All workflows stored in `.github/workflows/` caused fork repositories to inherit template development workflows
-- Template-specific workflows (like `init.yml`) would appear in production forks where they serve no purpose
-- No clear separation between template infrastructure and fork functionality
-- Difficult to maintain and test template workflows without affecting fork behavior
-
-**GitHub App Workflow Permissions Discovery:**
-
-During initialization testing, we encountered a critical permission issue:
-
-- GitHub Apps (including `GITHUB_TOKEN`) cannot create or modify workflow files without explicit `workflows` permission
-- Error: `refusing to allow a GitHub App to create or update workflow .github/workflows/build.yml without workflows permission`
-- Solution required using Personal Access Token (PAT) with workflows scope as `GH_TOKEN`
-
-**Template Bootstrap Pattern Limitation:**
-
-The existing bootstrap pattern (ADR-007) addressed workflow version updates but didn't solve workflow distribution segregation.
+The bootstrap pattern (ADR-007) addressed workflow version updates but not workflow distribution.
 
 ## Decision
 
-Implement a **Template-Workflows Separation Pattern** that cleanly separates template development from fork production workflows:
+Keep the template's own workflows in `.github/workflows/` and store the workflows destined for forks in `.github/template-workflows/`. Initialization copies the latter into the fork's `.github/workflows/`.
 
-### Directory Structure
+### Directory structure
 
 ```
 .github/
-├── workflows/                    # Template development workflows
-│   ├── init.yml                  # Repository initialization
+├── workflows/                    # Template development workflows (never copied)
+│   ├── init.yml                  # Repository initialization trigger
 │   ├── init-complete.yml         # Repository setup
-│   ├── dev-ci.yml               # Template testing
-│   ├── dev-test.yml             # Template validation
-│   └── dev-release.yml          # Template releases
-└── template-workflows/           # Fork production workflows  
+│   ├── dev-ci.yml                # Template CI
+│   ├── dev-release.yml           # Template releases
+│   ├── docs.yml                  # Template documentation site
+│   ├── codeql.yml                # Template CodeQL scan
+│   └── scorecard.yml             # OpenSSF Scorecard
+└── template-workflows/           # Fork production workflows (copied at init)
     ├── sync.yml                  # Upstream synchronization
+    ├── sync-template.yml         # Template updates
+    ├── cascade.yml               # Cascade integration
+    ├── cascade-monitor.yml       # Cascade safety net and health
+    ├── integration-cleanup.yml   # fork_integration cleanup after main merges
     ├── validate.yml              # PR validation
     ├── build.yml                 # Project builds
     ├── release.yml               # Semantic releases
-    ├── cascade.yml               # Multi-repo cascade
-    ├── cascade-monitor.yml       # Cascade monitoring
-    ├── sync-template.yml         # Template updates
-    └── dependabot-validation.yml # Dependency automation
+    ├── codeql.yml                # Fork CodeQL scan
+    ├── dependabot-validation.yml # Dependabot PR automation
+    ├── ghcr-retention.yml        # GHCR image-tag retention
+    ├── settings-apply.yml        # Per-fork settings reconciliation
+    ├── adopt-fork.yml            # Customer-tier adoption (ADR-039)
+    └── copilot-setup-steps.yml   # Copilot agent environment
 ```
 
-### Initialization Copy Process
+The authoritative list is `sync_rules.workflows.template_workflows` in `.github/sync-config.json` (ADR-011); `template_only` and `development_only` name the workflows that stay behind.
 
-During repository initialization, workflows are copied from `template-workflows/` to `workflows/` in the fork:
+### Initialization copy process
 
-```bash
-# Copy fork workflows from template repository
-git checkout template/main -- .github/template-workflows/
-mkdir -p .github/workflows
-cp .github/template-workflows/*.yml .github/workflows/
-```
+`init-complete.yml` runs in the fork's own checkout of the template contents. It copies `.github/template-workflows/*.yml` into `.github/workflows/`, then `init-helpers/deploy-fork-resources.sh` removes `dev-*.yml`, deletes the `template-workflows/` directory, and applies the cleanup rules from `sync-config.json`. No template remote is added at this stage; the fork already contains the template files.
 
-## Rationale
+### Authentication
 
-### Clear Separation of Concerns
+The push that delivers workflow files uses a GitHub App installation token minted in the workflow with `actions/create-github-app-token` (ADR-029). The App is granted the `workflows` permission, so the push succeeds without a personal access token. `GITHUB_TOKEN` is used for everything that does not write workflow files.
 
-1. **Template Development**: All template-specific workflows stay in `.github/workflows/`
-2. **Fork Production**: All production workflows stored in `.github/template-workflows/`
-3. **No Pollution**: Forks only receive relevant production workflows
-4. **Maintainable**: Easy to identify and maintain each workflow type
+### Ongoing updates
 
-### Security and Permissions Benefits
-
-1. **Controlled Distribution**: Only intended workflows reach fork repositories
-2. **Permission Management**: Template workflows can have different permission requirements
-3. **Security Isolation**: Template development workflows don't expose fork repositories to unnecessary permissions
-
-### Development and Testing Advantages
-
-1. **Independent Testing**: Template workflows can be tested without affecting fork behavior
-2. **Clear Ownership**: Template developers vs. fork developers have clear workflow boundaries
-3. **Version Control**: Template and fork workflows can evolve independently
-4. **Documentation**: Clear documentation of what gets copied vs. what stays in template
+`sync-template.yml` (ADR-012) diffs the `template_workflows` list against the fork's last synced template commit and writes changed files to `.github/workflows/`, so forks keep receiving workflow updates after initialization.
 
 ## Alternatives Considered
 
-### 1. Git Submodules for Workflow Distribution
-
-- **Pros**: External workflow repository, version pinning
-- **Cons**: Complex setup, external dependency, requires Git submodule knowledge
-- **Decision**: Rejected - Adds unnecessary complexity
-
-### 2. Workflow Generation Scripts
-
-- **Pros**: Dynamic workflow creation, highly flexible
-- **Cons**: Complex maintenance, harder to test, less transparent
-- **Decision**: Rejected - Over-engineering for current needs
-
-### 3. Multiple Template Repositories
-
-- **Pros**: Complete separation, independent versioning
-- **Cons**: Maintenance overhead, user confusion, complex updates
-- **Decision**: Rejected - Breaks single template simplicity
-
-### 4. Conditional Workflow Logic
-
-- **Pros**: Single workflow files with template vs. fork behavior
-- **Cons**: Complex conditions, harder to maintain, poor separation
-- **Decision**: Rejected - Violates separation of concerns principle
-
-## Implementation Details
-
-### Initialization Process
-
-```yaml
-# init-complete.yml workflow excerpt
-steps:
-  - name: Copy fork workflows from template repository
-    run: |
-      # Add template remote and fetch
-      git remote add template "$TEMPLATE_REPO_URL" || true
-      git fetch template main --depth=1
-      
-      # Copy template-workflows directory
-      git checkout template/main -- .github/template-workflows/
-      
-      # Ensure workflows directory exists and copy files
-      mkdir -p .github/workflows
-      cp .github/template-workflows/*.yml .github/workflows/
-      
-      # Clean up template-workflows directory (no longer needed)
-      rm -rf .github/template-workflows/
-```
-
-### Sync Configuration Integration
-
-Template-workflows are referenced in `.github/sync-config.json`:
-
-```json
-{
-  "sync_rules": {
-    "workflows": {
-      "template_workflows": [
-        {
-          "path": ".github/template-workflows/sync.yml",
-          "description": "Upstream repository synchronization"
-        },
-        {
-          "path": ".github/template-workflows/validate.yml", 
-          "description": "PR validation and commit message checks"
-        }
-      ]
-    }
-  }
-}
-```
-
-### Authentication Requirements
-
-Due to GitHub App workflow permission limitations:
-
-- **Required**: Personal Access Token (PAT) with `workflows` permission as `GH_TOKEN` secret
-- **Fallback**: Clear error message if `GH_TOKEN` not available
-- **Process**: Checkout action uses `${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}`
+1. **Git submodules for workflow distribution**: rejected; external dependency and submodule knowledge required.
+2. **Workflow generation scripts**: rejected; harder to test and less transparent.
+3. **Multiple template repositories**: rejected; breaks the single-template model.
+4. **Conditional logic inside one set of workflows**: rejected; complex conditions and poor separation.
 
 ## Consequences
 
-### Positive
-
-- **Clean Fork Repositories**: Only production workflows copied, no template pollution
-- **Clear Maintenance**: Template developers know exactly which workflows affect forks
-- **Security Isolation**: Template development workflows don't expose forks to unnecessary permissions
-- **Better Testing**: Template workflows can be tested independently
-- **User Experience**: Fork repositories have only relevant, functional workflows
-- **Version Control**: Independent evolution of template vs. fork workflows
-
-### Negative
-
-- **Directory Duplication**: Template-workflows must be kept in sync with intended behavior
-- **Authentication Complexity**: Requires PAT setup for workflow permissions
-- **Documentation Overhead**: Need to maintain clear documentation of what goes where
-- **Migration Impact**: Existing documentation needs updates to reflect new pattern
-
-### Mitigation Strategies
-
-1. **Clear Documentation**: Comprehensive documentation of directory structure and purposes
-2. **Sync Configuration**: Automated tracking of which workflows should be copied
-3. **Testing Strategy**: Validate both template and copied workflows function correctly
-4. **Migration Guide**: Clear instructions for updating existing repositories
-
-## Success Criteria
-
-- ✅ Fork repositories contain only production workflows (no init, dev, or template workflows)
-- ✅ Template repository maintains separation between development and production workflows
-- ✅ Initialization process successfully copies workflows from template-workflows to workflows
-- ✅ Authentication works with both GITHUB_TOKEN and GH_TOKEN approaches
-- ✅ Documentation clearly explains workflow distribution strategy
-- ✅ Testing validates that copied workflows function correctly in fork repositories
-
-## Testing and Validation
-
-### Template Testing
-
-1. **Template Workflow Testing**: Validate init, dev, and release workflows in template repository
-2. **Copy Process Testing**: Ensure template-workflows are correctly copied during initialization
-3. **Permission Testing**: Validate both GITHUB_TOKEN and GH_TOKEN authentication paths
-
-### Fork Testing 
-
-1. **Production Workflow Testing**: Validate copied workflows function in fork repositories
-2. **No Pollution Testing**: Ensure no template development workflows appear in forks
-3. **Update Testing**: Validate template-sync can update production workflows
-
-## Implementation Timeline
-
-1. **✅ Phase 1**: Implement template-workflows directory structure
-2. **✅ Phase 2**: Update initialization workflow to copy from template-workflows
-3. **✅ Phase 3**: Resolve GitHub App workflow permission issues
-4. **🔄 Phase 4**: Update documentation to reflect new pattern
-5. **📋 Phase 5**: Validate with test repositories and gather feedback
+Forks contain only production workflows. Template maintainers must remember that a workflow intended for forks belongs in `template-workflows/`, not `workflows/`, and must add it to `sync-config.json`. Initialization depends on the GitHub App being installed with the `workflows` permission.
 
 ## Related Decisions
 
-- **ADR-006**: Two-Workflow Initialization Pattern - This pattern builds on the initialization architecture
-- **ADR-007**: Initialization Workflow Bootstrap Pattern - This addresses workflow distribution rather than versioning
-- **ADR-013**: Reusable GitHub Actions Pattern - Complements this with shared action components
-
-## Future Considerations
-
-1. **Automatic Sync Validation**: Ensure template-workflows stay in sync with intended behavior
-2. **Workflow Templates**: Support for customizable workflow templates per fork type
-3. **Multi-Environment Support**: Different workflow sets for different deployment environments
-4. **Advanced Permissions**: Fine-grained workflow permission management
-5. **Workflow Analytics**: Tracking which workflows are most/least used across forks
-
-## Migration Guide
-
-### For Template Maintainers
-
-1. **Move Production Workflows**: Move fork-intended workflows from `.github/workflows/` to `.github/template-workflows/`
-2. **Update Sync Config**: Add template-workflows to `.github/sync-config.json` 
-3. **Test Initialization**: Validate that new repositories get correct workflow set
-4. **Update Documentation**: Reflect new structure in README and architecture docs
-
-### For Fork Maintainers
-
-1. **No Action Required**: Existing forks continue to work with current workflows
-2. **Optional Migration**: Can adopt new template-sync workflow for ongoing updates
-3. **Clean Slate**: New forks automatically get clean workflow set
+- **ADR-006**: Two-Workflow Initialization Pattern (this pattern builds on the initialization architecture)
+- **ADR-007**: Initialization Workflow Bootstrap Pattern (versioning; this ADR addresses distribution)
+- **ADR-011**: Configuration-Driven Template Synchronization (owns the `template_workflows` list)
+- **ADR-013**: Reusable GitHub Actions Pattern (shared action components)
+- **ADR-029**: GitHub App Authentication Strategy (the token that pushes workflow files)
 
 ## References
 

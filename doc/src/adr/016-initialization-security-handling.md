@@ -4,87 +4,47 @@
 Accepted
 
 ## Context
-Many upstream repositories contain secrets or sensitive data in their git history. GitHub's push protection feature blocks these commits from being pushed, which prevents the initialization workflow from creating the `fork_upstream` branch during repository setup.
+Many upstream repositories contain secrets or sensitive data in their git history. GitHub's push protection blocks these commits from being pushed, which prevents the initialization workflow from creating the `fork_upstream` branch during repository setup.
 
-Additionally, organizations can enforce push protection at the organization level, which cannot be overridden by repository-level settings.
+Organizations can also enforce push protection at the organization level, which repository settings cannot override.
 
 ## Decision
-We will implement a multi-layered approach to handle push protection during initialization:
+Handle push protection during initialization by detecting the block from the push output, guiding the user through GitHub's secret allowlist, and retrying:
 
-1. **Detection**: Check for both repository-level and organization-level push protection
-2. **Mitigation**: Attempt to disable push protection at the repository level
-3. **Alternative Strategies**: If disabling fails, try alternative push strategies
-4. **Clear Guidance**: Provide detailed instructions for manual resolution when automated approaches fail
+1. **Detection**: parse the failed push output for secret scanning violations and extract the allowlist URLs GitHub reports
+2. **Guidance**: open an escalation issue listing every allowlist URL and the manual alternatives, and comment on the initialization issue with the retry instructions
+3. **Retry**: the user allowlists the secrets and comments the upstream URL again, which re-runs initialization
+
+Push protection is never disabled by the workflow. The repository's security settings are left as configured.
 
 ## Implementation
 
-### 1. Enhanced Security Detection
-```yaml
-# Check organization-level push protection status first
-ORG_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f1)
-ORG_PUSH_PROTECTION="unknown"
+### 1. Detection and escalation
+The `secret-push-handler` local action (`.github/local-actions/secret-push-handler/`) wraps the push. On a secret scanning rejection it extracts the allowlist URLs (handling ANSI escape codes), creates an escalation issue labeled `escalation` with the URLs and resolution options, and comments on the initialization issue with next steps. Any other push failure is reported as an ordinary error.
 
-if ORG_SETTINGS=$(gh api "/orgs/$ORG_NAME" 2>/dev/null); then
-  ORG_PUSH_PROTECTION=$(echo "$ORG_SETTINGS" | jq -r '.security_and_analysis.secret_scanning_push_protection.status // "unknown"')
-  echo "::notice::Organization-level push protection: $ORG_PUSH_PROTECTION"
-fi
-
-# Attempt to disable at repository level
-gh api --method PATCH "/repos/${{ github.repository }}" \
-  --input .github/security-off.json
-
-# Verify settings were applied
-REPO_SETTINGS=$(gh api "/repos/${{ github.repository }}")
-PUSH_PROTECTION_STATUS=$(echo "$REPO_SETTINGS" | jq -r '.security_and_analysis.secret_scanning_push_protection.status // "unknown"')
-```
-
-### 2. Retry Through the Filter Engine
-When the initial push fails due to push protection, resolution is allowlist plus retry: after the reported secrets are allowlisted, commenting on the initialization issue re-runs the workflow, which regenerates `fork_upstream` through the upstream filter engine (ADR-038) and pushes again. An existing partial branch becomes the base of an ordinary incremental generation, so the retry converges.
+### 2. Retry through the filter engine
+Resolution is allowlist plus retry: after the reported secrets are allowlisted, commenting on the initialization issue re-runs `init-complete.yml`, which regenerates `fork_upstream` through the upstream filter engine (ADR-038) and pushes again. An existing partial branch becomes the base of an ordinary incremental generation, so the retry converges.
 
 `fork_upstream` must never be recreated directly from `upstream/$DEFAULT_BRANCH`: a manual push of the verbatim upstream ref would silently undo the filtered model.
 
-### 3. Enhanced Error Handling
-When push protection cannot be bypassed:
-- Extract secret allowlist URLs from the error output
-- Create a detailed issue with multiple resolution options
-- Provide clear instructions for each resolution path
+## Manual Resolution Options
+
+The escalation issue offers three paths:
+
+1. **Secret allowlist URLs**: use GitHub's official mechanism to allow each reported secret
+2. **Organization admin action**: temporarily disable push protection at the organization level
+3. **Manual initialization**: clone locally and use `git push --no-verify` with appropriate permissions
 
 ## Consequences
 
-### Positive
-- Handles both repository-level and organization-level push protection
-- Provides multiple fallback strategies
-- Creates actionable issues with clear resolution steps
-- Automatically extracts and presents secret allowlist URLs
-- Maintains security for all future operations
-
-### Negative
-- More complex implementation
-- May require manual intervention for organization-level protection
-- Push protection resolution may require manual allowlisting before a retry succeeds
-
-### Security Considerations
-- The temporary disable only affects the initialization process
-- Organization-level protection is respected and not bypassed
-- Users are guided to use GitHub's official secret allowlist mechanism
-- All future operations have full security protection enabled
-
-## Manual Resolution Options
-
-When automated approaches fail, users have three options:
-
-1. **Secret Allowlist URLs**: Use GitHub's official mechanism to allow specific secrets
-2. **Organization Admin Action**: Temporarily disable push protection at the organization level
-3. **Manual Initialization**: Clone locally and use `git push --no-verify` with appropriate permissions
+Initialization of an upstream with secrets in history requires one manual round trip through the allowlist before the retry succeeds. Organization-level protection is respected, not bypassed. All later operations run with the repository's security features unchanged.
 
 ## Alternatives Considered
 
-1. **Simple retry logic**: Insufficient for organization-level protection
-2. **History rewriting**: Would break synchronization with upstream
-3. **Forking without history**: Would lose valuable commit history
-4. **Requiring pre-initialization setup**: Would complicate the user experience
-
-The chosen approach balances automation with respect for security policies while providing clear paths for resolution when manual intervention is required.
+1. **Simple retry logic**: insufficient; the block does not clear on its own
+2. **History rewriting**: would break synchronization with upstream
+3. **Forking without history**: would lose the upstream commit history
+4. **Requiring pre-initialization setup**: would complicate the user experience
 
 ---
 

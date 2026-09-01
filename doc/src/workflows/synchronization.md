@@ -2,20 +2,20 @@
 
 The upstream synchronization workflow keeps the fork's shared service code synchronized with the upstream OSDU repository. It does not mirror the upstream tree: it deterministically generates the provider-less `fork_upstream` tree defined by the fork's filter configuration.
 
-The workflow includes sophisticated duplicate prevention that avoids creating multiple PRs for the same upstream state. When changes are detected, it either creates a new sync PR or updates an existing one, ensuring a clean workflow without PR proliferation.
+Only one sync PR exists at a time. When upstream changes, the workflow either creates a new sync PR or updates the open one.
 
 The transform avoids recurring modify/delete conflicts by excluding provider source before a sync branch is created. If upstream introduces unclassified shared content, the filter halts rather than guessing and opens a `sync-failed,human-required` issue.
 
 ## When It Runs
 
-The synchronization workflow runs on multiple triggers to ensure your fork stays current:
+The synchronization workflow runs on:
 
 - **Daily at midnight UTC** - Scheduled automatic sync to catch upstream changes
 - **Manual trigger** - Run on-demand via the GitHub Actions tab when needed
 
 ## What Happens
 
-The workflow follows a systematic process to safely integrate upstream changes:
+The workflow:
 
 1. **Fetches upstream** - Resolves the upstream `main` or `master` tip
 2. **Generates a filtered tree** - Keeps shared code, removes provider and `devops/` source, and injects references to fork-owned Azure modules
@@ -25,9 +25,9 @@ The workflow follows a systematic process to safely integrate upstream changes:
 6. **Creates a tracking issue** - Links the PR with `human-required` and `upstream-sync` labels
 7. **Waits for human review** - The team merges the PR into `fork_upstream` to continue the cascade
 
-## Smart Duplicate Prevention
+## Duplicate Prevention
 
-The workflow uses intelligent state management to avoid creating duplicate sync PRs:
+The workflow tracks the upstream SHA and the open sync PR to avoid duplicates:
 
 | Situation | Action Taken |
 |-----------|-------------|
@@ -36,10 +36,8 @@ The workflow uses intelligent state management to avoid creating duplicate sync 
 | **Existing PR + upstream changed** | Updates existing PR with new changes |
 | **No existing PR + upstream unchanged** | No action - exits cleanly |
 
-This prevents PR proliferation and maintains a clear workflow where only one sync PR exists at a time.
-
-An upstream commit that touches only filtered paths — a non-Azure provider,
-`devops/`, `.gitlab-ci.yml` — advances the upstream tip without changing the
+An upstream commit that touches only filtered paths (a non-Azure provider,
+`devops/`, `.gitlab-ci.yml`) advances the upstream tip without changing the
 fork's tree. That run opens nothing and records the evaluated commit in the
 `SYNC_LAST_EVALUATED_SHA` repository variable, so later runs skip it instead of
 regenerating an identical tree every night. While a sync PR is open its
@@ -115,8 +113,6 @@ Look for `human-required,upstream-sync` issues for sync PR review and `human-req
 |-------|-------|----------|
 | "No upstream changes detected" | Fork is current with upstream | Normal - no action needed |
 | "Failed to fetch upstream" | Network issues or incorrect URL | Verify the `UPSTREAM_REPO_URL` variable |
-| "AI description generation failed" | API key issues or service down | PR created with fallback template |
-| "Large diff - using fallback template" | Changes exceed 20k lines | Normal for major upstream updates |
 | "Duplicate PR detected" | Existing sync PR found | Updates existing PR instead |
 | "Cascade not triggered" | Forgot to run manually | Monitor auto-triggers after 6 hours |
 | "Upstream filter halted" | New or renamed content is unclassified | Update `.github/upstream-filter.yml` and rerun |

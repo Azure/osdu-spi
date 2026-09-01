@@ -1,6 +1,6 @@
 # Cascade Integration Workflow
 
-The cascade integration workflow is the second phase of the fork management process. It is responsible for safely moving synchronized upstream changes through your repository's three-branch hierarchy toward production. After an upstream synchronization PR has been merged into the `fork_upstream` branch, this workflow takes over to validate and integrate those changes into your main development branch.
+The cascade is the second phase of fork management. After a sync PR merges into `fork_upstream`, the cascade integrates the change through `fork_integration` and offers it to `main`.
 
 This workflow acts as a quality gate, running the Azure Maven build and tests before allowing changes to reach `main`. It combines the generated, provider-less upstream tree with the fork-owned Azure implementation and verifies that the result works.
 
@@ -8,16 +8,15 @@ The cascade process includes a dedicated monitor workflow. A merged sync PR trig
 
 ## When It Runs
 
-The cascade workflow operates on both manual and automatic triggers to ensure reliable integration:
+The cascade workflow starts on:
 
 - **Manual trigger** - You provide the sync issue number in the GitHub Actions tab after reviewing a sync PR
 - **Automatic trigger** - The monitor dispatches the cascade when a sync PR is merged
 - **Scheduled recovery** - The monitor checks every 6 hours for missed or recoverable cascades
-- **Emergency manual** - Can be run on-demand for any validated upstream changes that need immediate propagation
 
 ## What Happens
 
-The workflow follows a structured validation and integration process:
+The workflow:
 
 1. **Validates sync completion** - Ensures the upstream sync PR was properly merged and prerequisites are met
 2. **Builds the integration state** - Merges `main` and then `fork_upstream` into `fork_integration`
@@ -42,9 +41,7 @@ flowchart LR
     style E fill:#ffebee,stroke:#c62828,stroke-width:2px
 ```
 
-The workflow produces clear outcomes to guide your next actions:
-- **Success**: A production-ready PR is created for final human review before merge to `main`
-- **Failure**: Validation errors reported with specific resolution steps and a dedicated failure issue
+On success a PR to `main` is open and waiting for review. On failure a dedicated issue records the error and the recovery steps.
 
 ## When You Need to Act
 
@@ -109,12 +106,11 @@ git push origin fork_integration
 ## Safety Features
 
 - **Three-branch isolation** - Failures don't affect `main` branch
-- **Comprehensive validation** - Build, test, security, and quality gates
+- **Validation** - `core,azure` build and tests on the merged tree
 - **Fork-owned path assertion** - Fails if the Azure provider or test tree disappears
 - **Version stamping** - Aligns fork-owned Azure POMs with new upstream coordinates
 - **Human approval gates** - Production changes require explicit review
-- **Rollback capability** - Can revert to previous stable state
-- **Complete audit trail** - All actions logged in GitHub issues
+- **Audit trail** - Every step is commented on the sync issue
 
 ## Related
 

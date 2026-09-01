@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-This catalog documents the architectural choices that shape the OSDU SPI Fork Management system. Each ADR captures the context, rationale, and consequences of significant design choices that enable automated management of long-lived upstream forks.
+Each record captures the context, decision, and consequences of one design choice in the fork management system. They are grouped by the question they answer.
 
 !!! info "Impact Levels"
     **:material-star: Critical** - Fundamental to system operation; changes require careful migration planning
@@ -10,6 +10,8 @@ This catalog documents the architectural choices that shape the OSDU SPI Fork Ma
     **:material-minus: Medium** - Localized improvements; changes have bounded effects
 
 ## Catalog
+
+Numbers 017, 032, and 034 were retired and are intentionally unused.
 
 ### :material-layers: Foundation & Core Architecture
 
@@ -78,9 +80,9 @@ Build architecture, dependency management, and documentation:
 
 ### :material-rocket-launch: CI/CD & Deployment
 
-*"How do services get built, deployed, and tested per PR?"*
+*"How do services get built and published per PR?"*
 
-Decisions for the container-image build, cluster deploy, and integration-test pipeline:
+Decisions for the container image build, the image registry, and the acceptance-test contract. Cluster deploy and integration-test jobs are designed in [Borrow, Prove, Restore](../architecture/deploy_test.md) and not built yet:
 
 | ADR | Decision | Impact |
 |-----|----------|--------|
@@ -129,20 +131,4 @@ Technical patterns and infrastructure for workflow implementation:
 | [029](029-github-app-authentication-strategy.md) | **GitHub App Authentication** | :material-trending-up: High |
 | [030](030-codeql-summary-job-pattern.md) | **CodeQL Summary Job Pattern** | :material-trending-up: High |
 
-## Navigation Tips
-
-### Finding Relevant ADRs
-
-**By Workflow Task**: Use the question-based categories above to find ADRs related to specific activities (initialization, synchronization, build, release, etc.).
-
-**By Impact Level**: Focus on :material-star: Critical and :material-trending-up: High Impact ADRs when understanding core system behavior or planning significant changes.
-
-**By Category**: Navigate to specific sections when troubleshooting issues in particular workflow areas.
-
-### Understanding Context
-
-Most ADRs reference related decisions. Follow the cross-reference links to understand how decisions build upon each other and why certain patterns evolved.
-
----
-
-*For insights on lessons learned and architectural principles, see [Learnings](learnings.md).*
+Lessons drawn from these decisions are collected in [Learnings](learnings.md).

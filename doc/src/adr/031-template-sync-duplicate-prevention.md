@@ -5,7 +5,7 @@ Accepted
 
 ## Context
 
-Following the successful implementation of duplicate prevention for upstream sync workflows (ADR-024), the same problem was identified in the template sync workflow. The daily template sync workflow (`template-sync.yml`) was creating duplicate PRs when humans delayed reviewing PRs, causing:
+Following the successful implementation of duplicate prevention for upstream sync workflows (ADR-024), the same problem was identified in the template sync workflow. The daily template sync workflow (`sync-template.yml`) was creating duplicate PRs when humans delayed reviewing PRs, causing:
 
 1. **Duplicate template-sync PRs** - Multiple open PRs for the same template updates
 2. **Repository clutter** - Accumulation of stale template-sync branches
@@ -51,9 +51,9 @@ Implement **Template Sync Duplicate Prevention** following the same architectura
 
 When updating an existing PR:
 - Force-push new commits to existing branch
-- Update PR title to show "(Updated YYYY-MM-DD)"
+- Update the PR title to `chore(template-sync): sync template updates (updated YYYY-MM-DD)`; the conventional prefix stays first because the semantic PR check reads the type from it
 - Regenerate PR description with all current changes
-- Add comment about the update (with duplicate comment prevention)
+- Post a comment recording the new template commit and update time
 
 ## Rationale
 
@@ -67,20 +67,6 @@ The sync-state-manager action was designed for upstream sync's more complex stat
 2. **No Issue Tracking**: Template sync doesn't create tracking issues like upstream sync
 3. **Different Base Branch**: Targets `main` instead of `fork_upstream`
 4. **Self-Contained**: All logic fits naturally in workflow without external scripts
-
-**Benefits of Inline Approach:**
-- **Simplicity**: Easier to understand and maintain
-- **Performance**: No additional action overhead
-- **Clarity**: All logic visible in single workflow file
-- **Maintainability**: Changes don't affect upstream sync logic
-
-### Consistency with ADR-024 Pattern
-
-Despite the implementation difference, the pattern remains consistent:
-- **Same decision matrix** for handling duplicates
-- **Same branch reuse strategy** with force-push
-- **Same PR update behavior** with comments
-- **Same label-based tracking** approach
 
 ## Implementation Details
 
@@ -138,22 +124,22 @@ Despite the implementation difference, the pattern remains consistent:
 
 ### Split PR Creation (New)
 
+PR creation originally went through a `create-enhanced-pr` action that also produced an AI-written description; #162 removed that action (ADR-014) and both paths now call `gh` directly with a body computed from the diff.
+
 ```yaml
 - name: Create new template sync PR
   if: steps.check-updates.outputs.has_updates == 'true' &&
       env.has_changes == 'true' &&
       steps.detect-existing.outputs.has_existing_pr == 'false'
   id: create-pr
-  # Was `uses: ./.github/actions/create-enhanced-pr` until #162 removed it; now an
-  # inline `gh pr create --body-file`. The split-path control flow is unchanged.
-  # See .github/template-workflows/sync-template.yml for implementation details (PR creation and labeling)
+  # gh pr create --body-file with the template-sync label; see sync-template.yml
 
 - name: Update existing template sync PR
   if: steps.check-updates.outputs.has_updates == 'true' &&
       env.has_changes == 'true' &&
       steps.detect-existing.outputs.has_existing_pr == 'true'
   id: update-pr
-  # See .github/template-workflows/sync-template.yml for implementation details (PR update logic)
+  # gh pr edit --title/--body-file, then gh pr comment; see sync-template.yml
 ```
 
 ### Label Definition
@@ -168,27 +154,7 @@ Despite the implementation difference, the pattern remains consistent:
 
 ## Consequences
 
-### Positive
-
-- ✅ **Eliminates duplicate template-sync PRs** - Core problem solved
-- ✅ **Consistent with upstream sync pattern** - Same architectural approach
-- ✅ **Simpler implementation** - Inline logic easier to maintain than action
-- ✅ **Clean repository state** - No accumulation of stale PRs
-- ✅ **Reduced notification fatigue** - Single PR per template update cycle
-- ✅ **Clear PR progression** - Updated PRs show complete history
-- ✅ **Preserves human workflow** - Same PR URL throughout update cycle
-
-### Negative
-
-- ⚠️ **Code duplication with sync-state-manager** - Detection logic duplicated (but simplified)
-- ⚠️ **No shared state management** - Each workflow manages its own state
-- ⚠️ **Different from upstream sync** - Uses inline approach vs action approach
-
-### Neutral
-
-- 📝 **Pattern reuse** - Same architectural pattern, different implementation
-- 📝 **No breaking changes** - Existing forks work without modification
-- 📝 **Automatic distribution** - sync-config.json handles deployment
+Detection logic is a simplified copy of what `sync-state-manager` does for upstream sync, so the two implementations can drift apart and each workflow manages its own state.
 
 ## Comparison with ADR-024
 
@@ -202,30 +168,11 @@ Despite the implementation difference, the pattern remains consistent:
 | **Complexity** | Higher (cascade coordination) | Lower (PR-only) |
 | **Reusability** | Action reusable by other workflows | Workflow-specific logic |
 
-## Success Criteria
-
-- ✅ **Reduction in duplicate template-sync PRs** - Primary success indicator
-- ✅ **Single active template-sync PR** - Only one open at any time
-- ✅ **PR updates work correctly** - Force-push and description updates succeed
-- ✅ **No notification spam** - Reduced GitHub notification volume
-- ✅ **Clear PR progression** - Updated PRs show complete change history
-- ✅ **Automatic label management** - `template-sync` label correctly applied
-
-## Testing Strategy
-
-Real-world validation through production fork repositories:
-- Monitor daily template-sync workflow executions
-- Verify single PR creation/update behavior
-- Confirm force-push updates work correctly
-- Validate PR description regeneration
-- Check duplicate comment prevention
-
 ## References
 
 - [ADR-024: Sync Workflow Duplicate Prevention Architecture](024-sync-workflow-duplicate-prevention-architecture.md) - Original pattern
 - [ADR-012: Template Update Propagation Strategy](012-template-update-propagation-strategy.md) - Template sync workflow
 - [ADR-011: Configuration-Driven Template Synchronization](011-configuration-driven-template-sync.md) - Template sync foundation
-- [Evidence: Multiple Template Sync PRs](https://github.com/danielscholl-osdu/workflow/pulls) - Production repository showing duplicate PR problem
 
 ---
 

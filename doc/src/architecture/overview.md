@@ -2,7 +2,7 @@
 
 ## Principles
 
-The OSDU SPI Fork Management system is built on **template-driven automation** that prioritizes guided initialization, controlled upstream integration, and continuous maintenance. The architecture uses GitHub-native workflows, issues, rulesets, releases, and packages.
+The system is a GitHub template. A fork created from it gets guided initialization, controlled upstream integration, and ongoing maintenance, all built from GitHub-native workflows, issues, rulesets, releases, and packages.
 
 <div class="grid cards" markdown>
 
@@ -16,7 +16,7 @@ The OSDU SPI Fork Management system is built on **template-driven automation** t
 
     ---
 
-    Multiple validation points prevent unstable code promotion through the three-branch strategy, with branch protection rules and automated security scanning.
+    Each branch stage validates before promoting, backed by rulesets and security scanning.
 
 -   :material-lightning-bolt:{ .lg .middle } **Event Driven**
 
@@ -28,13 +28,13 @@ The OSDU SPI Fork Management system is built on **template-driven automation** t
 
     ---
 
-    Support unlimited repository deployments with consistent patterns, enabling enterprise-wide adoption across multiple OSDU repository forks.
+    Every fork runs the same workflows, so adding a service repository adds no new patterns.
 
 </div>
 
 ## System Design
 
-The system implements a sophisticated template repository pattern that separates concerns:
+The template repository pattern separates template development from fork operation:
 
 ```mermaid
 graph TD
@@ -52,19 +52,13 @@ graph TD
     style D fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
 ```
 
-!!! info "Template Repository Pattern"
-    This pattern separates template development from instance operation, enabling scalable management of unlimited fork deployments while maintaining consistent automation patterns.
-
-**Template Development Context** includes `.github/workflows/` for template development and maintenance workflows, template-specific documentation and configuration, and update propagation mechanisms with testing frameworks.
+**Template Development Context** is `.github/workflows/`: the template's own CI, initialization, documentation build, and the tests for the update propagation mechanism.
 
 **Fork Instance Context** receives the files from `.github/template-workflows/` as deployed `.github/workflows/`, plus fork-owned configuration, actions, and build assets.
 
-**Event Driven Architecture** enables intelligent automation through GitHub's native event system. The system responds to scheduled events (daily sync), change events (PR validation), and manual events (on-demand resolution), providing comprehensive lifecycle management.
+**Event Driven Architecture** means the workflows respond to GitHub events: scheduled events (daily sync), change events (PR validation), and manual dispatch (on-demand sync or cascade).
 
-!!! tip "Architectural Success Pattern"
-    The combination of template-driven deployment with event-driven automation creates a self-managing system that scales across unlimited fork instances while maintaining consistent behavior and zero-configuration operation.
-
-**System Components** provide comprehensive automation through three specialized layers that work together to deliver fork management capabilities.
+Two components carry most of the design:
 
 <div class="grid cards" markdown>
 
@@ -104,9 +98,6 @@ See [ADR-033](../adr/033-ghcr-as-service-image-registry.md), [ADR-035](../adr/03
 
 ## Enterprise Capabilities
 
-The system combines repository rulesets, CodeQL, Dependabot validation, trusted-event package publication, and GitHub App authentication. Branch protection keeps human approval on `main` while allowing automation to maintain the integration branches.
-
-!!! success "Enterprise Ready"
-    Forks receive centrally maintained workflows and the canonical container recipe while retaining explicit ownership of service-specific Azure source and filter configuration.
+The system combines repository rulesets, CodeQL, Dependabot validation, trusted-event package publication, and GitHub App authentication. The default-branch ruleset keeps human approval on `main` while the integration-branch ruleset lets automation maintain `fork_upstream` and `fork_integration`. Forks receive centrally maintained workflows and the shared Dockerfile while keeping ownership of their Azure source and filter configuration.
 
 ---

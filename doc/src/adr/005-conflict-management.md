@@ -4,187 +4,53 @@
 **Accepted** - 2025-10-01
 
 ## Context
-When synchronizing with upstream repositories, merge conflicts are inevitable due to modifications made in the fork. The system needs to handle conflicts in a way that:
+Merge conflicts between upstream and the fork's own modifications are inevitable. The system needs to detect them automatically, keep conflicted code away from `main`, make the conflict visible to the team, and let resolution happen without blocking other development.
 
-- Prevents automatic merging of conflicted code
-- Provides clear visibility into conflicts and their resolution requirements
-- Maintains the stability of the main branch during conflict resolution
-- Enables systematic resolution of conflicts without blocking other development
-- Tracks conflict resolution decisions for future reference
-
-Traditional approaches often result in conflicts being resolved directly on main branches, leading to instability, or conflicts being ignored, leading to drift from upstream.
+Resolving conflicts directly on `main` destabilizes it; ignoring them lets the fork drift from upstream.
 
 ## Decision
-Implement an automated conflict management strategy that:
-
-1. **Conflict Detection**: Automatically detect merge conflicts during upstream synchronization
-2. **Isolation Strategy**: Use the `fork_integration` branch for conflict resolution
-3. **Issue Creation**: Create GitHub Issues for each conflict requiring resolution
-4. **Pull Request Workflow**: Create separate PRs for conflict resolution and integration
-5. **Manual Resolution**: Require human review for all conflict resolutions
-6. **Documentation**: Maintain clear records of conflict resolution decisions
-
-## Rationale
-
-### Automated Detection Benefits
-1. **Early Warning**: Conflicts identified immediately during sync process
-2. **Visibility**: Team is notified of conflicts through issues and PRs
-3. **Prevention**: Prevents conflicted code from reaching main branch
-4. **Systematic**: Consistent handling of all conflicts regardless of complexity
-5. **Audit Trail**: Complete record of when conflicts occurred and how they were resolved
-
-### Fork Integration Branch Strategy
-1. **Isolation**: Conflicts resolved in dedicated branch without affecting main
-2. **Safety**: Main branch remains stable during conflict resolution process
-3. **Flexibility**: Multiple conflicts can be resolved independently
-4. **Testing**: Conflict resolutions can be tested before integration
-5. **Rollback**: Easy to abandon problematic conflict resolutions
-
-### Issue-Driven Process
-1. **Accountability**: Clear ownership of conflict resolution tasks
-2. **Discussion**: Platform for discussing resolution strategies
-3. **Documentation**: Permanent record of resolution decisions and rationale
-4. **Tracking**: Progress tracking and resolution status visibility
-5. **Knowledge Transfer**: Future conflicts can reference previous resolution patterns
+1. **Conflict Detection**: The cascade detects merge conflicts when merging `fork_upstream` into `fork_integration`.
+2. **Isolation**: Conflicts are resolved on `fork_integration`, never on `main`.
+3. **Issue Creation**: Each conflict opens a GitHub issue listing the conflicted files and the steps to resolve them.
+4. **Manual Resolution**: A human resolves the conflict directly on `fork_integration` and pushes. No conflict is resolved automatically.
+5. **Escalation**: Conflicts open longer than 48 hours are escalated with a separate issue and label.
+6. **Documentation**: The issue records when the conflict occurred and how it was resolved.
 
 ## Alternatives Considered
 
 ### 1. Automatic Conflict Resolution
-- **Pros**: No manual intervention, faster integration
-- **Cons**: Risk of incorrect resolutions, loss of context, potential data loss
-- **Decision**: Rejected due to safety and quality concerns
+No manual intervention, but risks incorrect resolutions and silent data loss. Rejected.
 
 ### 2. Conflict Resolution on Main Branch
-- **Pros**: Simpler workflow, direct resolution
-- **Cons**: Destabilizes main branch, blocks other development, risky
-- **Decision**: Rejected due to stability requirements
+Simpler, but destabilizes `main` and blocks other development while conflicts are open. Rejected.
 
 ### 3. Feature Branch per Conflict
-- **Pros**: Complete isolation of each conflict
-- **Cons**: Branch proliferation, complex tracking, overhead
-- **Decision**: Rejected due to management complexity
+Complete isolation per conflict, but branch proliferation and tracking overhead. Rejected.
 
 ### 4. Manual Conflict Detection
-- **Pros**: Human judgment in conflict identification
-- **Cons**: Inconsistent, delays in detection, human error prone
-- **Decision**: Rejected due to automation requirements
+Human judgment in detection, but inconsistent and slow. Rejected.
 
 ## Consequences
-
-### Positive
-- **Stability**: Main branch protected from conflicts during resolution
-- **Visibility**: Clear tracking of all conflicts and their resolution status
-- **Quality**: Human review ensures appropriate conflict resolution
-- **Documentation**: Permanent record of resolution decisions for future reference
-- **Systematic**: Consistent handling regardless of conflict complexity
-- **Safe**: Multiple review points before conflicts reach production
-
-### Negative
-- **Manual Overhead**: Requires human intervention for all conflicts
-- **Potential Delays**: Conflicts must be resolved before upstream integration
-- **Process Complexity**: Multiple branches and PRs for conflict resolution
-- **Learning Curve**: Team must understand conflict resolution workflow
+Every conflict needs a human, so upstream integration waits on resolution. In exchange, `main` never receives conflicted code and every resolution is recorded on an issue.
 
 ## Implementation Details
 
-### Current Architecture (2025)
+### Where Detection Happens
+The strategy is implemented in `cascade.yml` (job `cascade-to-integration`) together with the Cascade Monitor Pattern (ADR-019) and the Human-Required Label Strategy (ADR-020):
 
-The conflict management strategy is now integrated with the **Cascade Monitor Pattern** (ADR-019) and uses the **Human-Required Label Strategy** (ADR-020):
+1. `sync.yml` opens a PR from a `sync/upstream-*` branch to `fork_upstream`.
+2. After that PR merges, a human triggers `cascade.yml`. `cascade-monitor.yml` dispatches it as a safety net if nobody does.
+3. The cascade merges `fork_upstream` into `fork_integration`. If git reports unmerged paths, the step lists the conflicted files, opens an issue titled `🚨 Cascade Conflicts: Manual Resolution Required` with labels `conflict,cascade-blocked,high-priority,human-required`, moves the tracking issue from `cascade-active` to `cascade-blocked`, and stops.
+4. The developer resolves the conflicts on `fork_integration` locally, commits, and pushes.
+5. Once the `human-required` label is removed, `cascade-monitor.yml` re-dispatches the cascade, which continues to validation and the production PR.
+6. `check-stale-conflicts` in both `cascade.yml` and `cascade-monitor.yml` looks for `conflict,cascade-blocked` items older than 48 hours, opens an escalation issue labeled `escalation,high-priority,cascade-escalated,human-required`, and comments on the original.
 
-1. **Sync Workflow**: Creates clean PRs to `fork_upstream` when possible
-2. **Cascade Monitor**: Detects merged sync PRs and triggers cascade
-3. **Cascade Workflow**: Handles conflict detection and resolution during integration
-
-### Conflict Detection in Cascade Workflow
-```yaml
-# In cascade.yml - Phase 1: Upstream to Integration
-- name: Merge upstream into fork_integration
-  id: merge_upstream
-  run: |
-    # Merge fork_upstream into fork_integration
-    echo "Merging upstream changes into fork_integration..."
-    CONFLICTS_FOUND=false
-    
-    if git merge origin/fork_upstream --no-edit; then
-      echo "✅ Clean merge of upstream changes achieved"
-    else
-      # Check if there are unresolved conflicts
-      if git status --porcelain | grep -q "^UU\|^AA\|^DD"; then
-        echo "::warning::Merge conflicts detected"
-        CONFLICTS_FOUND=true
-        
-        # List conflicted files
-        echo "Conflicted files:"
-        git diff --name-only --diff-filter=U | tee conflicted_files.txt
-        
-        # Create conflict resolution issue
-        CONFLICT_BODY="Upstream merge conflicts detected in fork_integration branch.
-        
-        **Conflicted Files:**
-        \`\`\`
-        $(cat conflicted_files.txt)
-        \`\`\`
-        
-        **Next Steps:**
-        1. Checkout the fork_integration branch locally
-        2. Resolve conflicts in the listed files
-        3. Commit and push the resolution
-        4. The cascade will automatically continue once conflicts are resolved
-        
-        **SLA:** 48 hours for resolution"
-        
-        gh issue create \
-          --title "🚨 Cascade Conflicts: Manual Resolution Required - $(date +%Y-%m-%d)" \
-          --body "$CONFLICT_BODY" \
-          --label "conflict,cascade-blocked,high-priority,human-required"
-        
-        echo "conflicts=true" >> $GITHUB_OUTPUT
-        exit 1
-      else
-        echo "✅ Merge completed with automatic resolution"
-      fi
-    fi
-    
-    echo "conflicts=false" >> $GITHUB_OUTPUT
-```
-
-### Current Conflict Resolution Process (2025)
-1. **Trigger**: Cascade monitor detects sync PR merge to `fork_upstream`
-2. **Attempt Integration**: Cascade workflow attempts merge to `fork_integration`
-3. **Conflict Detection**: Automated detection of merge conflicts during cascade
-4. **Issue Creation**: Issue created with `conflict,cascade-blocked,human-required` labels
-5. **Manual Resolution**: Developer resolves conflicts directly in `fork_integration` branch
-6. **Automatic Continuation**: Once resolved, cascade automatically continues to main
-7. **SLA Management**: Conflicts older than 48 hours are automatically escalated
-8. **Cleanup**: Issues closed when conflicts resolved and cascade completes
-
-### Label-Based Management (ADR-020)
-- **Primary Label**: `human-required` - Indicates manual intervention needed
-- **Type Label**: `conflict` - Identifies the type of issue  
-- **Status Label**: `cascade-blocked` - Shows pipeline is blocked
-- **Priority Label**: `high-priority` - Indicates urgency level
-
-### Conflict Categorization
-- **Code Conflicts**: Overlapping changes in source files
-- **Configuration Conflicts**: Changes to build files, dependencies
-- **Documentation Conflicts**: README, documentation updates
-- **Deletion Conflicts**: Files deleted in upstream or fork
-
-### Resolution Guidelines
-- **Preserve Fork Intent**: Maintain the purpose of fork-specific changes
-- **Adopt Upstream Improvements**: Integrate beneficial upstream changes
-- **Document Decisions**: Explain resolution rationale in PR description
-- **Test Thoroughly**: Ensure resolution doesn't break functionality
-- **Consistent Patterns**: Follow established resolution patterns for similar conflicts
-
-## Success Criteria
-- No conflicted code ever reaches the main branch
-- All conflicts are detected automatically during sync process
-- Conflict resolution issues are created with actionable information
-- Average conflict resolution time is under 48 hours
-- Resolution decisions are clearly documented for future reference
-- Team can handle conflicts without blocking regular development work
-- Conflict resolution patterns become consistent over time
+### Labels (ADR-020)
+- `human-required`: manual intervention needed
+- `conflict`: the issue type
+- `cascade-blocked`: the pipeline is blocked
+- `high-priority`: urgency
+- `cascade-escalated`: the 48-hour SLA was exceeded
 
 ---
 

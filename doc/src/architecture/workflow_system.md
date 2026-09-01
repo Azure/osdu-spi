@@ -1,12 +1,12 @@
 # Workflow System Architecture
 
-The OSDU SPI Fork Management system implements a sophisticated workflow architecture that separates template development concerns from fork production operations. This design enables scalable deployment across multiple fork instances while maintaining centralized template management.
+The template keeps its own workflows apart from the workflows it deploys to forks. Template changes are developed and tested in one place and propagated to every fork.
 
 ## Workflow Architecture Pattern
 
 ### Template-Workflows Separation
 
-The system implements a clean separation between template development and fork production workflows:
+The two directories serve different repositories:
 
 ```mermaid
 graph TD
@@ -67,13 +67,12 @@ graph TD
 
     Daily synchronization that filters the upstream tip into a reproducible provider-less tree, prevents duplicate PRs, and derives the meta commit and PR body from the upstream commit range
 
-    - **Trigger**: Scheduled daily at midnight UTC with intelligent duplicate prevention
+    - **Trigger**: Scheduled daily at midnight UTC, or manual dispatch
     - **Transform**: Keeps shared code, removes provider/deployment source, and injects references to fork-owned Azure modules
     - **Safety**: Halts when shared upstream content is unclassified or an expected kept path disappears
     - **Decision Logic**: Updates existing branches when upstream advances, prevents duplicates for same SHA
     - **Integration**: Three-branch safety pattern (fork_upstream → fork_integration → main)
-    - **Classification**: Deterministic bump rule over the upstream range — breaking > feat > fix (ADR-023)
-    - **Conflict Handling**: Automated detection with human-guided resolution
+    - **Classification**: Deterministic bump rule over the upstream range, breaking before feat before fix (ADR-023)
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/synchronization.md)
 
@@ -85,14 +84,13 @@ graph TD
 
     ---
 
-    Distributes template improvements across multiple fork instances with selective synchronization and automated validation
+    Brings template changes into a fork as a reviewable PR
 
     - **Trigger**: Daily scheduled execution at 8 AM UTC
-    - **Scope**: Selective file synchronization based on configuration rules
-    - **Safety**: Automated testing and validation before deployment
-    - **Scalability**: Supports unlimited fork instances with consistent patterns
+    - **Scope**: The files listed in `sync-config.json`
+    - **Duplicates**: One open template-sync PR at a time (ADR-031)
 
-    [:octicons-arrow-right-24: Detailed spec](../workflows/synchronization.md)
+    [:octicons-arrow-right-24: Decision record](../adr/012-template-update-propagation-strategy.md)
 
 </div>
 
@@ -104,13 +102,11 @@ graph TD
 
     ---
 
-    Comprehensive quality assurance system that enforces code standards, verifies build integrity, and ensures consistency across all changes
+    The required checks on every PR to a protected branch
 
-    - **Quality Gates**: Multi-phase validation pipeline with always-reporting summary checks
-    - **Scope**: Semantic PR titles, branch status, Java build, canonical Dockerfile build, and trusted-event GHCR push
+    - **Scope**: Semantic PR titles, branch status, Java build, Dockerfile build, and trusted-event GHCR push
     - **Profiles**: `core,azure` by default; `core` for provider-less `fork_upstream`
-    - **Intelligence**: Context-aware validation for different contribution types
-    - **Feedback**: Detailed status reporting with actionable developer guidance
+    - **Summary checks**: Always report, so a skipped job never leaves a required check pending
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/validation.md)
 
@@ -177,12 +173,12 @@ graph TD
 
     ---
 
-    Multi-stage integration workflow that safely promotes changes through the three-branch strategy with comprehensive validation
+    Promotes a merged sync from `fork_upstream` through `fork_integration` to a PR on `main`
 
-    - **Flow**: Systematic progression from fork_upstream → fork_integration → main
-    - **Safety**: Comprehensive testing and validation at each integration stage
-    - **Flexibility**: Manual execution with automated monitoring capabilities
-    - **Tracking**: Complete progress monitoring through GitHub Issues
+    - **Flow**: fork_upstream → fork_integration → main
+    - **Validation**: Build and test `core,azure` on `fork_integration` before opening the PR
+    - **Trigger**: Dispatched by the monitor, or manually with the sync issue number
+    - **Tracking**: Progress comments on the sync issue
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/cascade.md)
 
@@ -198,7 +194,7 @@ graph TD
 
     - **Detection**: Automated monitoring for completed upstream synchronizations
     - **Schedule**: Six-hour safety-net checks for missed events and stale conflicts
-    - **Escalation**: Proactive alerts and notifications for overdue operations
+    - **Escalation**: Labels and comments on cascades that stay blocked
     - **Recovery**: Retries failure issues after maintainers mark them ready
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/cascade.md)
@@ -248,10 +244,9 @@ graph LR
 | **Event-Based** | Cascade Monitor | Sync PR merged | Dispatches cascade after merge to `fork_upstream` |
 | **Event-Based** | Build | Feature push or protected-branch PR | Java developer feedback |
 | **Event-Based** | Release | Push to `main` | Release Please and GHCR SemVer tagging |
-| **Manual** | Emergency Sync | On-demand | Immediate upstream synchronization |
-| **Manual** | Cascade Override | On-demand | Manual cascade operation initiation |
-| **Manual** | Template Update | On-demand | Immediate template propagation |
-| **Manual** | Validation Retry | On-demand | Re-execution of failed workflows |
+| **Manual** | Sync | On-demand | Immediate upstream synchronization |
+| **Manual** | Cascade | On-demand | Cascade for a given sync issue |
+| **Manual** | Template Sync | On-demand | Immediate template propagation |
 
 ## Workflow Integration Patterns
 
@@ -272,13 +267,12 @@ graph LR
 Each sync computes, from git alone:
 
 - **Commit list**: the upstream range not yet reachable from `fork_upstream`, capped for GitHub's body limit
-- **Meta commit**: a conventional subject chosen by rule — breaking > feat > fix, with non-conventional upstream commits falling through to `fix:` (ADR-023)
+- **Meta commit**: a conventional subject chosen by rule (breaking, then feat, then fix), with non-conventional upstream commits falling through to `fix:` (ADR-023)
 - **Regeneration**: a sync carrying no new upstream commits says so and names the filter revision
 
 ### Security Integration
 
-!!! warning "Security-First Approach"
-    Security responsibilities are separated across CodeQL, Dependabot validation, repository rulesets, pinned actions, and trusted-event package permissions.
+Security responsibilities are split across CodeQL, Dependabot validation, repository rulesets, pinned actions, and trusted-event package permissions.
 
 <div class="grid cards" markdown>
 
@@ -295,10 +289,9 @@ Each sync computes, from git alone:
 
     ---
 
-    - Required workflow completion before merge
-    - Mandatory human approval for production changes
-    - Prevention of unauthorized direct pushes
-    - Controlled override procedures for critical issues
+    - Required status checks before merge
+    - Human approval for every PR to `main`
+    - No direct pushes to `main`
 
 </div>
 
@@ -307,10 +300,7 @@ Each sync computes, from git alone:
 ### Issue-Based Tracking
 
 #### **Lifecycle Management**
-- **State Tracking**: GitHub Issues for workflow state management
-- **Progress Updates**: Automated status updates throughout workflow execution
-- **Error Reporting**: Detailed failure analysis and resolution guidance
-- **Audit Trail**: Complete record of all workflow operations
+Each sync opens a tracking issue. The sync, cascade, and monitor workflows comment on it as they progress, and failures open a `human-required` issue with the error and the steps to recover.
 
 #### **Label-Based Organization**
 - **Workflow Types**: `upstream-sync`, `template-sync`, `release-tracking`
@@ -318,26 +308,10 @@ Each sync computes, from git alone:
 - **Priority and recovery**: `high-priority`, `cascade-ready`, `needs-resolution`
 - **Assignment Strategy**: `human-required` for manual intervention points
 
-### Performance Optimization
+### Caching and Concurrency
 
-<div class="grid cards" markdown>
+Maven dependencies and Docker layers are cached between runs. JAR and coverage artifacts live for two days. Sync, cascade, and deployment run under concurrency groups so two runs never touch the same branch at once.
 
--   :material-lightning-bolt:{ .lg .middle } **Intelligent Caching**
-
-    ---
-
-    - Maven dependencies
-    - Docker build layers
-    - Short-lived JAR and coverage artifacts
-
--   :material-speedometer:{ .lg .middle } **Resource Management**
-
-    ---
-
-    - Concurrent workflow execution where safe
-    - Concurrency groups for sync, cascade, and deployment operations
-
-</div>
 ## Reusable Actions
 
 - **Java Build**: Maven build, tests, coverage, and JAR artifacts

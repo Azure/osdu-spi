@@ -5,143 +5,49 @@
 
 ## Context
 
-GitHub Actions workflows use YAML syntax to define shell scripts, which creates potential conflicts when shell scripts contain YAML-meaningful characters. During implementation of the initialization completion message system, we encountered YAML parsing errors caused by:
+GitHub Actions workflows embed shell scripts in YAML, so shell text containing YAML-meaningful characters can break the workflow file. While building the initialization completion message we hit parser errors from a multi-line shell variable assignment that contained colons, apostrophes, and backticks:
 
-**Problematic Patterns:**
-- **Heredocs with colons**: `Here's what was set up:` interpreted as YAML mapping
-- **Multiline string assignments**: Complex heredoc syntax within YAML run blocks
-- **Special characters**: Backticks, quotes, and colons within shell variable assignments
-- **Mixed contexts**: Shell script syntax nested within YAML string contexts
-
-**Example of Problematic Code:**
 ```yaml
 run: |
   MANUAL_STEPS="## Manual Configuration Required
 
   Since no GH_TOKEN was provided, please complete these steps:
 
-  ### 1. Branch Protection  
+  ### 1. Branch Protection
   - Go to Settings → Branches
   - For each branch (`main`, `fork_upstream`, `fork_integration`):
     - Require pull request reviews before merging
   "
 ```
 
-**YAML Parser Errors:**
-- `line 351: could not find expected ':'`
-- `line 353: mapping values are not allowed in this context`
+```
+line 351: could not find expected ':'
+line 353: mapping values are not allowed in this context
+```
 
 ## Decision
 
-Establish **YAML-Safe Shell Scripting Patterns** for GitHub Actions workflows:
+1. **Keep long or formatted content out of workflow YAML.** Store it in files and read it at runtime. The initialization completion message and its manual-steps sections live in `.github/local-actions/templates/`, and `init-complete.yml` assembles the comment from those files.
+2. **Keep inline shell strings short.** A shell variable assigned inside a `run:` block should be a single line or a small number of concatenated lines with no colons at the start of a line, no unbalanced quotes, and no heredoc-in-subshell constructs.
+3. **Validate workflow YAML before committing.** Every workflow change must parse:
 
-### 1. **Avoid Complex Heredocs in Variable Assignments**
-❌ **Don't:**
 ```bash
-VARIABLE=$(cat << 'EOF'
-Multi-line content with: colons
-And other YAML-meaningful characters
-EOF
-)
+yq e '.' .github/workflows/<workflow-name>.yml >/dev/null && echo "YAML is valid"
 ```
-
-✅ **Do:**
-```bash
-VARIABLE="Simple single-line message without YAML conflicts"
-```
-
-### 2. **Use External Files for Complex Content**
-
-❌ **Don't:** Embed complex markdown/text in shell variables
-
-✅ **Do:** Store complex content in separate files and reference them
-
-### 3. **Escape YAML-Meaningful Characters**
-
-❌ **Don't:** `Here's what was set up:`
-
-✅ **Do:** `Here is what was set up` (avoid apostrophes in workflow text)
-
-### 4. **Prefer Simple String Concatenation**
-
-❌ **Don't:** Complex multiline assignments within YAML
-
-✅ **Do:** Build complex messages using simple string concatenation or external templates
-
-### 5. **Test YAML Validity During Development**
-**Required Command:**
-```bash
-yq eval '.github/workflows/workflow-name.yml' >/dev/null && echo "✅ YAML is valid" || echo "❌ YAML has errors"
-```
-
-## Rationale
-
-### Technical Benefits
-
-1. **Reliability**: Prevents workflow failures due to YAML parsing errors
-2. **Maintainability**: Simpler patterns easier to debug and modify
-3. **Predictability**: Consistent behavior across different YAML parsers
-4. **Validation**: Easy to validate syntax during development
-
-### Development Benefits
-
-1. **Faster Development**: Avoid debugging complex YAML/shell interactions
-2. **Team Productivity**: Clear patterns reduce time spent on syntax issues
-3. **CI/CD Stability**: Prevent workflow failures in critical automation
-
-## Implementation
-
-### Immediate Actions
-
-1. ✅ **Fixed init-complete.yml** with simplified manual steps message
-2. ✅ **Established YAML validation** as part of development process
-
-### Going Forward
-
-1. **Code Review Requirement**: All workflow changes must pass YAML validation
-2. **Pattern Documentation**: This ADR serves as reference for team development
-3. **Template Updates**: Apply these patterns to workflow templates
 
 ## Alternatives Considered
 
-### Alternative 1: External Template Files
+### 1. Inline strings only
+Keep everything in the workflow and simplify the wording until it parses. Rejected as the sole rule: it limits what messages can say and every edit risks a new parse error.
 
-**Pros:** Complete separation of complex content from YAML
+### 2. JSON-encoded strings
+Guaranteed YAML compatibility, but unreadable and hard to edit. Rejected.
 
-**Cons:** Additional file management, less self-contained workflows
-
-### Alternative 2: JSON-Encoded Strings
-
-**Pros:** Guaranteed YAML compatibility
-
-**Cons:** Reduced readability, complex escaping
-
-### Alternative 3: GitHub Actions Expressions
-
-**Pros:** Native GitHub syntax
-
-**Cons:** Limited formatting capabilities, expression complexity
-
-**Decision:** Chose simple string patterns for optimal balance of readability and reliability.
+### 3. GitHub Actions expressions
+Native syntax, but limited formatting and the expressions become their own source of complexity. Rejected.
 
 ## Consequences
-
-### Positive
-
-- **Workflow Reliability**: Eliminates YAML parsing errors
-- **Development Speed**: Clear patterns reduce debugging time
-- **Team Knowledge**: Establishes best practices for complex workflows
-
-### Negative
-
-- **Content Limitations**: Complex formatted messages require external files
-- **Pattern Learning**: Team needs to adopt new development patterns
-
-### Mitigation
-
-- **Documentation**: This ADR provides clear guidance
-- **Validation Tools**: YAML checking integrated into development process
-- **Examples**: Working patterns documented for reference
+Formatted messages need a separate file, which is one more thing to keep in sync with the workflow that reads it. In exchange the workflow file stays parseable and the message content can be edited without touching YAML.
 
 ## References
 

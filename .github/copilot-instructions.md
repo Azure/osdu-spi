@@ -139,10 +139,8 @@ jobs:
 - `.github/workflows/` - All automation workflows
 
 ### Environment Variables
-- `UPSTREAM_OWNER` - Upstream repository owner
-- `UPSTREAM_REPO` - Upstream repository name
+- `UPSTREAM_REPO_URL` - Repository variable naming the upstream repository
 - `GITHUB_TOKEN` - Authentication token
-- `OPENAI_API_KEY` - Optional for AI PR descriptions
 
 ### Useful Commands
 ```bash

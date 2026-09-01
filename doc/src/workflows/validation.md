@@ -1,22 +1,22 @@
 # Pull Request Validation Workflow
 
-The pull request validation workflow acts as the automated quality gatekeeper for your repository. It ensures that changes build correctly and meet process requirements before they merge into protected branches.
+The validation workflow supplies the required checks on protected branches. It verifies that a change builds and that the PR meets process requirements before merge.
 
 The validation system applies different build rules by context. Sync PRs targeting the provider-less `fork_upstream` tree build `core` only and skip the image jobs; other Java changes build the Azure profile set and validate a service image.
 
 ## When It Runs
 
-The validation workflow activates automatically across multiple scenarios to maintain consistent quality standards:
+The validation workflow runs on:
 
-- **Every pull request** to protected branches (`main`, `fork_integration`, `fork_upstream`) - Ensures all incoming changes meet quality standards
-- **Direct pushes** to protected branches - Validates changes that bypass the PR process (when permitted)
-- **Manual trigger** for post-initialization validation - Allows on-demand quality checks during setup or troubleshooting
+- **Every pull request** to a protected branch (`main`, `fork_integration`, `fork_upstream`)
+- **Direct pushes** to protected branches, where the rulesets permit them
+- **Manual trigger** for a check during setup or troubleshooting
 
 The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `🐳 Docker Build` context reflects a real build.
 
 ## What Gets Validated
 
-The workflow performs comprehensive validation across three key areas to ensure both code quality and process compliance:
+Validation covers three areas:
 
 ### Code Quality Validation
 The system verifies that code compiles, dependencies resolve, and tests pass. Pull-request builds can generate JaCoCo coverage reports. Documentation and configuration-only PRs keep the required summary checks reporting while skipping the heavy Java and container jobs.
@@ -29,17 +29,7 @@ CodeQL runs in its own workflow and supplies the required `CodeQL` status. Depen
 
 ## Validation Results
 
-### ✅ **All Checks Pass**
-- PR is eligible to merge after any required human approval
-- Review the change normally
-
-### ⚠️ **Some Checks Fail**
-- PR blocked until issues resolved
-- Check specific failure details in PR status
-
-### ❌ **Critical Failures**
-- Build errors, security issues, or policy violations
-- Must be fixed before merge consideration
+When every check passes the PR can merge once a reviewer approves it. When a check fails the PR is blocked; the failing check links to the job log with the reason.
 
 ## How to Fix Common Issues
 
@@ -110,13 +100,7 @@ All protected branches use the same validation rules, with exemptions for specif
 
 ### Sync PRs
 - **Relaxed commit standards** - Upstream commits may not follow conventions
-- **Conflict handling** - Automatically creates resolution guidance
-- **AI enhancement** - Generates PR descriptions when possible
 - **Single lane** - `pull_request_target` owns sync PRs and supplies trusted local actions; it builds `core` only in filter mode and the full profile set in mirror mode. The validate-only image build never runs in this lane (#164); it runs on the cascade PR (and, in mirror mode, on the `fork_upstream` push after merge)
-
-### Emergency Fixes
-- **Override capability** - Admin can bypass non-critical checks
-- **Audit trail required** - Override reason must be documented
 
 ## Status Check Details
 
