@@ -4,7 +4,8 @@
 #
 # Bakes the acceptance suite SOURCE from the same commit as the service image, with Maven
 # dependencies pre-resolved at build time (dependency:go-offline) — so "this release passed
-# acceptance" stays a re-runnable claim months later, independent of registry drift.
+# acceptance" stays a re-runnable claim months later, largely insulated from registry drift
+# (go-offline pre-resolves declared dependencies; it is not a guarantee of a fully offline run).
 # The suite executes at container run time against a live gateway:
 #
 #   docker run --env-file .env ghcr.io/<org>/<svc>-acceptance:sha-<sha> [maven argv...]
@@ -23,9 +24,11 @@ FROM docker.io/library/maven:3.9-eclipse-temurin-17@sha256:a8746f15d5bb26b5b8bac
 ARG SUITE_DIR
 WORKDIR /suite
 # Settings before source: the community-repo profile rarely changes, the suite does.
-# Reachable only because acceptance.Dockerfile.dockerignore overrides the upstream root
-# .dockerignore, which excludes `.*` and would fail this COPY on every fork.
-COPY .mvn/ /suite/.mvn/
+# The glob makes root .mvn/ optional, matching every other consumer in the fork (java-build,
+# validate, cascade) and keeping the settings-less branch of the RUN below reachable; the
+# sidecar acceptance.Dockerfile.dockerignore is what stops the upstream root .dockerignore
+# (`.*`) from filtering it out where it does exist.
+COPY .mvn*/ /suite/.mvn/
 COPY ${SUITE_DIR}/ /suite/
 COPY --chmod=0755 build/acceptance-entrypoint.sh /usr/local/bin/acceptance-entrypoint.sh
 

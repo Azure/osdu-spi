@@ -123,4 +123,9 @@ if grep -qE '^[[:space:]]*(\.\*|\.mvn)' "$IGNORE"; then
 fi
 ok "sidecar dockerignore present and keeps .mvn"
 
+note "root .mvn is optional: the settings-less RUN branch must stay reachable"
+grep -qE '^COPY \.mvn\*/ ' "$DOCKERFILE" || die "COPY of root .mvn must glob — a fork without one gets an illegible BuildKit checksum error"
+grep -q 'else' "$DOCKERFILE" || die "settings-less fallback branch lost"
+ok "optional .mvn keeps the fallback live"
+
 printf '\nAll acceptance image harness checks passed.\n'
