@@ -4,7 +4,7 @@ The resolver behind ADR-040. It joins the fork-owned service descriptor
 (`.spi/service.yaml`, schema v3) with the stack's facts envelope
 (`spi info --json`, `apiVersion: spi.osdu.dev/v1`) and caller-supplied Key
 Vault secret values into the environment map an acceptance suite runs with —
-an `.env` file suitable for `docker run --env-file` or a local `mvn verify`.
+an `.env` file suitable for `docker run --env-file` (Maven does not read this file directly).
 
 This document is the resolver's contract. The source vocabulary, precedence,
 exit codes, and report schema below are frozen: descriptors in every service
