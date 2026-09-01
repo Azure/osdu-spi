@@ -284,10 +284,14 @@ jobs:
     # Skipped for filter-mode fork_upstream targets: that branch builds core only, so the Azure
     # JAR the Dockerfile packages does not exist there. In mirror mode (ADR-039) fork_upstream
     # carries provider/ and java-build produced the JAR, so the image is validated too.
+    # No pull_request_target lane and no checkout ref: a PR-head ref in a read-only-permissions job
+    # is a CodeQL cache-poisoning finding in every fork (#164). Mirror-mode sync PRs get their image
+    # validated on the cascade PR (and on the fork_upstream push in mirror mode).
     name: "🐳 Docker Build (validate)"
     needs: [check-initialization, check-repo-state, java-build]
     if: |
       needs.java-build.outputs.build_result == 'success' &&
+      github.event_name != 'pull_request_target' &&
       (vars.SYNC_MODE == 'mirror' ||
        (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream'))
     runs-on: ubuntu-latest
@@ -295,9 +299,6 @@ jobs:
       contents: read          # no packages: write — runs untrusted Dockerfile content
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-        with:
-          # For pull_request_target, check out the PR head to validate the actual Dockerfile
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: "Docker Build (validate-only)"
         uses: ./.github/actions/docker-build
@@ -574,5 +575,8 @@ jobs:
           fi
           if [ "${{ needs.docker-build.result }}" = "failure" ] || [ "${{ needs.docker-build.result }}" = "cancelled" ]; then
             echo "❌ Docker build failed or was cancelled"; exit 1
+          fi
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            echo "✅ Docker Build deferred - the sync lane leaves image validation to the cascade PR"; exit 0
           fi
           echo "✅ Docker Build checks completed successfully"

@@ -60,26 +60,97 @@ jobs:
         with:
           category: "/language:${{matrix.language}}"
 
+  # Forks receive .github/template-workflows/*.yml as .github/workflows/*.yml and the actions
+  # extractor only reads that path, so without this job the template never analyzes what it
+  # ships (#164). Stage the files where a fork keeps them, run the forks' suite, and fail on any
+  # finding. No SARIF or database is uploaded: the findings belong to the forks' own scans.
+  # Diff-informed analysis is off: the staged paths never appear in a PR diff, and PR runs would
+  # otherwise keep only the non-dataflow findings.
+  template-workflows:
+    name: Analyze Template Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      CODEQL_ACTION_DIFF_INFORMED_QUERIES: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Stage template workflows as fork workflows
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/*.yml
+          cp .github/template-workflows/*.yml .github/workflows/
+          ls .github/workflows
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
+        with:
+          languages: actions
+          queries: security-extended
+          build-mode: none
+          config: |
+            paths-ignore:
+              - '.github/local-actions/**'
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@f443b600d91635bebf5b0d9ebc620189c0d6fba5  # v4.30.8
+        with:
+          category: "/language:actions/template-workflows"
+          upload: never
+          upload-database: false
+          output: template-workflows-sarif
+
+      - name: Fail on findings
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          sarifs=(template-workflows-sarif/*.sarif)
+          if [ "${#sarifs[@]}" -eq 0 ]; then
+            echo "❌ No SARIF produced for template-workflows; the analysis did not run"
+            exit 1
+          fi
+          total=0
+          for sarif in "${sarifs[@]}"; do
+            count=$(jq '[.runs[] | (.results // [])[]] | length' "$sarif")
+            # Point the annotation at the template file, not the staged copy.
+            jq -r '.runs[] | (.results // [])[]
+              | "::error file=\((.locations[0].physicalLocation.artifactLocation.uri // "unknown") | sub("^\\.github/workflows/"; ".github/template-workflows/")),line=\(.locations[0].physicalLocation.region.startLine // 0)::\(.ruleId // "unknown"): \((.message.text // "") | gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A"))"' "$sarif"
+            total=$((total + count))
+          done
+          if [ "$total" -gt 0 ]; then
+            echo "❌ $total CodeQL finding(s) in template-workflows would reach every fork"
+            exit 1
+          fi
+          echo "✅ template-workflows are clean"
+
   # Summary job reporting as "CodeQL" to satisfy the required status check
   # (ADR-030). always() so the context reports even when the matrix does not
   # complete; a required check that never arrives wedges the PR.
   CodeQL:
     name: CodeQL
     runs-on: ubuntu-latest
-    needs: [analyze]
+    needs: [analyze, template-workflows]
     if: always()
     steps:
       - name: Report CodeQL Status
         run: |
-          case "${{ needs.analyze.result }}" in
-            success)
-              echo "✅ CodeQL analysis passed"
-              ;;
-            skipped)
-              echo "✅ CodeQL analysis skipped"
-              ;;
-            *)
-              echo "❌ CodeQL analysis ${{ needs.analyze.result }}"
-              exit 1
-              ;;
-          esac
+          status=0
+          for job in "analyze=${{ needs.analyze.result }}" "template-workflows=${{ needs.template-workflows.result }}"; do
+            case "${job#*=}" in
+              success)
+                echo "✅ ${job%%=*} passed"
+                ;;
+              skipped)
+                echo "✅ ${job%%=*} skipped"
+                ;;
+              *)
+                echo "❌ ${job%%=*} ${job#*=}"
+                status=1
+                ;;
+            esac
+          done
+          exit "$status"
