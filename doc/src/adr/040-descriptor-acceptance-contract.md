@@ -4,7 +4,7 @@
 
 The engineering system builds and pushes a digest-addressed service image per
 commit, but nothing yet deploys that image or proves it against a live
-platform. The blocking question is not deployment mechanics — it is the
+platform. The blocking question is not deployment mechanics. It is the
 question every OSDU acceptance test asks first: *where is the service, how do
 I authenticate, and which identifiers do I use?* Upstream keeps those answers
 in four providers' pipelines; severing those pipelines during the filter
@@ -12,11 +12,11 @@ transform (ADR-038) orphaned the tests. The tests are in the repository; the
 knowledge of how to run them is not.
 
 Three constraints shape where that knowledge is allowed to live. The target
-environment (`osdu-spi-stack`) is disposable by design — torn down and
-rebuilt weekly — so any environment value copied into a repository is stale
-by construction. The machinery is multiplied — workflows sync from the
+environment (`osdu-spi-stack`) is disposable by design, torn down and
+rebuilt weekly, so any environment value copied into a repository is stale
+by construction. The machinery is multiplied: workflows sync from the
 template to N service forks and onward to customer mirror forks (ADR-039)
-that point at *their own* stack — so nothing environment-specific can be
+that point at *their own* stack, so nothing environment-specific can be
 baked in. And the same tests must run against a personal stack during
 development with no CI in the path.
 
@@ -29,8 +29,8 @@ decision register (D2, D3, D10) this ADR implements.
 
 ## Decision
 
-**Each service fork owns a declarative acceptance contract —
-`.spi/service.yaml`, schema v3 — and the template owns the one resolver that
+**Each service fork owns a declarative acceptance contract
+(`.spi/service.yaml`, schema v3) and the template owns the one resolver that
 joins it, per run, with the stack's facts envelope and Key Vault secret
 values to produce the environment a suite runs with. Nothing
 environment-shaped is ever pushed into a repository.**
@@ -50,7 +50,7 @@ stays a one-command operation months later.
 The vocabulary is closed in both directions. An unknown source kind, an
 unknown key, or a reserved environment name (exact names such as
 `AZURE_CLIENT_ID`; prefixes `ACTIONS_`, `GITHUB_`, `RESOLVER_`, `RUNNER_`, `SPI_STACK_`)
-is a hard failure naming the offending key — the resolver refuses to guess,
+is a hard failure naming the offending key. The resolver refuses to guess,
 exactly as the upstream filter does (ADR-038). Maven arguments are an array
 of argv tokens passed directly to Maven, never a shell string. The descriptor
 cannot select identity, cluster, namespace, or workflow behavior, and it
@@ -64,7 +64,7 @@ overwrites it, and the formal JSON Schema
 
 ### The resolver is template machinery with one authority per answer
 
-The resolver lives at `.github/actions/acceptance-resolver/` — a composite
+The resolver lives at `.github/actions/acceptance-resolver/`, a composite
 action wrapping a standard-library-only Python engine, extracted per ADR-028
 so it runs identically in CI, on a laptop, and in the fixture harness. It
 never calls Azure or the cluster: the caller hands it a saved
@@ -114,7 +114,7 @@ seeded" in seconds instead of a mystery test failure.
 - A new schema is a new maintenance surface: vocabulary growth (a new fact
   kind, a new archetype) requires a template contract change, deliberately.
 - Until the stack publishes the two agreed fact keys, descriptors binding
-  `openid` or `legalTag` resolve as env-not-ready — correct but visible.
+  `openid` or `legalTag` resolve as env-not-ready, which is correct but visible.
 - Each service fork must author one descriptor before it can join the deploy
   lane (typically seven to ten bindings, seeded during rollout).
 

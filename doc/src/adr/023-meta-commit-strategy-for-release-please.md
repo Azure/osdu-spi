@@ -24,13 +24,13 @@ upstream commit range.
 
 > **Revised 2026-09-01 (#162).** This ADR originally delegated classification to `aipr commit`.
 > That call crashed on every run and the `feat:` fallback fired every time, so every sync forced
-> a minor bump regardless of content — the reference fork shipped v1.1.0 → v1.2.0 with no patch
+> a minor bump regardless of content; the reference fork shipped v1.1.0 → v1.2.0 with no patch
 > release ever. A published version number is a contract: the same range must always yield the
 > same bump, and a wrong bump must be a fixable bug rather than a sampling artifact.
 
 ### Implementation Approach
 1. **Preserve Upstream History**: Merge upstream commits with `--no-edit` to maintain original attribution
-2. **Generate Meta Commit**: Classify the upstream range by rule — max severity wins
+2. **Generate Meta Commit**: Classify the upstream range by rule; max severity wins
 3. **Release Please Integration**: Meta commit drives versioning decisions while history remains intact
 4. **Conservative Default**: Non-conventional upstream commits classify as `fix:` (patch), never `feat:`
 

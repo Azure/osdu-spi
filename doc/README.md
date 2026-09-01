@@ -1,24 +1,14 @@
 # Documentation
 
-Documentation is written in Markdown from the `docs` folder. The
-`src` folder contains the sources with the `.md` extension.
-
-We have adopted [MkDocs](https://www.mkdocs.org/) as an open source solution to
-build the documentation starting from Markdown format.
-
-Before you submit a pull request for the documentation, you must have gone through the following steps:
-
-1. local test of the documentation
-2. run through the spell checker
+The site is built with [MkDocs](https://www.mkdocs.org/) from the Markdown
+sources in `doc/src`. The `docs.yml` workflow builds it with `--strict`, so a
+broken link or a page missing from the nav fails the build. Run the same build
+locally before opening a pull request.
 
 ## How to locally test the documentation
 
-You can locally test the documentation in two ways:
-
-- using Docker
-- using `mkdocs` directly
-
-In both cases, you should issue the commands inside the `docs` folder.
+You can test the site with Docker or with `mkdocs` installed directly. In both
+cases run the commands inside the `doc` folder.
 
 With Docker, you just need to execute the following command and point your
 browser to `http://127.0.0.1:8000/`:

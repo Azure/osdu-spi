@@ -1,6 +1,6 @@
 # Three-Branch Strategy
 
-The three-branch strategy forms the cornerstone of safe, systematic fork management in the OSDU SPI Fork Management system. This architectural pattern provides controlled integration checkpoints that prevent cascade failures while enabling continuous upstream synchronization.
+The three-branch strategy gives upstream changes a controlled path into the fork. Each branch is a checkpoint, so a failure stops at the stage where it happened while synchronization continues.
 
 ## Branch Architecture
 
@@ -31,11 +31,10 @@ graph TD
 
     Stable production branch containing successfully integrated changes
 
-    - Maximum security with required PR reviews
-    - Production-ready shared and fork-owned Azure code
+    - Required PR reviews and status checks
+    - Shared and fork-owned Azure code
     - Upstream updates arrive through validated release PRs from `fork_integration`
     - Local feature and hotfix branches also merge through reviewed PRs
-    - All changes must pass comprehensive validation
 
 </div>
 
@@ -61,9 +60,9 @@ graph TD
 
     ---
 
-    Dedicated space for conflict resolution and comprehensive validation
+    Where conflicts are resolved and the combined tree is validated
 
-    - Flexible protection for conflict resolution workflows
+    - Relaxed protection so conflict resolution can push directly
     - Combines generated shared code with fork-owned Azure provider and test source
     - Automated merges from `fork_upstream` with conflict resolution
     - Azure POM version stamping plus `core,azure` build and test validation
@@ -88,7 +87,7 @@ sequenceDiagram
     alt New upstream changes, no existing PR
         S->>FU: Create sync branch containing generated tree
         activate FU
-        S->>S: Generate AI analysis
+        S->>S: Compose PR body from upstream commit range
         S->>S: Create new sync PR and issue
         S->>H: Notify human reviewer
     else Upstream advanced, existing PR open
@@ -192,10 +191,8 @@ A downstream repository does not have to stop at pulling release tags. It can be
     ✓ **Security Scanning**: CodeQL reports through its separate workflow
 
 !!! warning "Production Validation"
-    ⚠️ **Human Review**: Manual approval for all production changes  
-    ⚠️ **Impact Assessment**: Analysis of changes to Azure SPI implementations  
-    ⚠️ **Rollback Planning**: Verification of rollback procedures if needed  
-    ⚠️ **Documentation**: Change documentation and release notes
+    ⚠️ **Human Review**: a reviewer approves every PR to `main`  
+    ⚠️ **Release Notes**: Release Please records the change in the changelog
 
 ## Workflow Benefits
 
@@ -217,7 +214,7 @@ A downstream repository does not have to stop at pulling release tags. It can be
 
     ---
 
-    Multiple review and validation points ensure problematic changes are caught before reaching production systems.
+    Review and validation at each stage catch problems before they reach `main`.
 
 -   :material-history:{ .lg .middle } **Upstream Tracking**
 
@@ -229,13 +226,7 @@ A downstream repository does not have to stop at pulling release tags. It can be
 
     ---
 
-    Easy reversion of problematic integrations without losing upstream synchronization state or affecting ongoing development.
-
--   :material-database:{ .lg .middle } **Branch Preservation**
-
-    ---
-
-    All three branches are permanently preserved, maintaining historical state for analysis and providing continuous availability.
+    A bad integration can be reverted on `main` without losing the upstream sync state.
 
 </div>
 
@@ -252,30 +243,12 @@ A downstream repository does not have to stop at pulling release tags. It can be
 
 **Human Intervention Points:**
 
-:material-arrow-right: **Step 1:** Conflict Resolution - Manual resolution when automated merge fails  
-:material-arrow-right: **Step 2:** Validation Review - Assessment of test results and security findings  
-:material-arrow-right: **Step 3:** Production Approval - Final authorization for changes to reach `main`  
-:material-arrow-right: **Step 4:** Release Coordination - Alignment with downstream system requirements
-
-### Emergency Procedures
-
-#### **Upstream Rollback**
-If upstream changes cause issues:
-
-1. Identify last known good state in `fork_upstream`
-2. Create rollback branch from previous stable point
-3. Update `fork_integration` with rollback changes
-4. Execute normal validation and approval process
-
-#### **Production Hotfix**
-For urgent Azure SPI fixes:
-
-1. Create hotfix branch from current `main`
-2. Implement and test fix in isolation
-3. Fast-track through integration validation
-4. Deploy with minimal upstream integration delay
+:material-arrow-right: **Step 1:** Sync Review - Merge the sync PR into `fork_upstream`  
+:material-arrow-right: **Step 2:** Conflict Resolution - Resolve on `fork_integration` when the cascade merge fails  
+:material-arrow-right: **Step 3:** Production Approval - Approve the release PR to `main`  
+:material-arrow-right: **Step 4:** Release - Merge the Release Please PR when the version is ready
 
 !!! info "Release Strategy"
-    For production deployments, temporary release branches (`release/upstream-YYYYMMDD-HHMMSS`) are created from `fork_integration` to `main`, allowing safe cleanup while preserving the three-branch core architecture.
+    The cascade opens its PR to `main` from a temporary `release/upstream-YYYYMMDD-HHMMSS` branch, which is deleted after merge, so `fork_integration` itself is never the PR head.
 
 ---

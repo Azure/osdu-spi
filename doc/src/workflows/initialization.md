@@ -1,12 +1,12 @@
 # Repository Initialization Workflow
 
-The repository initialization workflow transforms a newly created repository from the OSDU Azure SPI Management template into a fully functional fork management system. This workflow handles all the complex setup tasks automatically, including deploying the complete workflow suite, creating the three-branch architecture, configuring security settings, and validating that everything is working correctly before your team begins development.
+Initialization turns a repository created from the template into a working fork: it deploys the fork workflows, creates the three branches, applies rulesets and settings, and verifies the result.
 
-The initialization process is designed with a two-phase approach that separates the immediate user experience from the more time-consuming system configuration tasks. This ensures you get immediate feedback that setup has started successfully, while the detailed configuration work happens in the background without requiring you to wait or monitor the process.
+It runs in two phases. The first opens a setup issue within seconds so you can see that setup started. The second does the slow configuration work after you reply to that issue.
 
 ## When It Runs
 
-The initialization workflow activates in several scenarios to ensure your repository is properly configured:
+The initialization workflow starts on:
 
 - **Template creation** - Automatically triggers when you create a new repository from this template
 - **Push to `main`** - The template's initial commit starts the workflow in a newly created repository
@@ -15,7 +15,7 @@ The completion phase starts only after an owner, member, or collaborator replies
 
 ## What Happens
 
-The initialization process unfolds in two coordinated phases designed to provide optimal user experience while ensuring thorough setup:
+The two phases:
 
 ### Immediate Setup Phase (30 seconds)
 The workflow verifies that the repository is not the template itself, creates the standard labels, and opens a setup issue. Reply to that issue with the upstream repository reference; the issue comment triggers the completion workflow.
@@ -27,9 +27,7 @@ The filter configuration comes from the template's `.github/fork-resources/upstr
 
 The Azure provider and test trees (`provider/<service>-azure`, `testing/<service>-test-azure`) are seeded from the newest upstream commit that still contains them, version-stamped against the generated tree, and committed on `fork_integration` before the merge to `main`. From that point the fork owns them: they never appear on `fork_upstream`, so upstream merges cannot touch them.
 
-The initialization process produces clear outcomes to guide your next steps:
-- **Success**: Your repository is fully configured and ready for upstream synchronization and team development
-- **Failure**: The setup issue is updated with specific resolution steps and guidance for addressing any configuration problems
+On success the setup issue is closed and the repository is ready for its first sync. On failure the setup issue is updated with the error and the steps to fix it.
 
 ## When You Need to Act
 
@@ -37,10 +35,9 @@ The initialization process produces clear outcomes to guide your next steps:
 - **GitHub App credentials** - `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must be available for workflow and ruleset writes
 - **Upstream repository** - Reply to the initialization issue with `owner/repository` or a supported repository URL
 - **Filter configuration** - Generated automatically from the template; only nonconventional services need a hand-planted `.github/upstream-filter.yml` on `main` before replying to the issue
-- **Team permissions** - Ensure team has appropriate access levels
+- **Team permissions** - Make sure the team has the access it needs
 
 ### Optional Configuration
-- **AI providers** - Configure API keys for enhanced PR descriptions
 - **Notifications** - Set up issue/PR notifications for your team
 - **Custom labels** - Add project-specific labels beyond defaults
 

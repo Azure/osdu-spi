@@ -143,8 +143,8 @@ and the next run would take no action.
 The generation revision is what makes the cached result safe to reuse. The
 cached fact is `filter(upstream_sha) == tree(fork_upstream)`, so the key has to
 cover every input to that comparison. `generation-rev.sh` hashes
-`.github/upstream-filter.yml`, the filter engine, and `generate-branch.sh` —
-which decides how the tree is extracted, serialized, and compared — and
+`.github/upstream-filter.yml`, the filter engine, and `generate-branch.sh`,
+which decides how the tree is extracted, serialized, and compared, and
 short-circuits to the sentinel `mirror` when `SYNC_MODE` selects the customer
 tier. Without this, editing a filter rule after a no-op was recorded would
 leave `fork_upstream` unable to receive the new tree until upstream happened to
@@ -154,7 +154,7 @@ The `fork_upstream` tip is deliberately *not* part of the key. Only a sync PR
 merge advances it, and a sync PR can only exist once upstream has moved past the
 stored SHA, so the merge always arrives with an upstream commit that already
 invalidates the cache. The residual case is a manual force-push to
-`fork_upstream`, whose recovery is deleting one repository variable — cheaper
+`fork_upstream`, whose recovery is deleting one repository variable, cheaper
 than resolving the branch on every state read.
 
 **Persistence:** The marker lasts as long as the tracking issue; the variable persists indefinitely

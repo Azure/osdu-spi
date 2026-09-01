@@ -11,7 +11,7 @@
 !!! quote ":material-lightbulb-outline: Learning"
     Complex integration problems become manageable when properly isolated. Adding isolation stages doesn't slow teams down, it accelerates them by preventing cascade failures.
 
-The system runs upstream sync on a schedule, creating a PR to `fork_upstream`. You control when to merge—batching multiple changes or merging immediately. Once merged, the cascade automatically moves changes to `fork_integration` for validation. If builds pass, changes flow to `main`. If validation fails, the issue is isolated and fixed without blocking the team. Main stays protected and the team keeps shipping.
+The system runs upstream sync on a schedule, creating a PR to `fork_upstream`. You control when to merge, batching multiple changes or merging immediately. Once merged, the cascade automatically moves changes to `fork_integration` for validation. If builds pass, changes flow to `main`. If validation fails, the issue is isolated and fixed without blocking the team. Main stays protected and the team keeps shipping.
 
 ```mermaid
 graph LR
@@ -167,7 +167,7 @@ Ask: *"What are the distinct responsibilities?"*
 
 **Pattern**: Build resilient fallbacks first, then layer on AI enhancements.
 
-**Outcome (2026-09-01, #162)**: The fallback was load-bearing in the strongest sense — it was the only path that ever ran. `aipr` crashed on every invocation for the life of the reference fork while the workflow reported success, and reviewers merged the fallback bodies without complaint. The lesson inverts: a fallback that cannot be distinguished from success is not resilience, it is a blindfold. Descriptions are now deterministic, and the meta-commit classification is a rule (ADR-023).
+**Outcome (2026-09-01, #162)**: The fallback was load-bearing in the strongest sense: it was the only path that ever ran. `aipr` crashed on every invocation for the life of the reference fork while the workflow reported success, and reviewers merged the fallback bodies without complaint. The lesson inverts: a fallback that cannot be distinguished from success is not resilience, it is a blindfold. Descriptions are now deterministic, and the meta-commit classification is a rule (ADR-023).
 
 **Impact**: Teams trust and adopt workflows that work consistently, with AI providing value when available rather than creating blocking dependencies.
 
@@ -204,7 +204,7 @@ Ask: *"What are the distinct responsibilities?"*
 | **Functional** | ~35% | High | Preserve local enhancement intent while adopting improvements |
 | **Merge Artifacts** | ~25% | Medium | Focus on testing behavior, not just compilation |
 
-**Resolution Philosophy**: Always understand the **intent** behind local modifications. Test functionality thoroughly—successful compilation doesn't guarantee correct integration.
+**Resolution Philosophy**: Always understand the **intent** behind local modifications. Test functionality thoroughly; successful compilation doesn't guarantee correct integration.
 
 **Practical Impact**: Categorizing conflicts reduces time-to-understanding and provides clear resolution approaches for each type.
 
@@ -369,7 +369,7 @@ upstream-sync → cascade-active → validated → (closed when merged to main)
 ## Meta Commit Strategy for Versioning
 
 !!! quote ":material-lightbulb-outline: Learning"
-    You can have both complete upstream history AND automated version management—they're not mutually exclusive.
+    You can have both complete upstream history AND automated version management. They're not mutually exclusive.
 
 **The Approach**: Layer automation-friendly metadata on top of preserved original data rather than transforming or losing the original.
 
@@ -382,7 +382,7 @@ upstream-sync → cascade-active → validated → (closed when merged to main)
 | **Versioning** | Manual tracking | Automated Release Please |
 | **Fallback** | None | Conservative auto-versioning |
 
-**Pattern**: Don't transform or lose original data—add metadata layers instead.
+**Pattern**: Don't transform or lose original data; add metadata layers instead.
 
 **Practical Impact**: Full debugging capability with complete upstream history while enabling automated version management and proper release correlation.
 
@@ -391,7 +391,7 @@ upstream-sync → cascade-active → validated → (closed when merged to main)
 ## Dependabot Integration Complexity
 
 !!! quote ":material-lightbulb-outline: Learning"
-    Automated dependency updates need workflow validation and auto-merge criteria—aggressive automation without guardrails creates problems.
+    Automated dependency updates need workflow validation and auto-merge criteria. Aggressive automation without guardrails creates problems.
 
 **Strategy:**
 
@@ -410,7 +410,7 @@ upstream-sync → cascade-active → validated → (closed when merged to main)
 ## Monitor Everything From Day One
 
 !!! quote ":material-lightbulb-outline: Learning"
-    Comprehensive monitoring enables rapid issue identification and resolution—but it must be built in from the beginning, not bolted on later.
+    Comprehensive monitoring enables rapid issue identification and resolution, but it must be built in from the beginning, not bolted on later.
 
 **Built In From Start:**
 
@@ -452,7 +452,7 @@ upstream-sync → cascade-active → validated → (closed when merged to main)
 
 **The Solution**: Labels have none of these problems and provide better filtering capabilities.
 
-**Pattern**: Design for reliability over convenience—labels may seem less direct than assignees, but they work consistently across all scenarios.
+**Pattern**: Design for reliability over convenience. Labels may seem less direct than assignees, but they work consistently across all scenarios.
 
 **Impact**: Workflows operate reliably without fragile user resolution dependencies or API failure blocking.
 
@@ -492,7 +492,7 @@ Based on accumulated learnings, these areas show promise for continued evolution
 
     This direction assumed a working AI path to build on. There was none: the integration
     crashed on every run for the life of the reference fork while reporting success, and no
-    replacement was adopted — GitHub Models was retired 2026-07-30, the Copilot coding-agent
+    replacement was adopted. GitHub Models was retired 2026-07-30, the Copilot coding-agent
     API rejects GitHub App installation tokens, and Copilot's PR summary has no API surface.
 
     **Impact**: Descriptions and commit classification stay deterministic. Reopening this
@@ -525,7 +525,7 @@ Based on accumulated learnings, these areas show promise for continued evolution
 ## Clear Error Messages Are Feature Requirements
 
 !!! quote ":material-lightbulb-outline: Learning"
-    Actionable error messages with recovery instructions aren't nice-to-have polish—they're essential for reliable automation.
+    Actionable error messages with recovery instructions aren't nice-to-have polish. They're essential for reliable automation.
 
 **Impact**: Users can resolve issues themselves with clear guidance rather than requiring expert intervention for every problem.
 

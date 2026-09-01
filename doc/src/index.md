@@ -7,45 +7,43 @@
 
 ## The Challenge
 
-Managing long-lived forks of OSDU repositories is complex. Organizations need to balance upstream compatibility with proprietary implementations while avoiding integration overhead, release delays, and community divergence.
-
-Traditional manual approaches are error-prone and resource-intensive.
+A long-lived fork of an OSDU service has to take upstream changes continuously while keeping its own provider implementation. Done by hand, that means recurring merge conflicts, releases that lag upstream, and forks that drift from the community code.
 
 ## The Solution
 
-Complete automation framework for enterprise fork management:
+A template repository that gives each fork the same set of workflows:
 
 <div class="solution-cards" markdown="1">
   <div class="solution-card" markdown="1">
-:material-merge: **Smart Synchronization**
+:material-merge: **Upstream Synchronization**
 
-Automated daily upstream integration with conflict detection and resolution guidance.
+A daily sync generates a provider-less copy of the upstream tip and opens one reviewable PR per upstream state.
   </div>
 
   <div class="solution-card" markdown="1">
 :material-source-branch: **Three-Branch Strategy**
 
-Proven branching strategy that isolates changes at each stage, preventing cascade failures.
+Changes flow from `fork_upstream` through `fork_integration` to `main`, so conflicts and build failures are resolved before they reach production.
   </div>
 
   <div class="solution-card" markdown="1">
-:material-robot: **AI Automation**
+:material-source-merge: **Deterministic Releases**
 
-Intelligent analysis with automated commit messages, PR descriptions, and conflict categorization.
+PR bodies, version bumps, and changelogs are computed from the commit history, so the same input always produces the same release.
   </div>
 
   <div class="solution-card" markdown="1">
-:material-shield-check: **Enterprise Security**
+:material-shield-check: **Security by Default**
 
-Built-in vulnerability scanning, compliance checks, and branch protection rules.
+CodeQL, Dependabot validation, repository rulesets, and GitHub App authentication are configured during initialization.
   </div>
 </div>
 
-## Key Benefits
+## What You Get
 
-:material-check-circle: **90% reduction** in manual integration work  
-:material-check-circle: **Automated conflict detection** with AI guidance  
-:material-check-circle: **Enterprise security** and compliance built-in  
-:material-check-circle: **Zero-configuration** template deployment  
+:material-check-circle: One sync PR per upstream state, never a pile of duplicates  
+:material-check-circle: Conflicts surface in `fork_integration`, not on `main`  
+:material-check-circle: Releases correlated with the upstream version they contain  
+:material-check-circle: Initialization driven by a single issue reply  
 
 ---

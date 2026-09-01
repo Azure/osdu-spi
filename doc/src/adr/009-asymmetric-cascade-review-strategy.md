@@ -1,7 +1,7 @@
 # ADR-009: Asymmetric Cascade Review Strategy
 
 ## Status
-Accepted (revised Apr 2026 — see "Revision: Merge Method Enforcement" below)
+Accepted (revised Apr 2026; see "Revision: Merge Method Enforcement" below)
 
 ## Context
 The cascade workflow moves upstream changes through a three-branch hierarchy:
@@ -94,7 +94,7 @@ PR_URL=$(gh pr create \
 
 # Arm auto-merge with merge-commit method (see Revision below).
 # Wrapped in if/else so a failure to arm auto-merge is logged but does
-# not fail the cascade — humans can still merge manually as a fallback.
+# not fail the cascade; humans can still merge manually as a fallback.
 if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --auto --merge 2>&1); then
   echo "✅ Auto-merge armed - awaiting human approval"
 else
@@ -129,7 +129,7 @@ Separate the human review gate from the merge-method choice:
 
 Auto-merge waits for both the required approval and any required status checks before firing. When it fires, it uses the merge-commit method that was armed by the workflow, not whatever sticky default the human had in the UI.
 
-The original asymmetric strategy is preserved — humans still gate production. The mechanism for expressing that gate moves from "click the right merge button" to "approve the PR." Both are explicit human actions, but approval has no dropdown of conflicting choices, so the merge-method foot-gun is eliminated.
+The original asymmetric strategy is preserved: humans still gate production. The mechanism for expressing that gate moves from "click the right merge button" to "approve the PR." Both are explicit human actions, but approval has no dropdown of conflicting choices, so the merge-method foot-gun is eliminated.
 
 ### Implementation
 
@@ -138,7 +138,7 @@ The original asymmetric strategy is preserved — humans still gate production. 
 PR_NUMBER=$(basename $PR_URL)
 
 # Arm auto-merge with merge-commit method. The human gate is preserved
-# by the required approval rule on main — auto-merge waits for that
+# by the required approval rule on main; auto-merge waits for that
 # approval before firing. Locks the merge method in code so release PRs
 # cannot be squash-merged.
 if gh pr merge "$PR_NUMBER" --auto --merge 2>/dev/null; then
@@ -154,10 +154,10 @@ fi
 - No `required_linear_history` rule on `main` (it forbids merge commits and would block the auto-merge)
 
 ### Recovery (Reversibility)
-A human can disable auto-merge from the PR UI at any time and merge manually. The escape hatch is preserved — the workflow only sets the *default* path; humans retain full control if they need to override.
+A human can disable auto-merge from the PR UI at any time and merge manually. The escape hatch is preserved: the workflow only sets the *default* path; humans retain full control if they need to override.
 
 ### Why this is consistent with the original ADR
-The original decision says "All production PRs require manual approval before merge." That remains true. The revision only changes how that approval is *expressed*: approval was previously implicit in the merge-button click, now it's explicit via the Files Changed → Approve action. The asymmetry between the two cascade phases is unchanged — fork_upstream → fork_integration is human-initiated; fork_integration → main is human-approved.
+The original decision says "All production PRs require manual approval before merge." That remains true. The revision only changes how that approval is *expressed*: approval was previously implicit in the merge-button click, now it's explicit via the Files Changed → Approve action. The asymmetry between the two cascade phases is unchanged: fork_upstream → fork_integration is human-initiated, fork_integration → main is human-approved.
 
 ## Alternatives Considered
 

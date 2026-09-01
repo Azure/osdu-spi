@@ -6,7 +6,7 @@
 The AI path never worked in production. `aipr pr` ran inside a `git worktree add --detach`
 worktree and crashed on `repo.active_branch.name`; `sync-template.yml` never installed the
 tool at all. Every failure was swallowed by `2>&1` capture and `|| echo ""`, so the
-"graceful degradation" below was the only path that ever executed — for the entire life of
+"graceful degradation" below was the only path that ever executed, for the entire life of
 the reference fork, across eight months of green daily runs. Reviewers merged the fallback
 bodies without complaint.
 

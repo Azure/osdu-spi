@@ -2,11 +2,11 @@
 
 The build and test workflow provides rapid feedback for Java developers by automatically building and testing code changes on feature branches. It reports whether changes compile, pass tests, and produce a JaCoCo coverage report before they reach a protected branch.
 
-Unlike the more comprehensive validation workflow, the build workflow is optimized for feature-branch feedback. Protected-branch pushes and container validation are handled by the validation workflow.
+Unlike the validation workflow, the build workflow only covers feature-branch pushes. Protected-branch pushes and container validation are handled by the validation workflow.
 
 ## When It Runs
 
-The build workflow activates during active development to provide continuous feedback:
+The build workflow runs on:
 
 - **Feature branch pushes** - Triggers on every commit to non-protected branches during development
 - **PR events** - Handled by `validate.yml` and `dependabot-validation.yml`, so one commit never starts two builds; `sync/**` and `dependabot/**` pushes are excluded here for the same reason
@@ -16,16 +16,14 @@ Markdown/text-only changes (for example `**/*.md`, `**/*.txt`) and selected repo
 
 ## What Happens
 
-The workflow follows an optimized build and test process designed for rapid developer feedback:
+The workflow:
 
 1. **Repository detection** - Skips the Java jobs when no `pom.xml` is present
 2. **Java build** - Uses the reusable Java action to compile, test, and upload JARs
 3. **Coverage build** - Runs tests with JaCoCo and uploads the generated report
 4. **Results reporting** - Adds coverage details to the workflow summary
 
-The workflow produces clear outcomes to help you understand the state of your changes:
-- **Success**: The Maven build and tests complete successfully
-- **Failure**: Compilation, dependency resolution, or tests fail
+The run is green when the Maven build and tests pass, and red when compilation, dependency resolution, or a test fails.
 
 ## Build Support
 
@@ -37,7 +35,7 @@ The workflow produces clear outcomes to help you understand the state of your ch
 
 ### Build Features
 - **Maven dependency caching** - Speeds up builds by caching `.m2/repository`
-- **JaCoCo coverage reporting** - Generates detailed test coverage reports using JaCoCo plugin
+- **JaCoCo coverage reporting** - Generates a coverage report
 - **Community repository access** - Resolves OSDU dependencies from the public GitLab Maven repository
 - **Artifact storage** - Saves JARs and coverage data for 2 days
 
