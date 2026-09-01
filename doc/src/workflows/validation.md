@@ -112,7 +112,7 @@ All protected branches use the same validation rules, with exemptions for specif
 - **Relaxed commit standards** - Upstream commits may not follow conventions
 - **Conflict handling** - Automatically creates resolution guidance
 - **AI enhancement** - Generates PR descriptions when possible
-- **Single lane** - `pull_request_target` owns sync PRs and supplies trusted local actions; it builds `core` only in filter mode, and the full profile set with image validation in mirror mode
+- **Single lane** - `pull_request_target` owns sync PRs and supplies trusted local actions; it builds `core` only in filter mode and the full profile set in mirror mode. The validate-only image build never runs in this lane (#164); it runs on the cascade PR (and, in mirror mode, on the `fork_upstream` push after merge)
 
 ### Emergency Fixes
 - **Override capability** - Admin can bypass non-critical checks

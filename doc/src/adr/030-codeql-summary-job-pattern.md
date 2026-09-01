@@ -122,6 +122,8 @@ Remove the `code_scanning` rule from `.github/rulesets/default-branch.json`:
 
 This summary-job pattern is the engineering system's general mechanism for any required status check whose workflow is path-filtered or has conditional jobs. It is reused by the `🐳 Docker Build` required check in `validate.yml` (the `docker-build-required` summary job), where `check-initialization` routes each PR to one of the two PR triggers and the other stands down. The summary job repeats that routing because `always()` would otherwise let the standing-down lane report a green that stands for no build. Neither trigger carries `paths-ignore`, so the owning lane always starts and always reports.
 
+The template's own CodeQL workflow feeds a second job into the same summary. The actions extractor only reads `.github/workflows/`, so the template never analyzed what it ships until a fork did (#164). The `template-workflows` job stages `.github/template-workflows/*.yml` where a fork keeps them, runs the forks' `security-extended` suite without uploading, and fails on any finding, so a template regression fails here before it reaches a fork's required `CodeQL` check. Diff-informed analysis is off for that job: the staged paths never appear in a PR diff, and PR runs would otherwise keep only the non-dataflow findings.
+
 ### Why Remove Code Scanning Rule
 
 1. **SARIF Upload Requirement**: The rule fundamentally requires results upload

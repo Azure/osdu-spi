@@ -149,6 +149,14 @@ jobs:
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.generate_coverage | contains("pull_request_target")' "$VALIDATE" \
             "The sync pull_request_target build must generate coverage"
 
+          # docker-build runs untrusted Dockerfile content with read-only permissions. A PR-head
+          # checkout ref there is a CodeQL cache-poisoning finding in every fork (#164).
+          DOCKER_IF=$(yq -r '.jobs."docker-build".if | sub("\s+"; " ")' "$VALIDATE")
+          assert_contains "$DOCKER_IF" "github.event_name != 'pull_request_target'" \
+            "docker-build must stay out of the pull_request_target lane"
+          assert_yq '[.jobs."docker-build".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref == null] | select(length > 0) | all' "$VALIDATE" \
+            "docker-build must check out github.sha, never a PR head"
+
           # Dependabot owns one build plus one image validation, under its own check name.
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.maven_profile | contains("core,azure")' "$DEPENDABOT" \
             "Dependabot must produce the Azure JAR used by Docker"
