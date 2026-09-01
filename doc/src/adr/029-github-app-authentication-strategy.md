@@ -18,7 +18,7 @@ Microsoft DSR (Digital Security & Resilience) has configured organization-level 
 
 ### 2. Personal Access Token (PAT) Deprecation Policy
 
-Microsoft is aggressively phasing out PAT usage following the Secure Future Initiative:
+Microsoft is phasing out PAT usage following the Secure Future Initiative:
 
 - January 2025: 365-day maximum PAT lifetime
 - March 2025: 180-day maximum PAT lifetime
@@ -29,11 +29,7 @@ Microsoft is aggressively phasing out PAT usage following the Secure Future Init
 
 ### 3. Required Elevated Permissions
 
-Critical workflows in the fork management system require permissions that `GITHUB_TOKEN` cannot provide:
-
-- **Release Automation**: Creating release PRs and GitHub releases (requires `contents: write` and `pull-requests: write`)
-
-- **Repository Initialization**: Setting repository variables, deploying workflows, configuring security settings, creating rulesets (requires `administration: write`, `workflows: write`, `variables: write`)
+Workflows in the fork management system need permissions that `GITHUB_TOKEN` cannot provide: creating release PRs and releases (`contents: write`, `pull-requests: write`), and setting repository variables, deploying workflow files, configuring security settings, and creating rulesets during initialization and settings reconciliation (`administration: write`, `workflows: write`, `variables: write`).
 
 Traditional approaches (PATs, service accounts) are either blocked by policy or create operational/security burdens incompatible with enterprise requirements.
 
@@ -62,7 +58,7 @@ Adopt **GitHub Apps with installation tokens** as the standard authentication me
    ```yaml
    - name: Generate GitHub App Token
      id: app-token
-     uses: actions/create-github-app-token@v1
+     uses: actions/create-github-app-token@<sha>  # pinned by SHA
      with:
        app-id: ${{ secrets.RELEASE_APP_ID }}
        private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -76,174 +72,34 @@ Adopt **GitHub Apps with installation tokens** as the standard authentication me
 
 4. **Secrets Configuration**
 
-   - `RELEASE_APP_ID`: Application ID (organization-level secret)
-   - `RELEASE_APP_PRIVATE_KEY`: Private certificate (organization-level secret)
-   - Secrets distributed to all repositories requiring automation
+   - `RELEASE_APP_ID`: Application ID
+   - `RELEASE_APP_PRIVATE_KEY`: Private key
+   - Set at organization level where available, otherwise per repository; `.github/scripts/rotate-app-key.sh` distributes a key from Azure Key Vault to a repository and organization secret
 
-## Rationale
-
-### Why GitHub Apps Are Superior
-
-**Security Advantages:**
-
-- **Short-lived tokens**: 1-hour expiration vs 90+ days for PATs
-- **Scoped permissions**: Granular control over what the app can access
-- **Installation-based**: Limited to specific repositories, not all user resources
-- **Certificate-based**: Private key less likely to be accidentally committed than PAT
-- **Audit trail**: Clear attribution in GitHub logs (app name vs user)
-
-**Operational Advantages:**
-
-- **Not tied to individuals**: Survives employee changes, no personal account dependency
-- **No manual rotation**: Tokens generated on-demand, no weekly/monthly renewal
-- **Team-managed**: Multiple organization admins can manage the app
-- **Microsoft-approved**: Explicitly recommended in Microsoft's GitHub TSG documentation
-- **Policy-compliant**: Aligns with DSR requirements and PAT deprecation timeline
-
-**Enterprise Advantages:**
-
-- **Centralized management**: Single app serves all OSDU repositories
-- **Consistent security model**: Same approach across organization
-- **Emergency response**: Org admins can revoke certificates in security incidents
-- **Compliance**: Meets SDL requirements for credential lifecycle management
-
-### Comparison with Alternatives
+## Alternatives Considered
 
 | Approach | Pros | Cons | Verdict |
 |----------|------|------|---------|
-| **GitHub App** | • Short-lived tokens<br>• Not tied to individuals<br>• Microsoft-recommended<br>• Granular permissions | • Initial setup complexity<br>• Requires org admin approval | ✅ **Accepted** |
-| **Personal PAT** | • Simple to create<br>• Direct user control | • Tied to individual<br>• Long-lived credentials<br>• Being phased out by Microsoft<br>• Manual rotation | ❌ Rejected |
-| **Service Account + PAT** | • Not tied to personal account | • Still requires PAT<br>• Manual rotation<br>• Requires license seat<br>• Against Microsoft policy | ❌ Rejected |
-| **Fine-grained PAT** | • Better scoping than classic PAT | • Still manual rotation<br>• 90-day max lifetime<br>• No renewal API<br>• Against policy direction | ❌ Rejected |
-| **Manual Workflows** | • No automation complexity | • Breaks automation benefits<br>• Manual intervention required<br>• Not scalable | ❌ Rejected |
+| **GitHub App** | • Short-lived tokens<br>• Not tied to individuals<br>• Microsoft-recommended<br>• Granular permissions | • Initial setup complexity<br>• Requires org admin approval | **Accepted** |
+| **Personal PAT** | • Simple to create<br>• Direct user control | • Tied to individual<br>• Long-lived credentials<br>• Being phased out by Microsoft<br>• Manual rotation | Rejected |
+| **Service Account + PAT** | • Not tied to personal account | • Still requires PAT<br>• Manual rotation<br>• Requires license seat<br>• Against Microsoft policy | Rejected |
+| **Fine-grained PAT** | • Better scoping than classic PAT | • Still manual rotation<br>• 90-day max lifetime<br>• No renewal API<br>• Against policy direction | Rejected |
+| **Manual Workflows** | • No automation complexity | • Breaks automation benefits<br>• Manual intervention required<br>• Not scalable | Rejected |
 
 ## Consequences
 
-### Positive
-
-- **Policy Compliance**: Aligns with Microsoft's PAT deprecation roadmap
-- **Enhanced Security**: Short-lived tokens reduce compromise window from months to 1 hour
-- **Team Resilience**: Not dependent on any individual employee's account
-- **Operational Simplicity**: No manual rotation or credential management
-- **Audit Clarity**: Clear attribution in GitHub audit logs (app identity vs user)
-- **Scalability**: Single app serves all fork repositories with consistent behavior
-- **Future-Proof**: Works within Microsoft's security control framework
-
-### Negative
-
-- **Setup Complexity**: Requires organization admin to create and approve app
-- **Permission Management**: Changes to permissions require re-approval on installations
-- **Documentation Burden**: Teams need to understand GitHub Apps vs PATs
-- **Secret Distribution**: App ID and private key must be added to each repository
-- **Dependency**: Relies on GitHub Apps infrastructure availability
-
-### Neutral
-
-- **Token Lifetime**: 1-hour expiration sufficient for workflow execution (same as Entra ID tokens)
-- **Permission Model**: Fine-grained permissions require careful configuration
-- **Migration Path**: Existing repositories need secrets added but workflows adapt automatically
+Tokens expire after one hour and are minted per run, so nothing is rotated by hand and no individual's account is on the path. The cost is setup: an organization admin must create and approve the app, any permission change needs re-approval on every installation, and the App ID and private key must be present as secrets wherever a workflow mints a token.
 
 ## Implementation Details
 
-### Phase 1: GitHub App Creation (Completed)
+**Application**: one GitHub App owned by the Azure organization and installed on the OSDU fork repositories. Repository permissions: contents, pull-requests, administration, workflows, and variables read-write; metadata read-only. No organization or account permissions.
 
-**Application Configuration:**
+**Workflows that mint a token** (all via `actions/create-github-app-token`, pinned by SHA):
 
-- **Name**: `osdu-spi-automation`
-- **Owner**: Personal account initially, transfer to Azure organization for production
-- **Homepage**: https://github.com/Azure/osdu-spi
-- **Webhook**: Disabled (not needed for token generation)
-- **Installation**: Azure organization repositories
+- Template: `dev-release.yml` (Release Please), `init-complete.yml` (variables, security settings, rulesets)
+- Forks: `release.yml`, `sync.yml`, `sync-template.yml`, `cascade.yml`, `adopt-fork.yml`, `settings-apply.yml`
 
-**Permission Configuration:**
-
-```yaml
-Repository Permissions:
-  contents: read-write        # For releases, git operations
-  pull-requests: read-write   # For creating release PRs
-  administration: read-write  # For variables, security, rulesets
-  workflows: read-write       # For deploying workflow files
-  variables: read-write       # For setting repository variables
-  metadata: read-only         # Automatic, required
-
-Organization Permissions: none
-Account Permissions: none
-```
-
-### Phase 2: Workflow Integration (Completed)
-
-**Release Automation** (`dev-release.yml`):
-
-```yaml
-jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-
-      - name: Generate Release PR
-        uses: googleapis/release-please-action@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}  # Uses app token
-          config-file: .release-please-config.json
-```
-
-**Repository Initialization** (`init-complete.yml`):
-
-```yaml
-jobs:
-  setup_repository:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
-      issues: write
-    steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-
-      - name: Configure Variables
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # Uses app token
-        run: |
-          gh variable set UPSTREAM_REPO_URL --body "$REPO_URL"
-
-      - name: Configure Security
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # Uses app token
-        run: |
-          ./setup-security.sh
-
-      - name: Setup Repository Rulesets
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}  # Uses app token
-        run: |
-          ./setup-rulesets.sh
-```
-
-### Phase 3: Secret Distribution
-
-**Repository-Level Secrets**:
-
-```bash
-# Add secrets to individual repository
-gh secret set RELEASE_APP_ID --repo Azure/osdu-spi --body "2072585"
-gh secret set RELEASE_APP_PRIVATE_KEY --repo Azure/osdu-spi --body "@osdu-spi-automation.pem"
-```
+The token is passed as `GH_TOKEN` or `GITHUB_TOKEN` to the steps that need elevated access; read-only steps keep the default token. Rulesets, required variables, and GHCR visibility are reconciled by the scripts under `.github/scripts/settings-apply/`, which `settings-apply.yml` runs on a schedule and `init-complete.yml` runs once at initialization.
 
 ## Security Considerations
 
@@ -258,7 +114,7 @@ gh secret set RELEASE_APP_PRIVATE_KEY --repo Azure/osdu-spi --body "@osdu-spi-au
 
 - **Storage**: GitHub Secrets (encrypted at rest)
 - **Access**: Only available to workflow runs, not visible in UI
-- **Rotation**: Generate new key, update secret, revoke old key
+- **Rotation**: Generate a new key, distribute it with `.github/scripts/rotate-app-key.sh`, revoke the old key
 - **Backup**: Keep secure backup of private key for disaster recovery
 
 ### Permission Boundaries
@@ -286,39 +142,12 @@ GitHub App authentication is automatically configured:
 3. App already installed on organization repositories
 4. No manual configuration required
 
-## Monitoring and Validation
-
-### Success Metrics
-
-- **Token Generation Rate**: Monitor `actions/create-github-app-token` success rate
-- **Authentication Failures**: Alert on 403 errors from GitHub API
-- **Workflow Success Rate**: Track release and initialization workflow completion
-- **PAT Elimination**: Verify no remaining `secrets.GH_TOKEN` references
-
-### Validation Steps
-
-1. **Release Workflow**: Verify release PRs are created successfully
-2. **Init Workflow**: Verify repository variables, security settings, and rulesets are configured
-3. **Audit Trail**: Confirm app attribution in GitHub audit logs
-4. **Token Lifetime**: Verify 1-hour tokens sufficient for all workflow operations
-5. **Permission Scope**: Confirm no over-permissioning or access violations
-
 ## Related Decisions
 
 - [ADR-002: GitHub Actions-Based Automation](002-github-actions-automation.md) - Workflow automation framework
 - [ADR-004: Release Please for Version Management](004-release-please-versioning.md) - Release automation using app tokens
 - [ADR-006: Two-Workflow Initialization Pattern](006-two-workflow-initialization.md) - Initialization using app tokens
 - [ADR-026: Dependabot Security Update Strategy](026-dependabot-security-update-strategy.md) - Security automation context
-
-## Success Criteria
-
-- ✅ Release Please successfully creates release PRs without PAT
-- ✅ Repository initialization completes all configuration steps
-- ✅ No `secrets.GH_TOKEN` references remain in workflow files
-- ✅ All fork repositories use GitHub App authentication
-- ✅ Zero manual credential rotation required
-- ✅ App attribution visible in GitHub audit logs
-- ✅ Workflow success rate matches or exceeds PAT baseline
 
 ## References
 

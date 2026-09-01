@@ -11,6 +11,8 @@ Each record captures the context, decision, and consequences of one design choic
 
 ## Catalog
 
+Numbers 017, 032, and 034 were retired and are intentionally unused.
+
 ### :material-layers: Foundation & Core Architecture
 
 *"What are the fundamental design choices?"*
@@ -78,9 +80,9 @@ Build architecture, dependency management, and documentation:
 
 ### :material-rocket-launch: CI/CD & Deployment
 
-*"How do services get built, deployed, and tested per PR?"*
+*"How do services get built and published per PR?"*
 
-Decisions for the container-image build, cluster deploy, and integration-test pipeline:
+Decisions for the container image build, the image registry, and the acceptance-test contract. Cluster deploy and integration-test jobs are designed in [Borrow, Prove, Restore](../architecture/deploy_test.md) and not built yet:
 
 | ADR | Decision | Impact |
 |-----|----------|--------|

@@ -1,5 +1,9 @@
 # ADR-039: Customer-Tier Forks and Mirror-Mode Sync
 
+## Status
+
+Accepted (2026-08-27)
+
 ## Context
 
 ADR-038 defines how a service fork receives upstream changes: sync generates a filtered `fork_upstream` from the upstream project's tip, the cascade merges it with the fork-owned Azure trees, and `main` becomes the finished product. Shared code, the Azure implementation, the workflows, and the filter configuration all live together on `main`.
@@ -80,7 +84,7 @@ The workflow refuses to run where `INITIALIZATION_COMPLETE` is already `true`, w
 
 - The `Filter-Rev: mirror` sentinel keeps the trailer contract intact, so tooling that reads generation provenance needs no special case.
 - `Adopt Fork` ships to every fork as an inert workflow. First-tier forks carry it but cannot run it past the guard.
-- The deploy and integration-test required checks are stripped by the existing readiness filter at adoption time, exactly as on a first-tier fork that has not onboarded to deployment.
+- The rulesets script strips deploy and integration-test checks from the required checks when a fork is not deploy-ready, at adoption as at first-tier setup. No shipped ruleset lists those checks yet, so this is inert until the planned deploy lane lands (ADR-036).
 
 ## Alternatives Considered
 

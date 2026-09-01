@@ -1,17 +1,12 @@
-# Learnings & Insights
+# Learnings
 
-!!! abstract "Living Document"
-    These learnings represent accumulated wisdom from building, deploying, and maintaining a complex fork management system. They serve as guideposts for future development and as context for understanding the current architecture.
+What building and running this fork management system taught us, one learning per section. Each points at the decision record that holds the detail. Newer learnings sit at the end.
 
 ---
 
+## Isolation is what lets the team keep shipping
 
-## The Power of Isolation
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Complex integration problems become manageable when properly isolated. Adding isolation stages doesn't slow teams down, it accelerates them by preventing cascade failures.
-
-The system runs upstream sync on a schedule, creating a PR to `fork_upstream`. You control when to merge, batching multiple changes or merging immediately. Once merged, the cascade automatically moves changes to `fork_integration` for validation. If builds pass, changes flow to `main`. If validation fails, the issue is isolated and fixed without blocking the team. Main stays protected and the team keeps shipping.
+Upstream changes never land on `main` directly. Sync opens a PR to `fork_upstream`, the team decides when to merge it, and the cascade carries the result through `fork_integration`, where it is built and tested before a release PR reaches `main`. When integration breaks, the break is contained on `fork_integration` and fixed there while feature work on `main` continues. Adding a stage did not slow anyone down; it removed the case where an upstream change stopped everybody at once.
 
 ```mermaid
 graph LR
@@ -23,7 +18,6 @@ graph LR
     E -->|Pass| F[main]
     E -->|Fail| G[Fix in isolation]
     G -->|Retry| D
-    F -->|Team keeps shipping| H[Production]
 
     style B fill:#e1f5ff
     style D fill:#fff4e1
@@ -31,559 +25,144 @@ graph LR
     style G fill:#ffebee
 ```
 
-!!! example "The Airlock Pattern"
-    Think of `fork_integration` as an isolation airlock. Upstream changes enter the chamber where it is prepared for "decompression" (breaking changes). Breach detected? Fix it, while crews in main chamber continue to work. Only proven-safe changes pass through into main.
+| Branch | Purpose | Can break? |
+|--------|---------|------------|
+| `fork_upstream` | Generated upstream tree | No; it accumulates until you are ready |
+| `fork_integration` | Validation workspace | Yes; isolated from production |
+| `main` | Protected production | Never; receives only validated changes |
 
-| Branch | Purpose | Can Break? | Team Impact |
-|--------|---------|------------|-------------|
-| `fork_upstream` | Generated upstream tree | No | Zero - accumulates until you're ready |
-| `fork_integration` | Validation workspace | Yes | Zero - isolated from production |
-| `main` | Protected production | Never | Zero - only receives validated changes |
-
-**Team Impact**: When integration breaks, engineers fix, feature flag, or add integration necessary while others continue shipping. If main breaks, everyone must stop.
+See [ADR-001](001-three-branch-strategy.md) and [ADR-005](005-conflict-management.md).
 
 ---
 
-## Managing Engineering Systems Across Many Repositories
+## One repository owns the engineering system; the rest phone home
 
-!!! quote ":material-lightbulb-outline: Learning"
-    Managing engineering systems (workflows, actions, configs) across many repositories requires separating shared logic from instance-specific data. One central repository controls the engineering system; other repositories receive updates via PR.
-
-**The Challenge**: You have many different repositories. Each needs the same workflows (sync, cascade, build, release) but different upstream sources, labels, and settings. How do you improve workflows without manually updating each repository?
-
-**The Pattern** (Phone Home):
+Every service fork needs the same workflows and actions but different upstream URLs, labels, and settings. The template owns the logic; each fork owns its data in config files. `sync-template.yml` checks the template daily and opens a PR in each fork when it has moved, and the fork owner chooses when to merge. Fixing a bug in `sync.yml` once is enough; the fix arrives everywhere as a reviewable PR instead of a hand edit in every repository.
 
 ```mermaid
 graph LR
-    A[Central Management]
-
-    B[Fork: repo-1 ]
-    C[Fork: repo-2 ]
-    D[Fork: repo-n ]
-
-    B -->|Weekly <br/>check | A
-    C -->|Weekly <br/>check | A
-    D -->|Weekly <br/>check | A
-
+    A[Template]
+    B[Fork: repo-1]
+    C[Fork: repo-2]
+    D[Fork: repo-n]
+    B -->|Daily check| A
+    C -->|Daily check| A
+    D -->|Daily check| A
     style A fill:#e8f5e9
     style B fill:#e1f5ff
     style C fill:#e1f5ff
     style D fill:#e1f5ff
 ```
 
-**Separation Strategy**:
-
-| Type | Lives In | Controlled By | Example |
-|------|----------|---------------|---------|
-| **Logic** | Template workflows | Template owner | How to sync, how to cascade, how to build |
-| **Data** | Fork config files | Fork owner | Which upstream URL, which files to sync, which labels |
-
-**How It Works**:
-
-1. You fix a bug in `sync.yml` → commit to central template
-2. Weekly sync creates PRs in all repositories
-3. **Repository owners control when to merge** → Review changes, merge when ready
-4. Logic improves everywhere; data stays repository-specific
-
-!!! note "Key Insight"
-    Externalizing repository-specific values (upstream URLs, file patterns, labels) into config files enables engineering system evolution without merge conflicts. Pull-based distribution via PR gives repository owners full control over timing. Cost of indirection < cost of manually synchronizing many repositories.
+See [ADR-011](011-configuration-driven-template-sync.md) and [ADR-012](012-template-update-propagation-strategy.md).
 
 ---
 
+## Split what fails differently
 
-## Separation of Concerns Wins
+The first initialization workflow handled user input and repository setup in one file and failed in two unrelated ways. Splitting it into `init.yml` and `init-complete.yml` gave each half one responsibility and one failure mode. The same rule separated `.github/workflows/`, which runs only in the template, from `.github/template-workflows/`, which forks receive at initialization; before that split every fork carried template-only infrastructure it never used.
 
-!!! quote ":material-lightbulb-outline: Learning"
-    Splitting complex operations into focused components improves reliability and maintainability.
-
-**Decision Framework: When to Split Workflows**
-
-Ask: *"What are the distinct responsibilities?"*
-
-| Indicator | Example | Solution |
-|-----------|---------|----------|
-| Multiple failure modes | Init workflow handles user input AND system config | Split into `init.yml` + `init-complete.yml` |
-| Different execution contexts | Template development vs fork production | Separate directories ([ADR-015](015-template-workflows-separation-pattern.md)) |
-| Conflicting requirements | User interaction vs automation | Isolate human touchpoints |
-
-**Pattern**: When a workflow becomes complex, identify distinct responsibilities and split them.
-
-**Impact**: Both workflows become simpler, more testable, and easier to debug. Template-workflows separation eliminated workflow pollution entirely.
+See [ADR-006](006-two-workflow-initialization.md) and [ADR-015](015-template-workflows-separation-pattern.md).
 
 ---
 
-## Safety Net Pattern: The Sweeper
+## Human-triggered steps need a sweeper
 
-!!! quote ":material-lightbulb-outline: Learning"
-    Human-triggered workflows need automated sweeper processes to catch missed triggers and enable self-healing recovery.
+The cascade is meant to be started by a person after reviewing the sync PR. People forget, and transient failures leave work stuck. `cascade-monitor.yml` runs every six hours, compares `fork_upstream` with `fork_integration`, finds merged sync PRs with no cascade, starts one, and retries a cascade whose `human-required` label has been removed after a fix. The sweeper is a safety net behind the manual path, not a replacement for it.
 
-**The Problem**:
-
-- You merge upstream sync PR but forget to trigger cascade → Changes stuck
-- Cascade fails due to temporary issue, you fix it → How does it retry?
-
-**The Solution**: `cascade-monitor.yml` runs every 6 hours as a sweeper:
-
-1. **Checks for pending work**: Compares `fork_upstream` vs `fork_integration` branches
-2. **Detects missed triggers**: Finds merged sync PRs without cascade started
-3. **Auto-triggers cascade**: Starts integration automatically when found
-4. **Enables recovery**: When humans remove `human-required` label after fixes, sweeper detects and retries
-
-**Pattern**: For human-triggered critical workflows, add scheduled sweeper that detects incomplete state and auto-triggers recovery.
-
-!!! tip "Safety Net, Not Replacement"
-    The sweeper is a fallback for human error or recovery scenarios. Primary path is still manual triggering after review. Sweeper ensures nothing gets permanently stuck.
+See [ADR-019](019-cascade-monitor-pattern.md).
 
 ---
 
-## The "Missing YAML" Problem
+## Know the event context before building a workaround
 
-!!! quote ":material-lightbulb-outline: Learning"
-    Sometimes the simplest solution provides dramatic improvements.
+Cascade triggering failed because `pull_request` runs the workflow from the PR branch, and the branch did not contain the workflow yet. Switching to `pull_request_target`, which runs the workflow from the target branch, fixed weeks of unreliability with one line. The same context has a sharp edge: a read-only job that checks out the PR head under `pull_request_target` is a cache-poisoning finding in CodeQL (#164), so the validate-only Docker job never sets a checkout ref and never takes that lane.
 
-**The Problem**: Workflows not found when using `pull_request` events because init workflows don't exist in the PR branch yet.
-
-**The Solution**: Switch to `pull_request_target` which reads workflows from the target branch.
-
-| Event Type | Workflow Source | Use Case |
-|------------|----------------|----------|
-| `pull_request` | PR branch | Standard PR validation |
-| `pull_request_target` | Target branch | Bootstrap scenarios |
-
-**Takeaway**: When facing GitHub Actions issues, thoroughly understand event contexts and workflow execution environments before building complex workarounds. One line of configuration solved weeks of reliability issues.
+See [ADR-021](021-pull-request-target-trigger-pattern.md) and [ADR-036](036-workflow-trust-boundaries.md).
 
 ---
 
-## AI as Enhancement, Not Dependency
+## Labels are the state machine
 
-!!! quote ":material-lightbulb-outline: Learning"
-    AI capabilities should improve workflows without creating critical dependencies.
+Assigning issues to people failed on organization accounts, renamed users, and API errors. Labels have none of those problems and are queryable from any workflow. `cascade-active`, `cascade-blocked`, `validated`, and `human-required` carry the cascade's state across runs; removing `human-required` after a fix is the signal that lets the sweeper resume. The tracking issue itself is the audit trail for a process that spans hours or days.
 
-**Implementation Strategy:**
-
-- Core functionality operates reliably when AI services unavailable
-- AI-enhanced PR descriptions fall back to structured templates
-- Conflict analysis succeeds with or without AI suggestions
-
-**Pattern**: Build resilient fallbacks first, then layer on AI enhancements.
-
-**Outcome (2026-09-01, #162)**: The fallback was load-bearing in the strongest sense: it was the only path that ever ran. `aipr` crashed on every invocation for the life of the reference fork while the workflow reported success, and reviewers merged the fallback bodies without complaint. The lesson inverts: a fallback that cannot be distinguished from success is not resilience, it is a blindfold. Descriptions are now deterministic, and the meta-commit classification is a rule (ADR-023).
-
-**Impact**: Teams trust and adopt workflows that work consistently, with AI providing value when available rather than creating blocking dependencies.
+See [ADR-020](020-human-required-label-strategy.md) and [ADR-022](022-issue-lifecycle-tracking-pattern.md).
 
 ---
 
-## Human-Centric Automation Philosophy
+## State that must survive a runner lives in GitHub metadata
 
-!!! quote ":material-lightbulb-outline: Learning"
-    The most successful automation enhances human capabilities rather than replacing human judgment.
+A scheduled sync that cannot remember what it already did opens a duplicate PR every day. Upstream sync records the active upstream SHA in the tracking issue while a sync PR is open, records a commit that changed nothing in the fork's tree in the `SYNC_LAST_EVALUATED_SHA` variable, and finds its own branches and PRs by label. An unchanged upstream is a no-op, an advanced upstream updates the existing branch, and abandoned branches are cleaned up. Template sync uses the simpler form of the same idea with the `template-sync` label.
 
-**Applied Pattern:**
-
-- **Cascade workflow**: Manual triggering after sync PR review gives teams explicit control over timing and batching
-- **Conflict analysis**: AI provides guidance and categorization; humans make resolution decisions
-- **Release decisions**: Automation suggests version bumps; humans approve before release
-
-**Takeaway**: Automation should handle toil and provide analysis; humans should make decisions with clear context and control.
-
-**Impact**: Teams trust and adopt workflows that respect their expertise rather than treating them as obstacles to overcome.
+See [ADR-024](024-sync-workflow-duplicate-prevention-architecture.md) and [ADR-031](031-template-sync-duplicate-prevention.md).
 
 ---
 
+## Add metadata instead of rewriting history
 
-## Conflict Category Analysis
+Release Please needs conventional commits; upstream does not write them. Rather than squash or rewrite upstream history, the sync adds one meta commit whose type is chosen by a fixed rule over the upstream range: breaking beats `feat` beats `fix`, and unclassifiable commits count as `fix`. The full upstream history stays intact for `git blame` and debugging, and versioning stays automatic.
 
-!!! quote ":material-lightbulb-outline: Learning"
-    Most conflicts fall into predictable, manageable categories with clear resolution strategies.
-
-**Category Breakdown:**
-
-| Category | Frequency | Risk Level | Resolution Strategy |
-|----------|-----------|------------|---------------------|
-| **Structural** | ~40% | Low | Preserve local structure while adopting upstream organization |
-| **Functional** | ~35% | High | Preserve local enhancement intent while adopting improvements |
-| **Merge Artifacts** | ~25% | Medium | Focus on testing behavior, not just compilation |
-
-**Resolution Philosophy**: Always understand the **intent** behind local modifications. Test functionality thoroughly; successful compilation doesn't guarantee correct integration.
-
-**Practical Impact**: Categorizing conflicts reduces time-to-understanding and provides clear resolution approaches for each type.
+See [ADR-023](023-meta-commit-strategy-for-release-please.md).
 
 ---
 
-## Detection vs Resolution
+## Extract scripts so they can be run without a workflow
 
-!!! quote ":material-lightbulb-outline: Learning"
-    Detecting conflicts is valuable even when you can't automatically resolve them.
-
-**Value Provided:**
-
-- Structured analysis and categorization
-- Significantly reduced time-to-understanding
-- Guided resolution even when manual work required
-
-**Pattern**: Build detection and analysis layers first; automated resolution emerges as patterns become clear over time.
-
-**Takeaway**: The value lies in guidance and structure, not full automation. Conflict detection provides immediate value even without automated fixes.
-
----
-
-
-## Backward Compatibility is Non-Negotiable
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Template changes must work seamlessly with existing fork instances. The cost of supporting backward compatibility is far less than the cost of breaking production instances.
-
-**Requirements:**
-
-- Migration strategies for breaking changes
-- Clear communication to affected users
-- Often automated migration tooling
-- Testing against multiple real instances before deployment
-
-**Pattern**: Every template change requires validation against real fork instances, not just the template repository.
-
-**Impact**: Production fork instances continue operating smoothly through template evolution without surprise breakage or emergency fixes.
-
----
-
-## Template Pollution Problem
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Mixing template development and fork production workflows creates confusion and pollutes fork repositories with infrastructure they don't need.
-
-**The Solution: Directory Separation**
-
-- `.github/workflows/` - Template infrastructure (this repository only)
-- `.github/template-workflows/` - Fork production workflows (copied during initialization)
-
-**Pattern**: Clear separation between "infrastructure for this repository" and "infrastructure we deploy to instances."
-
-**Takeaway**: What seems obvious in retrospect emerged from painful experience. Separate contexts require separate locations.
-
----
-
-## Bootstrap Problem: Local Actions Solution
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Extract critical logic to local actions that ship with the template instead of building complex workflow self-update mechanisms.
-
-**The Problem**: New repository workflows execute from the initial template state, potentially missing critical bug fixes (like `--allow-unrelated-histories`) made after template creation.
-
-**The Solution**: Extract critical initialization logic to `.github/local-actions/` which are part of the template repository and copied during initialization. Since these actions exist in the initial commit, fixes are automatically available without workflow self-update complexity.
-
-**Implementation Example**:
-```bash
-# .github/local-actions/merge-with-theirs-resolution/action.sh
-git merge "$SOURCE_BRANCH" --allow-unrelated-histories --no-ff -X theirs
-```
-
-**Why Local Actions Win**:
-
-| Benefit | Description |
-|---------|-------------|
-| **Always Available** | Part of initial commit, no bootstrap needed |
-| **No External Dependencies** | Self-contained within repository |
-| **Testable** | Can test independently of workflows |
-| **Cleaner** | No workflow self-modification complexity |
-| **Maintainable** | Single source of truth |
-
-**Pattern**: For template infrastructure that needs to evolve, extract critical logic to local actions rather than building self-update mechanisms.
-
-**Impact**: Initialization uses latest fixes immediately without complex bootstrap patterns. See [ADR-007](007-initialization-workflow-bootstrap.md) and [ADR-028](028-workflow-script-extraction-pattern.md) for detailed rationale.
-
----
-
-
-## Labels as Workflow State Machines
-
-!!! quote ":material-lightbulb-outline: Learning"
-    GitHub labels provide reliable, queryable state management for multi-stage workflows. Use labels to track state and control automation flow.
-
-**How Labels Enable Automation**:
-
-| Label | Workflow Behavior | Human Signal |
-|-------|-------------------|--------------|
-| `cascade-active` | Automation running, do not interfere | Work in progress |
-| `human-required` | Automation paused, waiting for human action | Please investigate and fix |
-| `cascade-blocked` | Automation stopped due to conflicts/failures | Blocked on issue |
-| `validated` | Passed all checks, ready for next stage | Safe to proceed |
-
-**State Transitions Example (Cascade)**:
-```
-upstream-sync → cascade-active → validated → (closed when merged to main)
-                     ↓
-                cascade-blocked → human-required → (human fixes) → cascade-active (retry)
-```
-
-**Why Labels Work**:
-
-- **Queryable**: `gh issue list --label "human-required"` finds all paused work
-- **Reliable**: Never fail due to API issues or permission problems
-- **Machine-Readable**: Workflows make decisions based on label presence
-- **Human-Readable**: Team sees state at a glance
-
-**Pattern**: Use labels to represent workflow state. When automation needs to pause for human intervention, add `human-required`. When humans signal "ready to retry," remove it and let the sweeper detect and continue.
-
-**Impact**: Workflows can pause, wait for humans, and automatically resume without complex state management infrastructure.
-
----
-
-## Issue Lifecycle Tracking
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Issues make excellent state machines for multi-stage workflows spanning hours or days.
-
-**Capabilities Provided:**
-
-- **Audit Trail**: Full history for debugging and compliance
-- **Progress Updates**: Clear updates stakeholders can understand
-- **Queryable State**: Automation can track and react to changes
-- **Handoff Points**: Explicit transitions between workflow stages
-
-**Pattern**: For complex workflows with multiple stages, use issues as state containers rather than workflow-local variables that disappear between runs.
-
-**Practical Impact**: Complete visibility into cascade progression with automated state tracking and human-readable progress updates.
-
----
-
-## Duplicate Prevention Architecture
-
-!!! quote ":material-lightbulb-outline: Learning"
-    State persistence between workflow runs prevents duplicate work and notification fatigue.
-
-**Storage Mechanism**: Durable GitHub issue metadata stores the canonical upstream SHA, while labels identify the active sync artifacts.
-
-**Capabilities Enabled:**
-
-- Skip creating duplicate PRs for unchanged upstream
-- Update existing branches when upstream advances
-- Clean up abandoned sync branches automatically
-
-**Pattern**: Workflow state that must survive GitHub-hosted runners belongs in durable GitHub metadata. Upstream sync stores its canonical SHA in the active tracking issue and discovers related artifacts by label.
-
-**Impact**: Smart decision-making eliminates duplicate PRs and unnecessary noise while keeping sync branches current.
-
----
-
-
-## Meta Commit Strategy for Versioning
-
-!!! quote ":material-lightbulb-outline: Learning"
-    You can have both complete upstream history AND automated version management. They're not mutually exclusive.
-
-**The Approach**: Layer automation-friendly metadata on top of preserved original data rather than transforming or losing the original.
-
-**Benefits Comparison:**
-
-| Aspect | Traditional | Meta Commit Approach |
-|--------|-------------|---------------------|
-| **History** | Squashed/modified | Complete preservation |
-| **Debugging** | Partial context | Full upstream history |
-| **Versioning** | Manual tracking | Automated Release Please |
-| **Fallback** | None | Conservative auto-versioning |
-
-**Pattern**: Don't transform or lose original data; add metadata layers instead.
-
-**Practical Impact**: Full debugging capability with complete upstream history while enabling automated version management and proper release correlation.
-
----
-
-## Dependabot Integration Complexity
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Automated dependency updates need workflow validation and auto-merge criteria. Aggressive automation without guardrails creates problems.
-
-**Strategy:**
-
-| Update Type | SLA | Auto-Merge Criteria |
-|-------------|-----|---------------------|
-| Security patches | 48 hours | Tests pass + limited scope |
-| Feature updates | Standard review | Manual review required |
-| Grouped updates | Reduced noise | Related dependencies only |
-
-**Pattern**: Define clear auto-merge criteria (security patches, passing tests, limited scope) before enabling aggressive automation.
-
-**Impact**: Security updates get fast-tracked with 48-hour SLA while feature updates follow careful review, balancing speed with safety.
-
----
-
-## Monitor Everything From Day One
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Comprehensive monitoring enables rapid issue identification and resolution, but it must be built in from the beginning, not bolted on later.
-
-**Built In From Start:**
-
-- Health checks and status reporting
-- SLA tracking with automated alerts
-- Automated escalation workflows
-- Complete audit trails
-
-**Pattern**: Build observability into workflows as core functionality, not afterthought instrumentation.
-
-**Impact**: This design choice paid dividends in operational reliability. Issues are identified and resolved quickly because monitoring was designed in, not retrofitted.
-
----
-
-## Documentation as Code Review
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Writing comprehensive documentation often reveals design flaws before implementation begins.
-
-**The Process:**
-
-1. Articulate rationale and context
-2. Explore alternative approaches
-3. Document consequences and tradeoffs
-4. Discover better designs during writing
-
-**Pattern**: Write the ADR before implementing major decisions; treat documentation as a design tool, not just historical recording.
-
-**Practical Impact**: Better designs discovered during documentation phase rather than expensive refactoring during or after implementation.
-
----
-
-## The Human-Required Label Strategy
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Username resolution is fragile; label-based workflow management is robust and reliable.
-
-**The Problem**: Organization names can't be assigned to issues. User accounts change. API failures block workflows.
-
-**The Solution**: Labels have none of these problems and provide better filtering capabilities.
-
-**Pattern**: Design for reliability over convenience. Labels may seem less direct than assignees, but they work consistently across all scenarios.
-
-**Impact**: Workflows operate reliably without fragile user resolution dependencies or API failure blocking.
-
----
-
-## Future Directions
-
-Based on accumulated learnings, these areas show promise for continued evolution:
-
-=== "Pattern Recognition"
-
-    **Machine Learning Opportunities**
-
-    Learning from resolved conflicts could enable:
-
-    - Automated resolution suggestions for common patterns
-    - Confidence scoring for resolution approaches
-    - Learning from team-specific resolution preferences
-
-    **Impact**: Progressively better automated assistance as the system learns from real conflict resolutions.
-
-=== "Cross-Repository Intelligence"
-
-    **Multi-Fork Coordination**
-
-    Managing multiple related fork instances could leverage:
-
-    - Dependency analysis across forks
-    - Coordinated update orchestration
-    - Template ecosystem versioning
-
-    **Impact**: Intelligent coordination across the entire OSDU service portfolio rather than isolated per-repository management.
-
-=== "Deeper AI Integration"
-
-    **Closed 2026-09-01 (#162)**
-
-    This direction assumed a working AI path to build on. There was none: the integration
-    crashed on every run for the life of the reference fork while reporting success, and no
-    replacement was adopted. GitHub Models was retired 2026-07-30, the Copilot coding-agent
-    API rejects GitHub App installation tokens, and Copilot's PR summary has no API surface.
-
-    **Impact**: Descriptions and commit classification stay deterministic. Reopening this
-    needs a provider that clears all three constraints (ADR-014).
-
----
-
-## Start Simple, Evolve Systematically
-
-!!! quote ":material-lightbulb-outline: Learning"
-    The most successful features began with minimal viable implementations and evolved based on real usage feedback.
-
-**Anti-Pattern**: Over-engineering early wastes effort on wrong assumptions.
-
-**Impact**: Focus effort on solving real problems discovered through usage rather than theoretical problems that may never materialize.
-
----
-
-## Real-World Testing Beats Assumptions
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Template changes tested only against the template repository often failed when deployed to real fork instances.
-
-**Pattern**: Real-world scenarios reveal edge cases that perfect plans miss.
-
-**Takeaway**: Budget time for testing against multiple real fork instances before declaring template changes complete.
-
----
-
-## Clear Error Messages Are Feature Requirements
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Actionable error messages with recovery instructions aren't nice-to-have polish. They're essential for reliable automation.
-
-**Impact**: Users can resolve issues themselves with clear guidance rather than requiring expert intervention for every problem.
-
-**Pattern**: Budget time for clear error messages as core functionality, not optional polish added if time permits.
-
----
-
-## Bash Script Extraction Enables Testing
-
-!!! quote ":material-lightbulb-outline: Learning"
-    Extracting embedded bash scripts into separate .sh files with action.yml wrappers dramatically improves maintainability and testability.
-
-**The Problem**: Embedded bash scripts in workflows (~3,500 lines across 9 files) couldn't be tested locally, led to code duplication, and made debugging difficult.
-
-**The Solution**: Extract scripts to `.github/actions/*/script.sh` with composite action wrappers (`action.yml`).
-
-**Benefits Achieved**:
-
-| Benefit | Description |
-|---------|-------------|
-| **Local Testing** | Run `./script.sh` locally without triggering workflows |
-| **Code Reuse** | Eliminate duplication (e.g., sync-state decisions shared across workflows) |
-| **Better Diffs** | Script changes separate from workflow structure changes in git |
-| **Debuggability** | Debug bash logic with standard tools (shellcheck, bash -x) |
-| **40% Size Reduction** | Workflows became dramatically shorter and clearer |
-
-**Implementation Pattern**:
-```
-.github/actions/sync-state-manager/
-├── action.yml                # Composite action wrapper
-├── make-sync-decision.sh     # Testable bash script
-└── README.md                 # Usage and testing docs
-```
-
-**Usage in Workflows**:
-```yaml
-- uses: ./.github/actions/sync-state-manager
-  id: sync-state
-  with:
-    github_token: ${{ steps.app-token.outputs.token }}
-```
+Bash embedded in workflow YAML cannot be run locally, duplicates across files, and is hard to debug. Scripts now live under `.github/actions/<name>/` with a composite `action.yml` wrapper, so the same file runs from a workflow, from a shell, and from the harness in `dev-ci.yml`. Logic that must exist in a fork's first commit, before any sync could deliver a fix, lives in `.github/local-actions/` for the same reason.
 
 > Originally illustrated with `llm-provider-detect`, deleted in #162 with the AI path
 > (ADR-014). The pattern is unchanged.
 
-**Pattern**: When bash scripts exceed ~20 lines or need reuse, extract to separate files with action wrappers. See [ADR-028](028-workflow-script-extraction-pattern.md) for comprehensive rationale.
-
-**Impact**: Complex logic can be tested, debugged, and maintained like regular code rather than embedded workflow snippets.
+See [ADR-007](007-initialization-workflow-bootstrap.md) and [ADR-028](028-workflow-script-extraction-pattern.md).
 
 ---
 
-## Configuration Flexibility Compounds Value
+## A fallback indistinguishable from success is a blindfold
 
-!!! quote ":material-lightbulb-outline: Learning"
-    Every configuration option added multiplies the template's applicability across different scenarios and use cases.
+The AI-enhanced PR description path was designed to degrade gracefully to a structured template when the model was unavailable.
 
-**ROI**: The extra design effort pays back many times over through broader adoption and fewer special-case implementations.
+**Outcome (2026-09-01, #162)**: The fallback was load-bearing in the strongest sense: it was the only path that ever ran. `aipr` crashed on every invocation for the life of the reference fork while the workflow reported success, and reviewers merged the fallback bodies without complaint. The lesson inverts: a fallback that cannot be distinguished from success is not resilience, it is a blindfold. Descriptions are now deterministic, and the meta-commit classification is a rule (ADR-023).
 
-**Pattern**: Ask "could someone need this to work differently?" when making design decisions. If yes, make it configurable.
+No replacement was adopted. GitHub Models was retired 2026-07-30, the Copilot coding-agent API rejects GitHub App installation tokens, and Copilot's PR summary has no API surface. Reopening this needs a provider that clears all three constraints.
 
-**Impact**: Template serves diverse scenarios without forking or modification, dramatically increasing reusability.
+See [ADR-014](014-ai-enhanced-development-workflow.md).
+
+---
+
+## Enforce trust boundaries in the workflow, not in review
+
+The only job with a write credential today, `docker-push`, is gated by an `if:` clause that excludes Dependabot, `pull_request_target`, external-fork heads, and plain `workflow_dispatch`. The clause is the policy; a reviewer noticing a missing guard is not. Any future credential-bearing job copies it verbatim.
+
+See [ADR-036](036-workflow-trust-boundaries.md).
+
+---
+
+## Generate the branch; do not merge into it
+
+Stripping the other cloud providers from a fork cannot be done by deleting them and merging upstream afterwards. `git merge -X theirs` does not resolve modify/delete conflicts, the conflict recurs on every sync as the merge base advances, and the natural recovery, `git add -A`, restores the deleted files. Because `fork_upstream` is written only by sync and read only by the cascade, sync now builds the filtered tree from the upstream tip and writes it as a merge-shaped commit with git plumbing. Nothing is textually merged, so the conflict class cannot occur. The `-X theirs` merge survives only in initialization, for the first join of unrelated histories.
+
+See [ADR-038](038-upstream-filter-transform.md).
+
+---
+
+## Halt on the unknown
+
+The filter classifies every top-level entry, testing module, pom profile, and FOSSA module from a per-fork config. Anything the config does not name stops the sync with exit code 2 and a `sync-failed,human-required` issue, so a new shared upstream module is never silently deleted. The acceptance resolver applies the same rule to descriptors: an unknown key, source kind, or reserved environment name is a hard failure naming the key. Guessing would have been convenient exactly once and wrong forever after.
+
+See [ADR-038](038-upstream-filter-transform.md) and [ADR-040](040-descriptor-acceptance-contract.md).
+
+---
+
+## Select the tier with a variable, because the tree cannot
+
+Customer forks mirror a service repository's finished `main` instead of filtering upstream. The filter config file exists on both tiers, and at the mirror tier it arrives through the mirror itself, so its presence cannot say which tier a repository is on and deleting it would create a permanent difference against upstream. One repository variable, `SYNC_MODE=mirror`, is the selector; unset means today's behavior, so no existing repository changed.
+
+See [ADR-039](039-customer-tier-mirror-sync.md).
+
+---
+
+## No environment values in the repository
+
+The target environment is rebuilt weekly, workflows sync to many forks and on to customer mirrors with their own stacks, and the tests must also run against a personal stack. Any endpoint, tenant, or partition stored in a repository variable was therefore stale by construction; a prior prototype's sticky `DEPLOY_VALIDATED` flag kept vouching for an environment that no longer existed. Each fork now declares only what its suite needs, in `.spi/service.yaml`, and one template-owned resolver reads the live facts per run.
+
+See [ADR-040](040-descriptor-acceptance-contract.md).

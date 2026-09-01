@@ -22,7 +22,7 @@ The existing sync workflow lacks state management between runs, resulting in:
 
 ## Decision
 
-We implement a comprehensive duplicate prevention system for sync workflows with these components:
+We implement duplicate prevention for the sync workflow with these components:
 
 ### 1. Overall Strategy
 
@@ -79,7 +79,6 @@ initialization and adoption.
 
 - `sync-state-manager` action following GitHub best practices
 - Reusable by other workflows
-- Comprehensive error handling and logging
 
 ## Architecture Components
 
@@ -93,7 +92,7 @@ initialization and adoption.
 - Detect existing open sync PRs using `upstream-sync` label
 - Compare current upstream SHA with stored last-synced SHA
 - Clean up abandoned sync branches (>24h old, no associated PR)
-- Make intelligent decisions based on current state
+- Decide create, update, or no action from that state
 
 **Decision Matrix:**
 
@@ -169,42 +168,9 @@ than resolving the branch on every state read.
 
 **Smart PR Management:** Skip/update/create based on action outputs
 
-**Intelligent Issue Management:** Skip/update/create based on action outputs
-
-## Implementation Benefits
-
-### Technical Benefits
-
-- **Eliminates duplicate PRs/issues** throughout an active sync cycle
-- **Maintains clean repository state** with automatic cleanup
-- **Preserves human workflow continuity** with consistent URLs
-- **Better maintainability** with action pattern separation
-- **Reusable by other workflows** for similar state management needs
-
-### User Experience Benefits
-
-- **Single tracking issue** throughout entire sync cycle
-- **No duplicate notifications** reducing noise
-- **Always current upstream state** in active PR
-- **Clear progression history** in issue comments
-- **Reduced cognitive load** - same URLs to track
+**Issue Management:** Skip/update/create based on action outputs
 
 ## Implementation Details
-
-### Files Modified/Created
-
-1. **`.github/actions/sync-state-manager/action.yml`** - New action for state management
-2. **`.github/template-workflows/sync.yml`** - Modified sync workflow using new action
-3. **`doc/src/adr/024-sync-workflow-duplicate-prevention-architecture.md`** - This ADR
-
-### Key Changes
-
-- **Pre-sync validation step** checks for existing sync PRs/issues
-- **Upstream SHA comparison** tracks last synced state
-- **Branch update logic** updates existing branches instead of creating new ones
-- **State persistence** stores the full SHA in the active tracking issue, and in `SYNC_LAST_EVALUATED_SHA` once neither an issue nor a PR is open
-- **Unchanged path** leaves the existing PR and issue untouched while retaining the historical `add_reminder` output value
-- **Cleanup logic** removes abandoned sync branches
 
 ### Error Handling
 
@@ -217,28 +183,7 @@ than resolving the branch on every state read.
 
 ## Consequences
 
-### Positive
-
-- ✅ **Eliminates duplicate PRs/issues during active sync cycles** - Core problem solved
-- ✅ **Maintains clean repository state** - Automatic cleanup
-- ✅ **Preserves human workflow continuity** - Same URLs to track
-- ✅ **Better maintainability** - Action pattern follows best practices
-- ✅ **Reusable by other workflows** - State management available elsewhere
-- ✅ **Fail-closed cleanup** - Uncertain PR state cannot trigger branch deletion
-- ✅ **No repeated no-op work** - An upstream commit that only touches filtered paths is evaluated once
-
-### Negative
-
-- ⚠️ **State lives in two places** - The issue marker and the repository variable must agree on precedence
-- ⚠️ **The durable cache key spans several files** - Filter config, engine, and sync mode all invalidate it
-- ⚠️ **Added complexity** in sync workflow - More decision logic
-- ⚠️ **Potential edge cases** in decision logic - Requires thorough testing
-
-### Neutral
-
-- 📝 **No breaking changes** - Existing forks continue working
-- 📝 **Automatic distribution** - sync-config.json handles deployment
-- 📝 **No external dependencies** - Uses existing GitHub tokens and permissions
+State lives in two places, and the issue marker must always outrank the repository variable. The durable cache key spans the filter config, the filter engine, `generate-branch.sh`, and the sync mode, so an edit to any of them invalidates it. The decision logic adds branches to the sync workflow that only the test suite below exercises reliably.
 
 ## Testing Strategy
 
@@ -261,21 +206,6 @@ The template CI runs `.github/local-actions/sync-state-manager-tests/run-tests.s
 - Workflow ordering keeps state exports before the filtered no-change exit
 
 Production monitoring remains responsible for validating end-to-end PR, issue, and cascade behavior.
-
-## Rollout Plan
-
-1. **Implementation Phase**: Create action and update workflow in single PR
-2. **Deployment Phase**: Automatic sync-template workflow distributes changes
-3. **Monitoring Phase**: Validate duplicate prevention in production forks
-4. **Success Assessment**: Confirm reduction in duplicate PRs/issues
-
-## Success Metrics
-
-- **Reduction in duplicate PRs/issues** - Primary success indicator
-- **Human workflow continuity maintained** - Same URLs tracked throughout
-- **State persistence reliability** - Consistent state across sync runs
-- **Cleanup effectiveness** - Abandoned branches automatically removed
-- **User satisfaction** - Reduced notification fatigue and confusion
 
 ## References
 

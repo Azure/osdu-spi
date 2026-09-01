@@ -1,5 +1,9 @@
 # ADR-038: Upstream Filter Transform and One-Time Azure Seeding
 
+## Status
+
+Accepted (2026-08-25)
+
 ## Context
 
 Upstream OSDU service repositories carry shared service code alongside implementations for several cloud providers. Our Azure forks need the shared code and the Azure implementation. They do not need the AWS, Google Cloud, or IBM providers, the community `<svc>-core-plus` module, upstream's `devops/` pipelines, or the other providers' test suites. On the `osdu-spi-partition` reference fork that surplus is 274 of 421 files (65%), measured by a working prototype of the filter against the current upstream tip, code the Azure SPI never builds or ships but today still scans, patches, and reviews. Dependabot opens CVE PRs against it, CodeQL and Trivy scan it, and every cascade PR asks reviewers to read diffs for providers we do not own. `-P core,azure` (ADR-035) stops *building* it, but it stays in the tree.
@@ -98,18 +102,7 @@ Removing directories and splitting ownership leave dangling references in the po
 
 New forks have no cutover. A `--seed` mode copies the Azure trees onto `main` at init, taking them from the newest upstream commit that still contains them. Today that is the upstream tip. After upstream deletes the trees it is the parent of the deletion commit, which upstream history retains permanently, so forks can be initialized at any time. `fork_upstream` is filtered from its first generation.
 
-`osdu-spi-partition` needs one deliberate, scripted step. The first filtered sync deletes the Azure trees on `fork_upstream`, and the automation would carry that deletion to `main` on its own. `cascade-monitor` triggers the cascade on the sync PR's merge event itself, and for files untouched on our side the deletion merges silently. No reviewer can be expected to catch those deletions in a PR changing hundreds of files. (Files carrying Azure-local edits surface as modify/delete conflicts instead, which the restore below also resolves.) The cascade is therefore held for this one sync and the restore is scripted:
-
-```bash
-# cascade-monitor disabled for this one sync, commands run on fork_integration
-git merge origin/main --no-edit                      # cascade.yml's normal first step
-git merge origin/fork_upstream --no-commit || true   # deletions apply silently, Azure-local edits raise modify/delete conflicts
-git checkout HEAD -- provider/partition-azure testing/partition-test-azure
-git commit
-git push origin fork_integration
-```
-
-Re-enabling `cascade-monitor` lets `cascade.yml`'s already-merged check pick up from here and open the normal release PR to `main`. After the restore commit, every future merge base lacks those paths, and the arrangement is stable permanently.
+`osdu-spi-partition`, the one fork that predates the filter, needed a single scripted cutover. The first filtered sync deletes the Azure trees on `fork_upstream`, and the cascade would carry that deletion to `main` on its own, since a deletion of files untouched on our side merges silently and no reviewer can catch it inside a PR changing hundreds of files. For that one sync `cascade-monitor` was disabled, `fork_integration` was merged by hand with `git checkout HEAD -- provider/partition-azure testing/partition-test-azure` restoring the trees before the commit, and the monitor was re-enabled so `cascade.yml`'s already-merged check opened the normal release PR. After the restore commit every future merge base lacks those paths, and the arrangement is stable.
 
 ## Consequences
 

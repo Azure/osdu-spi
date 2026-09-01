@@ -69,7 +69,7 @@ Add a summary job to the CodeQL workflow that:
 - **Named `"CodeQL"`**: Matches the required status check context exactly
 - **Always executes**: Uses `if: always()` to run regardless of previous job outcomes
 - **Smart validation**: Reports success for Markdown-only changes, validates analysis results for everything else
-- **Proper failure handling**: Fails if actual analysis fails or is cancelled
+- **Proper failure handling**: Fails if analysis fails, is cancelled, or did not run despite non-Markdown changes
 
 ```yaml
 CodeQL:
@@ -151,10 +151,10 @@ The template's own CodeQL workflow feeds a second job into the same summary. The
 - Maintains alert threshold blocking capability
 
 **Cons**:
-- ❌ Adds complexity and maintenance burden
-- ❌ Generates misleading data (empty scan results)
-- ❌ Violates principle of least surprise
-- ❌ No real security benefit over status checks
+- Adds complexity and maintenance burden
+- Generates misleading data (empty scan results)
+- Violates principle of least surprise
+- No real security benefit over status checks
 
 **Decision**: Rejected due to complexity without meaningful security benefit
 
@@ -166,9 +166,9 @@ The template's own CodeQL workflow feeds a second job into the same summary. The
 - Simple, no new jobs
 
 **Cons**:
-- ❌ Loses semantic meaning ("CodeQL" doesn't describe what check-paths does)
-- ❌ Doesn't solve code_scanning rule problem
-- ❌ Confusing when check-paths succeeds but analysis never ran
+- Loses semantic meaning ("CodeQL" doesn't describe what check-paths does)
+- Doesn't solve code_scanning rule problem
+- Confusing when check-paths succeeds but analysis never ran
 
 **Decision**: Rejected due to loss of clarity
 
@@ -180,8 +180,8 @@ The template's own CodeQL workflow feeds a second job into the same summary. The
 - Simpler configuration
 
 **Cons**:
-- ❌ GitHub rulesets don't support workflow-level checks (only job names)
-- ❌ Not technically feasible with current GitHub features
+- GitHub rulesets don't support workflow-level checks (only job names)
+- Not technically feasible with current GitHub features
 
 **Decision**: Rejected as not possible
 
@@ -193,36 +193,16 @@ The template's own CodeQL workflow feeds a second job into the same summary. The
 - Maintains strict security enforcement
 
 **Cons**:
-- ❌ Terrible user experience for legitimate PRs
-- ❌ Breaks automation (Dependabot, template sync)
-- ❌ Manual intervention doesn't scale
-- ❌ Security theater (config files don't need CodeQL)
+- Blocks legitimate PRs
+- Breaks automation (Dependabot, template sync)
+- Manual intervention doesn't scale
+- Config files are not analyzed languages, so nothing is gained
 
 **Decision**: Rejected due to operational impact
 
 ## Consequences
 
-### Positive
-
-✅ **Config-only PRs work**: Dependabot, template sync, and workflow updates merge without blocking
-✅ **Security scanning preserved**: CodeQL still runs on code changes
-✅ **Findings visible**: Results still appear in Security tab
-✅ **Better automation**: Template sync works reliably
-✅ **Consistent behavior**: All forks behave identically
-✅ **Clear semantics**: "CodeQL" check clearly represents CodeQL validation status
-
-### Negative
-
-❌ **Lost alert threshold blocking**: Can't require "zero high-severity alerts" before merge
-❌ **Manual security triage**: Teams must review findings rather than being blocked
-❌ **Existing forks need update**: Forks created before this change need manual ruleset modification
-
-### Mitigations
-
-- Security findings still generate notifications and appear in Security tab
-- Teams can still review findings before merge (just not forced to)
-- Most organizations prefer manual triage over strict blocking (false positives common)
-- The summary job can be enhanced later to check alert severity if needed
+Config-only and Markdown-only PRs merge without manual intervention while CodeQL still runs on code changes and reports to the Security tab. What is lost is threshold blocking: a fork cannot require zero high-severity alerts before merge, so findings are triaged by review rather than enforced by the ruleset. The summary job could check alert severity later if that becomes necessary.
 
 ## Implementation
 
@@ -249,7 +229,7 @@ CodeQL detected code written in Python but could not process any of it.
 
 **Solution**: Exclude build and generated code directories from both language detection and CodeQL analysis:
 
-**Language Detection** (lines 102-115):
+**Language detection** (the `detect-languages` job):
 ```yaml
 # Check for Python (exclude build directories and common generated code paths)
 if [ -f "setup.py" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || \
@@ -267,7 +247,7 @@ if [ -f "setup.py" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || 
 fi
 ```
 
-**CodeQL Configuration** (lines 172-189):
+**CodeQL configuration** (the `analyze` job):
 ```yaml
 - name: Initialize CodeQL
   uses: github/codeql-action/init@v4
@@ -289,42 +269,14 @@ fi
         - '**/.mypy_cache/**'
 ```
 
-**Benefits**:
-- Prevents false language detection from build artifacts
-- Avoids CodeQL analysis failures on generated code
-- Focuses security analysis on actual source code
-- Reduces analysis time by skipping irrelevant paths
-
 ### Migration Path for Existing Forks
 
-Forks created before this change may have the `code_scanning` rule in their rulesets. To fix:
-
-1. Navigate to: Settings → Rules → Rulesets → "Default Branch Protection"
-2. Edit the ruleset
-3. Remove the "Code scanning" rule
-4. Save changes
-
-Or via API:
-```bash
-gh api --method PUT repos/OWNER/REPO/rulesets/RULESET_ID \
-  --input updated-ruleset.json
-```
-
-Next template sync will provide the updated CodeQL workflow automatically.
+Rulesets are no longer edited by hand. `.github/rulesets/default-branch.json` and `integration-branch.json` are synced to every fork, and `settings-apply.yml` reconciles the live rulesets against them on a schedule and on dispatch, so a fork created with the `code_scanning` rule loses it on the next reconciliation. Template sync delivers the updated CodeQL workflow at the same time.
 
 ## Related Decisions
 
 - **ADR-010**: YAML-safe shell scripting pattern (used in summary job)
 - **ADR-028**: Workflow script extraction pattern (influenced job structure)
-- **Product Spec**: CodeQL workflow specification (dynamic path filtering)
-
-## Success Criteria
-
-✅ Config-only PRs merge without manual intervention
-✅ Code changes still trigger CodeQL analysis
-✅ Security findings appear in Security tab
-✅ Status check "CodeQL" reports correctly for both scenarios
-✅ Existing forks can apply fix with documented migration path
 
 ## References
 

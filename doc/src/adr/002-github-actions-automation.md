@@ -4,118 +4,70 @@
 **Accepted** - 2025-10-01
 
 ## Context
-The fork management system requires extensive automation to handle repository initialization, upstream synchronization, conflict detection, build validation, and release management. The automation must be reliable, maintainable, and integrate seamlessly with GitHub's repository management features.
-
-Key automation requirements:
-- Repository initialization and configuration
-- Scheduled upstream synchronization
-- Automated conflict detection and resolution workflows
-- Build and test automation
-- Release management and versioning
-- Security scanning and compliance checks
+The fork management system needs automation for repository initialization, scheduled upstream synchronization, conflict detection, build validation, security scanning, and release management. That automation has to integrate with GitHub's own repository features (issues, PRs, labels, branch protection) because those are where humans interact with the pipeline.
 
 ## Decision
-Implement all automation using GitHub Actions with a modular workflow architecture consisting of:
+Implement all automation as GitHub Actions workflows, one workflow per concern, with shared logic extracted into composite actions.
 
-1. **init.yml** - Repository initialization and setup
-2. **sync.yml** - Upstream synchronization with issue lifecycle tracking and duplicate prevention
-3. **cascade.yml** - Human-triggered integration workflow with issue updates
-4. **cascade-monitor.yml** - Safety net detection and health monitoring
-5. **validate.yml** - PR validation and compliance checks
-6. **build.yml** - Build, test, and coverage reporting
-7. **release.yml** - Automated release management
+The authoritative list of workflows lives in `.github/sync-config.json`: `template_workflows` are the workflows every fork receives (stored under `.github/template-workflows/`), and `template_only` and `development_only` are the workflows that exist only in the template repository. The main fork workflows are:
 
-## Rationale
+- **sync.yml** - Scheduled upstream synchronization with issue lifecycle tracking and duplicate prevention
+- **cascade.yml** - Human-triggered integration from `fork_upstream` through `fork_integration` to `main`
+- **cascade-monitor.yml** - Scheduled safety net that detects missed or stuck cascades
+- **validate.yml** - PR validation and status checks
+- **build.yml** - Build, test, and coverage on feature branches
+- **release.yml** - Release Please versioning and upstream-correlated tags
+- **codeql.yml** - Security scanning
 
-### GitHub Actions Benefits
-1. **Native Integration**: Deep integration with GitHub repository features
-2. **No External Dependencies**: Eliminates need for external CI/CD services
-3. **Cost Effective**: Included with GitHub repositories
-4. **Security**: Runs in GitHub's secure environment with built-in secrets management
-5. **Marketplace Ecosystem**: Rich ecosystem of pre-built actions
-6. **Event-Driven**: Responds to repository events automatically
+Template-only workflows (`init.yml`, `init-complete.yml`) handle initialization and are removed from forks.
 
-### Modular Workflow Design
-1. **Separation of Concerns**: Each workflow has a single responsibility
-2. **Maintainability**: Easier to update and debug individual workflows
-3. **Reusability**: Common patterns can be extracted to composite actions
-4. **Conditional Execution**: Workflows only run when relevant
-5. **Parallel Execution**: Independent workflows can run concurrently
+### Why GitHub Actions
+- Native integration with the repository events, issues, and PRs the pipeline is built around
+- No external CI service, secrets stay in GitHub's secrets management
+- Included with the repository, no additional cost
+- Event-driven, so workflows react to pushes, PR merges, and comments directly
+
+### Why one workflow per concern
+Each workflow has a single responsibility and runs only when relevant, which keeps individual files debuggable and lets independent workflows run in parallel. Common patterns are extracted to composite actions in `.github/actions/`.
 
 ## Alternatives Considered
 
 ### 1. External CI/CD Platform (Jenkins, GitLab CI, etc.)
-- **Pros**: More powerful build environments, advanced features
-- **Cons**: External dependencies, additional cost, complexity, security considerations
-- **Decision**: Rejected due to complexity and external dependencies
+More powerful build environments, but adds an external dependency, cost, and a second place to manage secrets. Rejected.
 
 ### 2. Monolithic Single Workflow
-- **Pros**: All logic in one place
-- **Cons**: Complex, hard to maintain, unnecessary execution of unrelated tasks
-- **Decision**: Rejected due to maintainability concerns
+All logic in one place, but hard to maintain and runs unrelated tasks on every trigger. Rejected.
 
 ### 3. Serverless Functions (AWS Lambda, Azure Functions)
-- **Pros**: Highly scalable, event-driven
-- **Cons**: Platform lock-in, complex setup, additional infrastructure costs
-- **Decision**: Rejected due to complexity and vendor lock-in
+Event-driven and scalable, but platform lock-in and extra infrastructure to operate. Rejected.
 
 ## Consequences
-
-### Positive
-- **Zero Setup**: Works immediately when repository is created from template
-- **Integrated Security**: Leverages GitHub's security features and secrets management
-- **Event-Driven**: Automatically responds to repository changes
-- **Maintainable**: Modular design makes updates and debugging easier
-- **Cost Effective**: No additional service costs beyond GitHub subscription
-- **Reliable**: GitHub's infrastructure provides high availability
-
-### Negative
-- **GitHub Lock-in**: Tied to GitHub platform specifically
-- **Execution Limits**: Subject to GitHub Actions usage limits and timeouts
-- **Limited Environment**: Less control over build environment compared to self-hosted runners
-- **YAML Complexity**: Complex workflows can become difficult to read and maintain
+The system is tied to GitHub and subject to Actions usage limits, timeouts, and the hosted runner environment. Complex workflows are still YAML, which gets hard to read at scale; ADR-028 addresses this by extracting scripts.
 
 ## Implementation Details
 
 ### Workflow Triggers
-- **init.yml**: `repository_dispatch` event triggered by repository creation
-- **sync.yml**: Scheduled (daily) + manual `workflow_dispatch` - creates tracking issues with duplicate prevention
-- **cascade.yml**: Manual `workflow_dispatch` (human-triggered) - updates issue lifecycle
-- **cascade-monitor.yml**: Scheduled (6 hours) + manual `workflow_dispatch` - safety net
-- **validate.yml**: PR events (opened, synchronize, reopened)
-- **build.yml**: Push to feature branches and PR events
-- **release.yml**: Push to main branch with conventional commit messages
+- **init.yml**: push to `main` (fires on template creation; blocked on the template repository itself)
+- **init-complete.yml**: `issue_comment` on the initialization issue
+- **sync.yml**: daily schedule plus `workflow_dispatch`
+- **cascade.yml**: `workflow_dispatch` only (human-triggered, or dispatched by the monitor)
+- **cascade-monitor.yml**: every 6 hours, `pull_request_target` closed on `fork_upstream`, plus `workflow_dispatch`
+- **validate.yml**: `pull_request` and `pull_request_target` against the three branches, push to the three branches, plus `workflow_dispatch`
+- **build.yml**: push to feature branches only; PR events are covered by validate.yml and dependabot-validation.yml so a commit is not built twice
+- **release.yml**: push to `main`
 
-### Security Considerations
-- **Secrets Management**: Use GitHub secrets for API keys and tokens
-- **Token Permissions**: Minimal required permissions for each workflow
-- **Branch Protection**: Workflows enforce branch protection rules
-- **Security Scanning**: Integrated Trivy scanning for vulnerabilities
+### Security
+- Secrets stay in GitHub secrets; workflows request minimal token permissions
+- Rulesets enforce branch protection (see ADR-001)
+- CodeQL scans code and workflows (`codeql.yml`)
 
 ### Composite Actions
-Extract common patterns into reusable composite actions:
-- **pr-status**: Update PR status with validation results
-- **java-build**: Standardized Java/Maven build process
-- **java-build-status**: Report build status with coverage
+Reusable actions live in `.github/actions/`, for example `pr-status` (PR status reporting), `java-build` (Maven build), and `java-build-status` (build status with coverage). See ADR-013.
 
 ### Error Handling
-- **Graceful Degradation**: Workflows continue even if optional steps fail
-- **Clear Error Messages**: Detailed error reporting for debugging
-- **Issue Lifecycle Tracking**: Comprehensive issue tracking for cascade state management
-- **Human-Required Labels**: Failed workflows create issues with `human-required` labels
-- **Safety Net Recovery**: Monitor workflow detects and recovers from missed triggers
-- **Retry Logic**: Automatic retry for transient failures
-
-## Success Criteria
-- Repository initialization completes successfully within 5 minutes
-- Upstream synchronization runs reliably on schedule with issue tracking and duplicate prevention
-- 90%+ of sync merges followed by manual cascade triggers within 2 hours
-- Issue lifecycle tracking provides complete audit trail for 95%+ of cascades
-- Build workflows complete within 15 minutes for typical projects
-- Failed workflows create actionable issues for team resolution
-- Safety net detects 100% of missed cascade triggers within 6 hours
-- Workflows are maintainable by team members without GitHub Actions expertise
-- Security scanning catches vulnerabilities before they reach main branch
+- Failed workflows create issues labeled `human-required` (ADR-020)
+- Cascade state is tracked on issues through their lifecycle (ADR-022)
+- `cascade-monitor.yml` re-dispatches a cascade when a trigger was missed or after a human clears the `human-required` label from a failed cascade issue (ADR-019)
 
 ## Related Decisions
 

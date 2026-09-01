@@ -1,39 +1,35 @@
 # ADR-033: GHCR as Service Image Registry
 
+## Status
+
+Accepted (2026-06-04)
+
 ## Context
 
 - SPI service images are CI test artifacts consumed by the shared `osdu-spi-stack` AKS cluster, not customer-shipped product containers.
 - The registry must accept pushes from GitHub Actions with no extra auth wiring and allow AKS to pull without per-fork pull secrets.
-- The publishing-org policy context differs for CI/tooling artifacts vs. product containers: Microsoft's MCR onboarding policy (`aka.ms/mcr/onboarding`) targets customer-shipped product containers, while developer-tooling and CI/test-loop containers commonly land on GHCR. Observable Azure-org precedent normalizes public GHCR for this class of artifact (e.g. Eraser, Azure Workload Identity, Azure Developer CLI, Kubelogin, AKS-MCP). See design §7.4.
+- Microsoft's MCR onboarding policy targets customer-shipped product containers; CI and developer-tooling containers from Azure GitHub organizations are commonly published on public GHCR.
 
 ## Decision
 
 - Use **public GHCR** as the SPI service image registry.
-- Push images via the workflow `GITHUB_TOKEN` (no extra credential); AKS pulls anonymously (no `imagePullSecret`).
-- Keep image publication aligned with current CI/test-consumer needs in the shared `osdu-spi-stack` AKS environment.
-- Defer MCR migration to a future decision (Phase 4 upstream review), not a current requirement.
+- Push images via the workflow `GITHUB_TOKEN` (no extra credential); AKS pulls anonymously (no `imagePullSecret`). The `docker-build` action sets the package public after the first push.
+- Defer any MCR migration to a later decision; it is not a current requirement.
 
 ## Consequences
 
 - Positive:
   - No image-pull-secret provisioning in the cluster and no cross-cloud auth wiring.
-  - Fast path for publishing and consuming service images in existing SPI CI workflows.
-  - Aligns with established Azure GitHub ecosystem practice for tooling/CI containers.
   - Free storage for public packages.
 - Trade-off:
-  - Image visibility is tied to package settings; an accidental private flip breaks AKS pulls with `ErrImagePull`.
-  - If policy interpretation or artifact scope changes (CI artifact → customer-shipped), the registry choice may need to be swapped later.
+  - Image visibility is tied to package settings; an accidental private flip breaks AKS pulls with `ErrImagePull`. `settings-apply.yml` reports the visibility on its cadence but cannot correct it, because GHCR has no API to change package visibility.
+  - If the artifact scope changes from CI artifact to customer-shipped, the registry choice may need to be swapped later.
 
 ## Alternatives Considered
 
-- **Option A: ACR + existing `AcrPull` (or a future MCR path)**:
-  - Viable fallback aligned with the §7.4 future-migration framing.
-  - Migration-swap scope is **localized**: it touches only the visibility helper used by `W2`, `ONBOARD-INIT-A`, and `SETTINGS-APPLY`; cluster-side is untouched (the kubelet identity already holds `AcrPull`).
-  - Deferred for now because public GHCR already satisfies CI/test-artifact needs.
+**ACR with the existing `AcrPull` role, or a future MCR path.** A viable fallback. The swap is localized to the package-visibility helper in the `docker-build` action; the cluster side is untouched because the kubelet identity already holds `AcrPull`. Deferred because public GHCR already satisfies CI/test-artifact needs.
 
-- **Option B: private GHCR + per-fork `imagePullSecret`**:
-  - Viable fallback but **broader-touch** operationally: requires `regcred` Secrets in the `osdu` namespace, chart-level `imagePullSecrets:` wiring in `osdu-spi-stack`, and a Secret-provisioning step in `ONBOARD`.
-  - Not selected: it reintroduces the per-fork pull-secret management that public GHCR avoids.
+**Private GHCR with a per-fork `imagePullSecret`.** Also viable but broader in reach: it needs `regcred` Secrets in the `osdu` namespace, chart-level `imagePullSecrets` wiring in `osdu-spi-stack`, and a Secret-provisioning step at onboarding. Not selected because it reintroduces the per-fork pull-secret management that public GHCR avoids.
 
 ---
 
