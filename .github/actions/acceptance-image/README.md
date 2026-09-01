@@ -49,15 +49,29 @@ Differences, both deliberate:
 - **Own BuildKit cache scope** (`acceptance-image`): the suite layers share
   nothing with the service image.
 
+## Build context
+
+Unlike the service image — which copies only a prebuilt JAR — this build needs
+repository source: `.mvn/community-maven.settings.xml` (the suite pom resolves
+`${repo.releases.url}` through it) and the suite module itself. Forks inherit an
+upstream-owned root `.dockerignore` that excludes `.*`, `**/*.yml` and `**/*.md`,
+which would fail the `.mvn` COPY outright and silently strip yaml/markdown
+resources from the suite. `build/acceptance.Dockerfile.dockerignore` — which
+BuildKit prefers over the context-root file — is what keeps that context intact,
+without touching the root file the service image and upstream both rely on.
+
 ## Local testing
 
+Both commands run from the **fork checkout root** — `resolve-suite.sh` resolves
+the suite directory, the descriptor, and the resolver relative to the working
+directory, so running it from elsewhere always reports a skip.
+
 ```bash
-cd .github/actions/acceptance-image
-
 # Suite resolution without Docker:
-SERVICE_NAME=partition GITHUB_OUTPUT=/dev/stdout ./resolve-suite.sh
+SERVICE_NAME=partition GITHUB_OUTPUT=/dev/stdout \
+  .github/actions/acceptance-image/resolve-suite.sh
 
-# Full image build from a fork checkout:
+# Full image build:
 docker build -f build/acceptance.Dockerfile --build-arg SUITE_DIR=partition-acceptance-test -t partition-acceptance:dev .
 ```
 

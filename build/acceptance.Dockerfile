@@ -23,6 +23,8 @@ FROM docker.io/library/maven:3.9-eclipse-temurin-17@sha256:a8746f15d5bb26b5b8bac
 ARG SUITE_DIR
 WORKDIR /suite
 # Settings before source: the community-repo profile rarely changes, the suite does.
+# Reachable only because acceptance.Dockerfile.dockerignore overrides the upstream root
+# .dockerignore, which excludes `.*` and would fail this COPY on every fork.
 COPY .mvn/ /suite/.mvn/
 COPY ${SUITE_DIR}/ /suite/
 COPY --chmod=0755 build/acceptance-entrypoint.sh /usr/local/bin/acceptance-entrypoint.sh

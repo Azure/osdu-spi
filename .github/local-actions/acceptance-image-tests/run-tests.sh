@@ -99,4 +99,12 @@ head -1 "$ENTRYPOINT" | grep -q '^#!/bin/sh' || die "entrypoint must be POSIX sh
 grep -q 'exec mvn' "$ENTRYPOINT" || die "entrypoint must exec maven with argv"
 ok "Dockerfile and entrypoint contract"
 
+note "build context: the sidecar ignore file overrides the upstream .dockerignore"
+IGNORE="${DOCKERFILE}.dockerignore"
+[ -f "$IGNORE" ] || die "missing ${IGNORE##*/}: forks inherit an upstream .dockerignore excluding .*, which strips .mvn"
+if grep -qE '^[[:space:]]*(\.\*|\.mvn)' "$IGNORE"; then
+  die "sidecar ignore must keep .mvn — the suite pom resolves \${repo.releases.url} from the community settings"
+fi
+ok "sidecar dockerignore present and keeps .mvn"
+
 printf '\nAll acceptance image harness checks passed.\n'

@@ -201,4 +201,4 @@ jobs:
             echo "Tagged \`${ACC_REPO}:${VERSION}\` from \`${ACC_SRC}\`" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No acceptance suite on this commit; acceptance image retag skipped." >> "$GITHUB_STEP_SUMMARY"
-          fi 
+          fi
