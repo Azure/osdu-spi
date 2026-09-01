@@ -202,10 +202,20 @@ jobs:
           # description path, so overflowing it would fail the job outright on
           # exactly the largest syncs.
           MAX_BODY_COMMITS=200
-          TOTAL_COMMITS=$(git rev-list --count "fork_upstream..$SYNC_BRANCH")
-          CHANGES=$(git log -n "$MAX_BODY_COMMITS" --pretty=format:"* %s" "fork_upstream..$SYNC_BRANCH")
-          if [ "$TOTAL_COMMITS" -gt "$MAX_BODY_COMMITS" ]; then
-            CHANGES="${CHANGES}"$'\n'"* _...and $((TOTAL_COMMITS - MAX_BODY_COMMITS)) more commits._"
+          # Range ends at the upstream tip, not the sync branch: the branch also
+          # reaches the meta and generation commits this job just wrote, which are
+          # not upstream changes. Ending at $UPSTREAM_SHA rather than the previous
+          # Upstream-Sha trailer also stays correct when upstream rewrites history.
+          TOTAL_COMMITS=$(git rev-list --count "fork_upstream..$UPSTREAM_SHA")
+          if [ "$TOTAL_COMMITS" -eq 0 ]; then
+            # Tree changed with no new upstream commits, so a generation input moved
+            # (generation-rev.sh). Say so; an empty list reads like a broken body.
+            CHANGES="* _No new upstream commits; tree regenerated at $UPSTREAM_VERSION (filter-rev $filter_rev)._"
+          else
+            CHANGES=$(git log -n "$MAX_BODY_COMMITS" --pretty=format:"* %s" "fork_upstream..$UPSTREAM_SHA")
+            if [ "$TOTAL_COMMITS" -gt "$MAX_BODY_COMMITS" ]; then
+              CHANGES="${CHANGES}"$'\n'"* _...and $((TOTAL_COMMITS - MAX_BODY_COMMITS)) more commits._"
+            fi
           fi
 
           PR_DESCRIPTION="Automated PR to sync with upstream repository changes."$'\n\n'"### Changes from upstream:"$'\n'"${CHANGES}"
