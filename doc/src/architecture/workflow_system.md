@@ -65,14 +65,14 @@ graph TD
 
     ---
 
-    Daily synchronization that filters the upstream tip into a reproducible provider-less tree, prevents duplicate PRs, and optionally uses Azure AI for conventional commit messages and PR descriptions
+    Daily synchronization that filters the upstream tip into a reproducible provider-less tree, prevents duplicate PRs, and derives the meta commit and PR body from the upstream commit range
 
     - **Trigger**: Scheduled daily at midnight UTC with intelligent duplicate prevention
     - **Transform**: Keeps shared code, removes provider/deployment source, and injects references to fork-owned Azure modules
     - **Safety**: Halts when shared upstream content is unclassified or an expected kept path disappears
     - **Decision Logic**: Updates existing branches when upstream advances, prevents duplicates for same SHA
     - **Integration**: Three-branch safety pattern (fork_upstream → fork_integration → main)
-    - **AI Features**: Intelligent change analysis and conventional commit generation
+    - **Classification**: Deterministic bump rule over the upstream range — breaking > feat > fix (ADR-023)
     - **Conflict Handling**: Automated detection with human-guided resolution
 
     [:octicons-arrow-right-24: Detailed spec](../workflows/synchronization.md)
@@ -269,12 +269,11 @@ graph LR
 
 </div>
 
-**AI-Powered Capabilities** are limited to synchronization:
+Each sync computes, from git alone:
 
-- **Change Analysis**: Intelligent assessment of upstream modifications
-- **Commit Generation**: Conventional commit message creation
-- **PR Descriptions**: Comprehensive pull request documentation
-- **Fallback**: Deterministic descriptions keep synchronization operational without AI
+- **Commit list**: the upstream range not yet reachable from `fork_upstream`, capped for GitHub's body limit
+- **Meta commit**: a conventional subject chosen by rule — breaking > feat > fix, with non-conventional upstream commits falling through to `fix:` (ADR-023)
+- **Regeneration**: a sync carrying no new upstream commits says so and names the filter revision
 
 ### Security Integration
 
@@ -337,7 +336,6 @@ graph LR
 
     - Concurrent workflow execution where safe
     - Concurrency groups for sync, cascade, and deployment operations
-    - Timeouts and deterministic fallback around optional AI generation
 
 </div>
 ## Reusable Actions

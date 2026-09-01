@@ -91,7 +91,7 @@ These Architecture Decision Records document the key design choices made in the 
 
 **Template Update Propagation (ADR-012)**
 - Daily automated template updates via `template-sync.yml`
-- AI-enhanced PR descriptions and human-centric manual cascade instructions
+- Deterministic PR descriptions and human-centric manual cascade instructions
 - Solves template drift problem for forked repositories
 
 **Reusable GitHub Actions (ADR-013)**

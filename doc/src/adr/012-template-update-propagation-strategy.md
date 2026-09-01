@@ -32,7 +32,7 @@ Implement **Template Update Propagation** through a dedicated `template-sync.yml
 - **Triggers**: Daily schedule (8 AM UTC) + manual dispatch
 - **Function**: Detects template changes and creates update PRs
 - **Scope**: Only files defined in sync configuration (ADR-011)
-- **Output**: Pull requests with AI-enhanced descriptions of changes
+- **Output**: Pull requests listing the changed files and the template commit range
 
 ### 2. **Two-Repository Architecture**
 
@@ -337,7 +337,7 @@ See [ADR-031: Template Sync Duplicate Prevention Pattern](031-template-sync-dupl
 
 ### Mitigation Strategies
 
-- **AI-Enhanced Descriptions**: Clear PR descriptions explain what's changing and why
+- **Deterministic Descriptions**: PR bodies list the changed files and the template commits behind them
 - **Explicit Instructions**: Issues provide clear guidance on when cascade integration is needed
 - **Selective Syncing**: Only essential infrastructure updated, not project code
 - **Manual Override**: Can run template sync immediately when critical updates needed

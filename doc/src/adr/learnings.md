@@ -223,7 +223,7 @@ Ask: *"What are the distinct responsibilities?"*
 
 **Pattern**: Build detection and analysis layers first; automated resolution emerges as patterns become clear over time.
 
-**Takeaway**: The value lies in guidance and structure, not full automation. AI-enhanced conflict detection provides immediate value even without automated fixes.
+**Takeaway**: The value lies in guidance and structure, not full automation. Conflict detection provides immediate value even without automated fixes.
 
 ---
 
@@ -488,15 +488,15 @@ Based on accumulated learnings, these areas show promise for continued evolution
 
 === "Deeper AI Integration"
 
-    **Enhanced AI Capabilities**
+    **Closed 2026-09-01 (#162)**
 
-    Building on successful AI enhancement patterns:
+    This direction assumed a working AI path to build on. There was none: the integration
+    crashed on every run for the life of the reference fork while reporting success, and no
+    replacement was adopted — GitHub Models was retired 2026-07-30, the Copilot coding-agent
+    API rejects GitHub App installation tokens, and Copilot's PR summary has no API surface.
 
-    - Proactive analysis of upstream changes before sync
-    - Integration testing suggestions for conflicts
-    - Advanced context awareness for complex scenarios
-
-    **Impact**: AI provides even more valuable guidance while maintaining human control and reliable fallbacks.
+    **Impact**: Descriptions and commit classification stay deterministic. Reopening this
+    needs a provider that clears all three constraints (ADR-014).
 
 ---
 
