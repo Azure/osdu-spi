@@ -456,7 +456,7 @@ jobs:
             echo "🆕 Pushed new sync branch"
           fi
 
-      - name: Prepare template sync PR description
+      - name: Prepare template sync PR body
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
         run: |
           # Get the changes for PR description
@@ -464,33 +464,42 @@ jobs:
           LAST_SYNC_COMMIT="${{ steps.check-updates.outputs.last_sync_commit }}"
           
           # Generate change summary - use printf to safely format the output
-          printf "## Template Updates\n\n" > /tmp/fallback_description.md
-          printf "This PR syncs the latest changes from the template repository to keep our workflows and GitHub configuration up to date.\n\n" >> /tmp/fallback_description.md
-          printf "### Changed Files\n" >> /tmp/fallback_description.md
+          BODY_FILE="$RUNNER_TEMP/template-sync-body.md"
+          echo "BODY_FILE=$BODY_FILE" >> $GITHUB_ENV
+
+          printf "## Template Updates\n\n" > "$BODY_FILE"
+          printf "This PR syncs the latest changes from the template repository to keep our workflows and GitHub configuration up to date.\n\n" >> "$BODY_FILE"
+          printf "### Changed Files\n" >> "$BODY_FILE"
           
-          # Add changed files list (safely escaped)
-          git diff --name-only refs/heads/main...$SYNC_BRANCH | while read -r file; do
-            printf -- "- %s\n" "$file"
-          done >> /tmp/fallback_description.md || echo "- No changed files detected" >> /tmp/fallback_description.md
+          # Capture first: a `while read` loop over empty input exits 0, so an
+          # `|| echo placeholder` after the loop can never fire.
+          CHANGED_FILES=$(git diff --name-only "refs/heads/main...$SYNC_BRANCH")
+          if [ -n "$CHANGED_FILES" ]; then
+            while read -r file; do printf -- "- %s\n" "$file"; done <<<"$CHANGED_FILES" >> "$BODY_FILE"
+          else
+            echo "- No changed files detected" >> "$BODY_FILE"
+          fi
+
+          printf "\n### Template Changes\n" >> "$BODY_FILE"
+
+          TEMPLATE_CHANGES=$(git log --oneline -n 10 "$LAST_SYNC_COMMIT..$TEMPLATE_COMMIT" refs/remotes/template/main -- .github/)
+          if [ -n "$TEMPLATE_CHANGES" ]; then
+            while read -r line; do printf -- "- %s\n" "$line"; done <<<"$TEMPLATE_CHANGES" >> "$BODY_FILE"
+          else
+            echo "- No specific .github changes found" >> "$BODY_FILE"
+          fi
           
-          printf "\n### Template Changes\n" >> /tmp/fallback_description.md
+          printf "\n### Details\n" >> "$BODY_FILE"
+          printf -- "- Template commit: \`%s\`\n" "$TEMPLATE_COMMIT" >> "$BODY_FILE"
+          printf -- "- Previous sync: \`%s\`\n" "$LAST_SYNC_COMMIT" >> "$BODY_FILE"
+          printf "\nThese changes help maintain consistency with the latest template improvements and bug fixes.\n" >> "$BODY_FILE"
           
-          # Add template changes (safely escaped)  
-          git log --oneline $LAST_SYNC_COMMIT..$TEMPLATE_COMMIT refs/remotes/template/main -- .github/ | head -10 | while read -r line; do
-            printf -- "- %s\n" "$line"
-          done >> /tmp/fallback_description.md || echo "- No specific .github changes found" >> /tmp/fallback_description.md
-          
-          printf "\n### Details\n" >> /tmp/fallback_description.md
-          printf -- "- Template commit: \`%s\`\n" "$TEMPLATE_COMMIT" >> /tmp/fallback_description.md
-          printf -- "- Previous sync: \`%s\`\n" "$LAST_SYNC_COMMIT" >> /tmp/fallback_description.md
-          printf "\nThese changes help maintain consistency with the latest template improvements and bug fixes.\n" >> /tmp/fallback_description.md
-          
-          # Set the environment variable using base64 encoding to prevent any shell interpretation
-          ENCODED_DESCRIPTION=$(base64 -w 0 /tmp/fallback_description.md)
-          echo "FALLBACK_DESCRIPTION_B64=$ENCODED_DESCRIPTION" >> $GITHUB_ENV
-          
-          # Also create a simple version for backwards compatibility
-          echo "FALLBACK_DESCRIPTION=Template sync PR - see commit details for changes" >> $GITHUB_ENV
+          # GitHub rejects a PR body over 65536 characters; a fork that has drifted
+          # far from the template can produce a long changed-files list.
+          BODY=$(cat "$BODY_FILE")
+          if [ "${#BODY}" -gt 60000 ]; then
+            printf '%s\n\n_Description truncated._\n' "${BODY:0:60000}" > "$BODY_FILE"
+          fi
 
       - name: Set current date
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
@@ -499,22 +508,20 @@ jobs:
       - name: Create new template sync PR
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true' && steps.detect-existing.outputs.has_existing_pr == 'false'
         id: create-pr
-        uses: ./.github/actions/create-enhanced-pr
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          base-branch: main
-          head-branch: ${{ env.SYNC_BRANCH }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
           # Conventional prefix required: forks' Validate Commit Messages check gates PR titles.
-          pr-title: "chore(template-sync): sync template updates ${{ env.CURRENT_DATE }}"
-          fallback-description: ${{ env.FALLBACK_DESCRIPTION }}
-          fallback-description-b64: ${{ env.FALLBACK_DESCRIPTION_B64 }}
-          azure-api-key: ${{ secrets.AZURE_API_KEY }}
-          azure-api-base: ${{ secrets.AZURE_API_BASE }}
-          azure-api-version: ${{ secrets.AZURE_API_VERSION }}
-          aipr-model: ${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}
-          target-branch-for-aipr: main
-          use-vulns-flag: 'false'
-          labels: 'template-sync'
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "$SYNC_BRANCH" \
+            --title "chore(template-sync): sync template updates $CURRENT_DATE" \
+            --body-file "$BODY_FILE" \
+            --label template-sync)
+
+          echo "PR created: $PR_URL"
+          echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "pr-number=$(basename "$PR_URL")" >> $GITHUB_OUTPUT
 
       - name: Check for label configuration changes
         if: steps.check-updates.outputs.has_updates == 'true' && env.has_changes == 'true'
@@ -564,14 +571,11 @@ jobs:
           PR_NUMBER="${{ steps.detect-existing.outputs.existing_pr_number }}"
           TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
 
-          # Decode the base64 PR description
-          FALLBACK_DESCRIPTION_DECODED=$(echo "${{ env.FALLBACK_DESCRIPTION_B64 }}" | base64 -d)
-
           # Update PR title and description. The prefix must lead the title:
           # the semantic-pr check reads the type from the first characters.
           gh pr edit "$PR_NUMBER" \
             --title "chore(template-sync): sync template updates (updated $(date +%Y-%m-%d))" \
-            --body "$FALLBACK_DESCRIPTION_DECODED"
+            --body-file "$BODY_FILE"
 
           # Add comment to the PR about the update
           gh pr comment "$PR_NUMBER" --body "🔄 **Template Sync Updated**

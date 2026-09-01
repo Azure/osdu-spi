@@ -123,7 +123,7 @@ Technical patterns and infrastructure for workflow implementation:
 |-----|----------|--------|
 | [010](010-yaml-safe-shell-scripting.md) | **YAML-Safe Shell Scripting** | :material-minus: Medium |
 | [013](013-reusable-github-actions-pattern.md) | **Reusable GitHub Actions** | :material-minus: Medium |
-| [014](014-ai-enhanced-development-workflow.md) | **AI-Enhanced Workflows** | :material-trending-up: High |
+| [014](014-ai-enhanced-development-workflow.md) | **AI-Enhanced Workflows** *(superseded)* | :material-trending-down: None |
 | [015](015-template-workflows-separation-pattern.md) | **Template-Workflows Separation** | :material-minus: Medium |
 | [028](028-workflow-script-extraction-pattern.md) | **Workflow Script Extraction** | :material-minus: Medium |
 | [029](029-github-app-authentication-strategy.md) | **GitHub App Authentication** | :material-trending-up: High |

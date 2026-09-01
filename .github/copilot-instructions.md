@@ -13,7 +13,7 @@ You are working with the Fork Management Template, an automated solution for man
 
 ### Core Workflows
 1. **init.yml** - Repository initialization and configuration
-2. **sync.yml** - Automated upstream synchronization with AI-enhanced PR descriptions
+2. **sync.yml** - Automated upstream synchronization with deterministic PR descriptions
 3. **build.yml** - Build and test automation for Java/Maven projects
 4. **validate.yml** - PR validation, commit message checks, and conflict detection
 5. **release.yml** - Automated semantic versioning with Release Please

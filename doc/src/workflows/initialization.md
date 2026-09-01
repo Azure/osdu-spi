@@ -112,7 +112,6 @@ The initialization process produces clear outcomes to guide your next steps:
 | `SERVICE_NAME` | Optional variable | Overrides the repository-name image/service slug |
 | `SERVICE_TARGET_JAR` | Optional variable | Disambiguates repositories that build multiple Azure JARs |
 | `GITHUB_TOKEN` | Automatic secret | Normal GitHub API and package operations |
-| `AZURE_API_KEY`, `AZURE_API_BASE`, `AZURE_API_VERSION` | Optional secrets | AI-enhanced sync descriptions |
 
 ## Troubleshooting
 

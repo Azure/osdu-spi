@@ -15,9 +15,6 @@ set -euo pipefail
 # Key Vault secrets used:
 #   - github-app-id:          GitHub App ID for the automation app
 #   - github-app-private-key: GitHub App private key (PEM format)
-#   - azure-api-key:          Azure AI Foundry API key (for AI-generated PR descriptions)
-#   - azure-api-base:         Azure AI Foundry endpoint URL
-#   - azure-api-version:      Azure AI Foundry API version
 #
 # Usage:
 #   .github/scripts/setup-fork-repo.sh \
@@ -161,11 +158,6 @@ fetch_secret() {
 APP_ID=$(fetch_secret "github-app-id")
 APP_KEY=$(fetch_secret "github-app-private-key")
 
-# Azure AI Foundry secrets
-AZURE_API_KEY=$(fetch_secret "azure-api-key")
-AZURE_API_BASE=$(fetch_secret "azure-api-base")
-AZURE_API_VERSION=$(fetch_secret "azure-api-version")
-
 echo ""
 
 # ── Variables ──────────────────────────────────────────────────────
@@ -207,9 +199,6 @@ set_secret() {
 
 set_secret "RELEASE_APP_ID" "$APP_ID"
 set_secret "RELEASE_APP_PRIVATE_KEY" "$APP_KEY"
-set_secret "AZURE_API_KEY" "$AZURE_API_KEY"
-set_secret "AZURE_API_BASE" "$AZURE_API_BASE"
-set_secret "AZURE_API_VERSION" "$AZURE_API_VERSION"
 
 echo ""
 
@@ -252,9 +241,6 @@ if [ "$DRY_RUN" = true ]; then
   echo "Secrets that would be configured:"
   echo "  - RELEASE_APP_ID"
   echo "  - RELEASE_APP_PRIVATE_KEY"
-  echo "  - AZURE_API_KEY"
-  echo "  - AZURE_API_BASE"
-  echo "  - AZURE_API_VERSION"
   echo ""
   echo "Next steps (after running without --dry-run):"
   echo "  1. Push template content to the repo (if not already done)"
@@ -272,9 +258,6 @@ else
   echo "Secrets configured:"
   echo "  - RELEASE_APP_ID"
   echo "  - RELEASE_APP_PRIVATE_KEY"
-  echo "  - AZURE_API_KEY"
-  echo "  - AZURE_API_BASE"
-  echo "  - AZURE_API_VERSION"
   echo ""
   echo "Next steps:"
   echo "  1. Push template content to the repo (if not already done)"

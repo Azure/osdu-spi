@@ -164,11 +164,10 @@ Ask: *"What are the distinct responsibilities?"*
 - Core functionality operates reliably when AI services unavailable
 - AI-enhanced PR descriptions fall back to structured templates
 - Conflict analysis succeeds with or without AI suggestions
-- AIPR with Azure Foundry provides single, reliable AI integration
 
 **Pattern**: Build resilient fallbacks first, then layer on AI enhancements.
 
-**Current Approach**: Using AIPR tool with Azure Foundry exclusively. Detection logic checks for Azure API credentials and gracefully falls back to static descriptions when unavailable. This single-provider approach simplifies configuration while maintaining reliability through comprehensive fallback handling.
+**Outcome (2026-09-01, #162)**: The fallback was load-bearing in the strongest sense — it was the only path that ever ran. `aipr` crashed on every invocation for the life of the reference fork while the workflow reported success, and reviewers merged the fallback bodies without complaint. The lesson inverts: a fallback that cannot be distinguished from success is not resilience, it is a blindfold. Descriptions are now deterministic, and the meta-commit classification is a rule (ADR-023).
 
 **Impact**: Teams trust and adopt workflows that work consistently, with AI providing value when available rather than creating blocking dependencies.
 
@@ -224,7 +223,7 @@ Ask: *"What are the distinct responsibilities?"*
 
 **Pattern**: Build detection and analysis layers first; automated resolution emerges as patterns become clear over time.
 
-**Takeaway**: The value lies in guidance and structure, not full automation. AI-enhanced conflict detection provides immediate value even without automated fixes.
+**Takeaway**: The value lies in guidance and structure, not full automation. Conflict detection provides immediate value even without automated fixes.
 
 ---
 
@@ -489,15 +488,15 @@ Based on accumulated learnings, these areas show promise for continued evolution
 
 === "Deeper AI Integration"
 
-    **Enhanced AI Capabilities**
+    **Closed 2026-09-01 (#162)**
 
-    Building on successful AI enhancement patterns:
+    This direction assumed a working AI path to build on. There was none: the integration
+    crashed on every run for the life of the reference fork while reporting success, and no
+    replacement was adopted — GitHub Models was retired 2026-07-30, the Copilot coding-agent
+    API rejects GitHub App installation tokens, and Copilot's PR summary has no API surface.
 
-    - Proactive analysis of upstream changes before sync
-    - Integration testing suggestions for conflicts
-    - Advanced context awareness for complex scenarios
-
-    **Impact**: AI provides even more valuable guidance while maintaining human control and reliable fallbacks.
+    **Impact**: Descriptions and commit classification stay deterministic. Reopening this
+    needs a provider that clears all three constraints (ADR-014).
 
 ---
 
@@ -548,26 +547,29 @@ Based on accumulated learnings, these areas show promise for continued evolution
 | Benefit | Description |
 |---------|-------------|
 | **Local Testing** | Run `./script.sh` locally without triggering workflows |
-| **Code Reuse** | Eliminate duplication (e.g., LLM detection duplicated 2x, now shared) |
+| **Code Reuse** | Eliminate duplication (e.g., sync-state decisions shared across workflows) |
 | **Better Diffs** | Script changes separate from workflow structure changes in git |
 | **Debuggability** | Debug bash logic with standard tools (shellcheck, bash -x) |
 | **40% Size Reduction** | Workflows became dramatically shorter and clearer |
 
 **Implementation Pattern**:
 ```
-.github/actions/llm-provider-detect/
-├── action.yml          # Composite action wrapper
-├── detect-provider.sh  # Testable bash script
-└── README.md           # Usage and testing docs
+.github/actions/sync-state-manager/
+├── action.yml                # Composite action wrapper
+├── make-sync-decision.sh     # Testable bash script
+└── README.md                 # Usage and testing docs
 ```
 
 **Usage in Workflows**:
 ```yaml
-- uses: ./.github/actions/llm-provider-detect
-  id: llm
-  env:
-    AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+- uses: ./.github/actions/sync-state-manager
+  id: sync-state
+  with:
+    github_token: ${{ steps.app-token.outputs.token }}
 ```
+
+> Originally illustrated with `llm-provider-detect`, deleted in #162 with the AI path
+> (ADR-014). The pattern is unchanged.
 
 **Pattern**: When bash scripts exceed ~20 lines or need reuse, extract to separate files with action wrappers. See [ADR-028](028-workflow-script-extraction-pattern.md) for comprehensive rationale.
 

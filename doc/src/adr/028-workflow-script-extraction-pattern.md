@@ -1,6 +1,10 @@
 # ADR-028: Workflow Script Extraction Pattern
 
 ## Status
+
+> The `llm-provider-detect` worked example below was deleted in #162 along with the AI path
+> (ADR-014). The extraction pattern it illustrates is unchanged.
+
 **Accepted** - 2025-10-01
 
 ## Context

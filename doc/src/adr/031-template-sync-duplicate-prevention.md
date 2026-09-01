@@ -144,7 +144,8 @@ Despite the implementation difference, the pattern remains consistent:
       env.has_changes == 'true' &&
       steps.detect-existing.outputs.has_existing_pr == 'false'
   id: create-pr
-  uses: ./.github/actions/create-enhanced-pr
+  # Was `uses: ./.github/actions/create-enhanced-pr` until #162 removed it; now an
+  # inline `gh pr create --body-file`. The split-path control flow is unchanged.
   # See .github/template-workflows/sync-template.yml for implementation details (PR creation and labeling)
 
 - name: Update existing template sync PR

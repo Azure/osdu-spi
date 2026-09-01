@@ -4,7 +4,7 @@ site_author: Microsoft Azure Energy
 site_url: https://azure.github.io/osdu-spi/
 site_author: Daniel Scholl
 site_description: >-
-  OSDU SPI Management Template - Simplified enterprise-grade fork management with AI-enhanced workflows
+  OSDU SPI Management Template - Simplified enterprise-grade fork management
 
 docs_dir: src
 
@@ -119,7 +119,6 @@ nav:
       - Fork Tiers: architecture/fork_tiers.md
       - Workflow System: architecture/workflow_system.md
       - Deploy & Test: architecture/deploy_test.md
-      - AI Integration: architecture/ai_integration.md
   - Workflows:
       - Initialization: workflows/initialization.md
       - Adoption: workflows/adoption.md

@@ -30,29 +30,6 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Python and PR Generator
-        run: |
-          python -m pip install --upgrade pip
-          echo "📦 Installing AIPR 1.5.0+..."
-          pip install pr-generator-agent>=1.5.0
-          echo "✅ Installation complete. Checking AIPR availability..."
-          
-          # Add user bin directory to PATH for this session
-          export PATH="$HOME/.local/bin:$PATH"
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          
-          # Debug AIPR installation
-          which aipr || echo "⚠️ aipr command not found in PATH"
-          python -m pip list | grep pr-generator-agent || echo "⚠️ pr-generator-agent not found in pip list"
-          
-          # Test AIPR version with updated PATH
-          if aipr --help 2>/dev/null; then
-            echo "✅ AIPR version check successful"
-          else
-            echo "⚠️ AIPR version check failed - testing fallback"
-            python -c "import aipr; print('✅ AIPR module importable')" 2>/dev/null || echo "❌ AIPR module not importable"
-          fi
-
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
@@ -130,9 +107,6 @@ jobs:
           # mirror = customer tier (ADR-039): generate-branch.sh takes the
           # upstream tip verbatim and never runs the filter engine.
           SYNC_MODE: ${{ vars.SYNC_MODE }}
-          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
-          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
-          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
         run: |
           echo "Sync mode: ${SYNC_MODE:-filter}"
 
@@ -188,51 +162,27 @@ jobs:
             exit 0
           fi
 
-          # Disposable worktree: aipr needs a checked-out tree for its diff context,
-          # and the primary working tree stays on main.
-          SYNC_WORKTREE="$RUNNER_TEMP/sync-worktree"
-          rm -rf "$SYNC_WORKTREE"
-          git worktree add --detach "$SYNC_WORKTREE" "$commit"
-          echo "SYNC_WORKTREE=$SYNC_WORKTREE" >> $GITHUB_ENV
-
-          # Generate conventional commit message using AIPR with comprehensive error handling
-          META_COMMIT_MSG=""
-          AIPR_SUCCESS=false
-
-          # Map environment variables for aipr
-          if [[ -n "$AZURE_API_KEY" ]] && [[ -n "$AZURE_API_BASE" ]]; then
-            export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
-            export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
-            echo "Azure OpenAI credentials configured for aipr commit generation"
-          fi
-
-          # Set Azure model (use repository variable or default to gpt-5-chat)
-          AZURE_MODEL="${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}"
-          echo "Using Azure model: azure/$AZURE_MODEL"
-
-          echo "Attempting to generate AI-powered conventional commit message..."
-          META_COMMIT_MSG=$(cd "$SYNC_WORKTREE" && timeout 60s aipr commit --from "$BEFORE_SHA" --context "upstream sync" -m "azure/$AZURE_MODEL" 2>/dev/null || echo "")
-
-          if [[ -n "$META_COMMIT_MSG" ]]; then
-            # Extract first line for validation, but use full message for commit
-            FIRST_LINE=$(echo "$META_COMMIT_MSG" | head -n1)
-            # Use variable to avoid bash parsing issues with regex
-            CONVENTIONAL_REGEX='^(feat|fix|chore|docs|style|refactor|perf|test|build|ci)(\([^)]+\))?:[[:space:]].+'
-            if [[ -n "$FIRST_LINE" ]] && [[ "$FIRST_LINE" =~ $CONVENTIONAL_REGEX ]]; then
-              AIPR_SUCCESS=true
-              echo "✅ Generated AI commit message (first line): $FIRST_LINE"
-            else
-              echo "⚠️ AIPR returned invalid format (first line): $FIRST_LINE"
-            fi
-          else
-            echo "⚠️ AIPR command failed or timed out"
-          fi
-
-          # Fallback to conservative feat: message if AIPR failed
-          if [ "$AIPR_SUCCESS" = false ]; then
+          # Classify the sync for Release Please. A rule, not a model: the same
+          # commit range must always produce the same version bump, and a wrong
+          # bump has to be a bug someone can fix rather than a sampling artifact.
+          # Non-conventional upstream commits fall through to fix/patch so an
+          # unclassifiable sync never silently forces a minor bump.
+          # The `!` marker is only meaningful on a subject line; scanning bodies for it
+          # would let quoted prose force a major bump.
+          # Read into variables rather than piping git into grep: grep -q short-circuits,
+          # and the resulting SIGPIPE makes the pipeline return 141 under pipefail, which
+          # would silently invert this decision.
+          UPSTREAM_SUBJECTS=$(git log --format=%s "$BEFORE_SHA..$commit")
+          UPSTREAM_BODIES=$(git log --format=%b "$BEFORE_SHA..$commit")
+          if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$UPSTREAM_SUBJECTS" \
+             || grep -qE '^BREAKING[ -]CHANGE:' <<<"$UPSTREAM_BODIES"; then
+            META_COMMIT_MSG="feat!: sync upstream changes from $UPSTREAM_VERSION"$'\n\n'"BREAKING CHANGE: upstream $UPSTREAM_VERSION contains a breaking change"
+          elif grep -qE '^feat(\([^)]*\))?:' <<<"$UPSTREAM_SUBJECTS"; then
             META_COMMIT_MSG="feat: sync upstream changes from $UPSTREAM_VERSION"
-            echo "⚠️ Using fallback commit message: $META_COMMIT_MSG"
+          else
+            META_COMMIT_MSG="fix: sync upstream changes from $UPSTREAM_VERSION"
           fi
+          echo "Meta commit: $(head -n1 <<<"$META_COMMIT_MSG")"
 
           # Empty meta commit for Release Please, carrying the generated tree unchanged
           META=$(git commit-tree "${commit}^{tree}" -p "$commit" -m "$META_COMMIT_MSG")
@@ -248,106 +198,51 @@ jobs:
           git push -f origin "$META:refs/heads/$SYNC_BRANCH"
           echo "Pushed generated sync branch $SYNC_BRANCH"
 
-          # Get the changes for the PR description
-          CHANGES=$(git log --pretty=format:"* %s" "fork_upstream..$SYNC_BRANCH")
+          # Body must stay under GitHub's 65536-character limit: this is the only
+          # description path, so overflowing it would fail the job outright on
+          # exactly the largest syncs.
+          MAX_BODY_COMMITS=200
+          # Range ends at the upstream tip, not the sync branch: the branch also
+          # reaches the meta and generation commits this job just wrote, which are
+          # not upstream changes. Ending at $UPSTREAM_SHA rather than the previous
+          # Upstream-Sha trailer also stays correct when upstream rewrites history.
+          TOTAL_COMMITS=$(git rev-list --count "fork_upstream..$UPSTREAM_SHA")
+          if [ "$TOTAL_COMMITS" -eq 0 ]; then
+            # Tree changed with no new upstream commits, so a generation input moved
+            # (generation-rev.sh). Say so; an empty list reads like a broken body.
+            CHANGES="* _No new upstream commits; tree regenerated at $UPSTREAM_VERSION (filter-rev $filter_rev)._"
+          else
+            CHANGES=$(git log -n "$MAX_BODY_COMMITS" --pretty=format:"* %s" "fork_upstream..$UPSTREAM_SHA")
+            if [ "$TOTAL_COMMITS" -gt "$MAX_BODY_COMMITS" ]; then
+              CHANGES="${CHANGES}"$'\n'"* _...and $((TOTAL_COMMITS - MAX_BODY_COMMITS)) more commits._"
+            fi
+          fi
 
-          # Prepare fallback description for PR
-          FALLBACK_DESCRIPTION="Automated PR to sync with upstream repository changes."$'\n\n'"### Changes from upstream:"$'\n'"${CHANGES}"
+          PR_DESCRIPTION="Automated PR to sync with upstream repository changes."$'\n\n'"### Changes from upstream:"$'\n'"${CHANGES}"
+          if [ "${#PR_DESCRIPTION}" -gt 60000 ]; then
+            PR_DESCRIPTION="${PR_DESCRIPTION:0:60000}"$'\n\n'"_Description truncated._"
+          fi
 
-          # Set environment variables for subsequent steps
-          echo "FALLBACK_DESCRIPTION<<EOF" >> "$GITHUB_ENV"
-          echo "$FALLBACK_DESCRIPTION" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
+          # Randomized delimiter: a commit subject that is literally "EOF" would
+          # close the block early and the rest would parse as env assignments.
+          PR_DESCRIPTION_DELIM="EOF_$(openssl rand -hex 16)"
+          {
+            echo "PR_DESCRIPTION<<$PR_DESCRIPTION_DELIM"
+            echo "$PR_DESCRIPTION"
+            echo "$PR_DESCRIPTION_DELIM"
+          } >> "$GITHUB_ENV"
 
-      - name: Detect LLM provider
-        id: llm-detect
-        if: steps.sync-changes.outputs.has_changes == 'true'
-        uses: ./.github/actions/llm-provider-detect
-        env:
-          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
-          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
-
-      - name: Create enhanced sync PR
+      - name: Create sync PR
         if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_create_pr == 'true'
         id: create-pr
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
-          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
-          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
         run: |
-          # SYNC_BRANCH, UPSTREAM_VERSION, and FALLBACK_DESCRIPTION are already
-          # available as environment variables via $GITHUB_ENV from previous step.
+          # SYNC_BRANCH, UPSTREAM_VERSION, and PR_DESCRIPTION are already
+          # available as environment variables via $GITHUB_ENV from the sync step.
           # IMPORTANT: Do NOT use ${{ env.X }} for these - it performs literal string
           # substitution which breaks when values contain quotes or special characters
           # (e.g. commit messages with double quotes cause shell parsing errors).
-
-          # The checkout stays on main, so the shared detection action is usable here
-          USE_LLM="${{ steps.llm-detect.outputs.use_llm }}"
-          LLM_MODEL="${{ steps.llm-detect.outputs.llm_model }}"
-
-          # Map LLM_MODEL to full model identifier for aipr
-          if [[ "$LLM_MODEL" == "azure" ]]; then
-            # Use repository variable or default to gpt-5-chat
-            AZURE_MODEL="${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}"
-            AIPR_MODEL="azure/$AZURE_MODEL"
-            # Map environment variables to what aipr expects
-            export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
-            export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
-            echo "Using Azure model: $AIPR_MODEL"
-          else
-            AIPR_MODEL=""
-          fi
-
-          # Calculate diff size to avoid generating prompts that exceed model limits
-          MAX_DIFF_LINES=20000
-          DIFF_LINES=$(git diff "fork_upstream..$SYNC_BRANCH" | wc -l | tr -d ' ')
-          # Ensure DIFF_LINES is a valid numeric value
-          if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
-            DIFF_LINES=0
-          fi
-          echo "Diff contains $DIFF_LINES lines"
-
-          # Generate PR description using AI if available with comprehensive error handling
-          if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
-            echo "Generating AI-enhanced PR description using $AIPR_MODEL..."
-
-            # Use aipr tool with vulnerability analysis and timeout protection
-            PR_DESCRIPTION=""
-            echo "   🔍 Attempting AIPR PR generation with model: $AIPR_MODEL"
-
-            # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
-            PR_DESCRIPTION=$(cd "$SYNC_WORKTREE" && timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
-
-            # Debug what we got back and handle all failure cases
-            # Check for errors FIRST before length validation
-            if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
-              echo "   ❌ AIPR pr command execution failed or timed out"
-              PR_DESCRIPTION=""
-            elif [[ "$PR_DESCRIPTION" =~ [Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" || "$PR_DESCRIPTION" =~ "Missing" ]]; then
-              echo "   ❌ AIPR pr error detected: ${PR_DESCRIPTION:0:100}..."
-              PR_DESCRIPTION=""
-            elif [[ -z "$PR_DESCRIPTION" ]] || [[ ${#PR_DESCRIPTION} -lt 50 ]]; then
-              echo "⚠️ AIPR PR description too short or empty (${#PR_DESCRIPTION} chars)"
-              PR_DESCRIPTION=""
-            else
-              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
-            fi
-
-            # Use fallback if AI generation failed
-            if [[ -z "$PR_DESCRIPTION" ]]; then
-              echo "   🔄 Using enhanced fallback description"
-              PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
-            fi
-          else
-            if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
-              echo "⚠️ Diff is larger than $MAX_DIFF_LINES lines; using fallback description to avoid token limits"
-            else
-              echo "⚠️ No LLM API keys available; using fallback description"
-            fi
-            PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
-          fi
 
           # Create the PR using --body-file to safely handle special characters
           echo "Creating PR from branch $SYNC_BRANCH to fork_upstream"
@@ -371,93 +266,21 @@ jobs:
           # Set outputs for next step
           echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
           echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "PR_DESCRIPTION<<EOF" >> $GITHUB_ENV
-          echo "$PR_DESCRIPTION" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
       - name: Update existing PR
         if: steps.sync-changes.outputs.has_changes == 'true' && steps.sync-state.outputs.should_update_branch == 'true'
         id: update-pr
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
-          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
-          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
         run: |
           PR_NUMBER="${{ steps.sync-state.outputs.existing_pr_number }}"
-          # UPSTREAM_VERSION, SYNC_BRANCH, and FALLBACK_DESCRIPTION are already
-          # available as environment variables via $GITHUB_ENV from previous step.
+          # SYNC_BRANCH, UPSTREAM_VERSION, and PR_DESCRIPTION are already
+          # available as environment variables via $GITHUB_ENV from the sync step.
           # IMPORTANT: Do NOT use ${{ env.X }} for these - it performs literal string
-          # substitution which breaks when values contain quotes or special characters.
+          # substitution which breaks when values contain quotes or special characters
+          # (e.g. commit messages with double quotes cause shell parsing errors).
 
-          # The checkout stays on main, so the shared detection action is usable here
-          USE_LLM="${{ steps.llm-detect.outputs.use_llm }}"
-          LLM_MODEL="${{ steps.llm-detect.outputs.llm_model }}"
-
-          # Map LLM_MODEL to full model identifier for aipr
-          if [[ "$LLM_MODEL" == "azure" ]]; then
-            # Use repository variable or default to gpt-5-chat
-            AZURE_MODEL="${{ vars.AIPR_AZURE_MODEL || 'gpt-5-chat' }}"
-            AIPR_MODEL="azure/$AZURE_MODEL"
-            # Map environment variables to what aipr expects
-            export AZURE_OPENAI_ENDPOINT="$AZURE_API_BASE"
-            export AZURE_OPENAI_API_KEY="$AZURE_API_KEY"
-            echo "Using Azure model: $AIPR_MODEL"
-          else
-            AIPR_MODEL=""
-          fi
-
-          # Calculate diff size to avoid generating prompts that exceed model limits
-          MAX_DIFF_LINES=20000
-          DIFF_LINES=$(git diff "fork_upstream..$SYNC_BRANCH" | wc -l | tr -d ' ')
-          # Ensure DIFF_LINES is a valid numeric value
-          if [[ -z "$DIFF_LINES" || ! "$DIFF_LINES" =~ ^[0-9]+$ ]]; then
-            DIFF_LINES=0
-          fi
-          echo "Diff contains $DIFF_LINES lines"
-
-          # Generate updated PR description using AI if available with comprehensive error handling
-          if [[ "$USE_LLM" == "true" && "$DIFF_LINES" -le "$MAX_DIFF_LINES" ]]; then
-            echo "Generating AI-enhanced PR description using $AIPR_MODEL..."
-
-            # Use aipr tool with vulnerability analysis and timeout protection
-            PR_DESCRIPTION=""
-            echo "   🔍 Attempting AIPR PR generation with model: $AIPR_MODEL"
-
-            # Single call approach for PR description (use correct aipr pr syntax, no --vulns to reduce prompt size)
-            echo "   📝 Command: aipr pr -m $AIPR_MODEL -t fork_upstream -s"
-            PR_DESCRIPTION=$(cd "$SYNC_WORKTREE" && timeout 90s aipr pr -m "$AIPR_MODEL" -t fork_upstream -s 2>&1 || echo "AIPR_FAILED")
-
-            # Debug what we got back and handle all failure cases
-            # Check for errors FIRST before length validation
-            if [[ "$PR_DESCRIPTION" == "AIPR_FAILED" ]]; then
-              echo "   ❌ AIPR pr command execution failed or timed out"
-              PR_DESCRIPTION=""
-            elif [[ "$PR_DESCRIPTION" =~ [Ee]rror || "$PR_DESCRIPTION" =~ [Ff]ailed || "$PR_DESCRIPTION" =~ "prompt is too long" || "$PR_DESCRIPTION" =~ "maximum" || "$PR_DESCRIPTION" =~ "Missing" ]]; then
-              echo "   ❌ AIPR pr error detected: ${PR_DESCRIPTION:0:100}..."
-              PR_DESCRIPTION=""
-            elif [[ -z "$PR_DESCRIPTION" ]] || [[ ${#PR_DESCRIPTION} -lt 50 ]]; then
-              echo "⚠️ AIPR PR description too short or empty (${#PR_DESCRIPTION} chars)"
-              PR_DESCRIPTION=""
-            else
-              echo "✅ Generated enhanced PR description using $AIPR_MODEL (${#PR_DESCRIPTION} characters)"
-            fi
-
-            # Use fallback if AI generation failed
-            if [[ -z "$PR_DESCRIPTION" ]]; then
-              echo "   🔄 Using enhanced fallback description"
-              PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
-            fi
-          else
-            if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
-              echo "⚠️ Diff is larger than $MAX_DIFF_LINES lines; using fallback description to avoid token limits"
-            else
-              echo "⚠️ No LLM API keys available; using fallback description"
-            fi
-            PR_DESCRIPTION="$FALLBACK_DESCRIPTION"
-          fi
-
-          # Update PR title and regenerate description with all commits
+          # Update PR title and rebuild the description (capped at MAX_BODY_COMMITS)
           # Use --body-file to safely handle special characters in description
           printf '%s\n' "$PR_DESCRIPTION" > /tmp/pr_body.txt
           gh pr edit "$PR_NUMBER" \
