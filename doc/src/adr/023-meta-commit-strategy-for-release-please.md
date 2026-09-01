@@ -31,7 +31,7 @@ Implement the **meta commit strategy**, classifying the bump with a deterministi
 
 ### Classification rule
 
-This grep is the implementation in `.github/template-workflows/sync.yml`:
+This grep is the implementation in `.github/template-workflows/sync.yml`. `$commit` is the merge-shaped commit that `generate-branch.sh` produced for this sync (ADR-038), and `$BEFORE_SHA` is the upstream commit the previous sync recorded:
 
 ```bash
 # Classify by rule: breaking > feat > fix, defaulting to fix.

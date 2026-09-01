@@ -58,7 +58,7 @@ Adopt **GitHub Apps with installation tokens** as the standard authentication me
    ```yaml
    - name: Generate GitHub App Token
      id: app-token
-     uses: actions/create-github-app-token@<sha>  # pinned by SHA
+     uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
      with:
        app-id: ${{ secrets.RELEASE_APP_ID }}
        private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

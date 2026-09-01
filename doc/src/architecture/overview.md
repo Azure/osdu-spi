@@ -98,6 +98,6 @@ See [ADR-033](../adr/033-ghcr-as-service-image-registry.md), [ADR-035](../adr/03
 
 ## Enterprise Capabilities
 
-The system combines repository rulesets, CodeQL, Dependabot validation, trusted-event package publication, and GitHub App authentication. Branch protection keeps human approval on `main` while allowing automation to maintain the integration branches. Forks receive centrally maintained workflows and the shared Dockerfile while keeping ownership of their Azure source and filter configuration.
+The system combines repository rulesets, CodeQL, Dependabot validation, trusted-event package publication, and GitHub App authentication. The default-branch ruleset keeps human approval on `main` while the integration-branch ruleset lets automation maintain `fork_upstream` and `fork_integration`. Forks receive centrally maintained workflows and the shared Dockerfile while keeping ownership of their Azure source and filter configuration.
 
 ---

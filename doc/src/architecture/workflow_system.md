@@ -90,7 +90,7 @@ graph TD
     - **Scope**: The files listed in `sync-config.json`
     - **Duplicates**: One open template-sync PR at a time (ADR-031)
 
-    [:octicons-arrow-right-24: Detailed spec](../workflows/synchronization.md)
+    [:octicons-arrow-right-24: Decision record](../adr/012-template-update-propagation-strategy.md)
 
 </div>
 
