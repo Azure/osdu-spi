@@ -23,8 +23,13 @@ descriptor's `mavenArguments` array verbatim, never a shell string.
    descriptor halts the build with exit 2).
 2. No descriptor → the upstream default `<service>-acceptance-test`, the
    module the filter keeps (ADR-038, D8).
-3. Suite directory absent → a **clean skip**: the action reports
+3. Default suite directory absent → a **clean skip**: the action reports
    `skipped=true` and builds nothing. No new required checks arm here.
+
+A descriptor that names a suite path which is not in the checkout halts with
+exit 2 instead of skipping. The default is a convention this action guesses at;
+a descriptor path is an assertion the fork made, and a typo in it must never
+read as "this fork has no acceptance suite".
 
 The module must build standalone (the upstream acceptance modules are
 parentless by design). The fork-owned `testing/<service>-test-azure` tree is

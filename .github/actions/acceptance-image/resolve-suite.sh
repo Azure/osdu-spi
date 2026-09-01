@@ -5,8 +5,8 @@
 # Decides which suite module the acceptance image bakes and whether it can
 # build at all: the descriptor's tests.acceptance.path when .spi/service.yaml
 # exists (ADR-040), else the upstream default <service>-acceptance-test.
-# A missing suite directory is a clean skip, never a guess; a broken
-# descriptor halts (the engine's exit 2 propagates).
+# A missing default suite directory is a clean skip; a broken descriptor, or one
+# naming a suite that is not there, halts with exit 2 — never a guess.
 #
 # Environment:
 #   SERVICE_NAME     - short service name (e.g. partition). Required.
@@ -44,6 +44,13 @@ fi
 BUILDABLE="true"
 REASON=""
 if [[ ! -d "$SUITE_DIR" ]]; then
+  # The default is a convention this script guesses at, so its absence is a skip. A
+  # descriptor path is an assertion the fork made, so its absence is a contract error
+  # (exit 2, as in the engine) — a typo must never read as "this fork has no suite".
+  if [[ "$SOURCE" == "descriptor" ]]; then
+    echo "::error::${DESCRIPTOR_PATH} names acceptance suite '$SUITE_DIR', which does not exist in this checkout"
+    exit 2
+  fi
   BUILDABLE="false"
   REASON="suite directory '$SUITE_DIR' (${SOURCE}) not present"
 fi

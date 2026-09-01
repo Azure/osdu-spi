@@ -65,6 +65,22 @@ resolve_suite "$WS3" "$TMP/out3.txt" SERVICE_NAME=demo >/dev/null
 output_value "$TMP/out3.txt" reason | grep -q "demo-acceptance-test" || die "skip reason must name the directory"
 ok "clean skip with reason"
 
+note "halt: a descriptor naming an absent suite is a typo, not an empty fork"
+WS3B="$TMP/ws-descriptor-absent"
+mkdir -p "$WS3B/.spi" "$WS3B/demo-acceptance-test"
+cat > "$WS3B/.spi/service.yaml" <<'EOF'
+schemaVersion: 3
+service: { name: demo, archetype: java-maven-azure }
+tests:
+  acceptance:
+    type: maven
+    path: demo-acceptance-tset
+EOF
+RC=0
+resolve_suite "$WS3B" "$TMP/out3b.txt" SERVICE_NAME=demo >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "descriptor-named absent suite must exit 2, got $RC"
+ok "descriptor path is an assertion, not a hint"
+
 note "halt: a broken descriptor fails the build, never a guess"
 WS4="$TMP/ws-broken"
 mkdir -p "$WS4/.spi" "$WS4/demo-acceptance-test"
