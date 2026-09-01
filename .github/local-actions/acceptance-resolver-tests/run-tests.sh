@@ -271,6 +271,36 @@ json.dump(facts, open('$TMP/facts-badprimary.json', 'w'))
 expect_fail "non-boolean primary" 4 "primary" "FACTS_INVALID" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-badprimary.json" --env-file "$TMP/x.env"
 
+note "infra: a wrong-shaped facts ancestor is a contract failure, not unseeded"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['azure'] = []
+json.dump(facts, open('$TMP/facts-badazure.json', 'w'))
+"
+expect_fail "wrong-shaped ancestor" 4 "not a mapping" "FACTS_INVALID" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-badazure.json" --env-file "$TMP/x.env"
+
+note "infra: a non-mapping partition entry is a contract failure, never skipped"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['partitions'].insert(0, 'oops')
+json.dump(facts, open('$TMP/facts-badentry.json', 'w'))
+"
+expect_fail "non-mapping partition entry" 4 "partitions[]" "FACTS_INVALID" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-badentry.json" --env-file "$TMP/x.env"
+
+note "infra: two primary partitions is a contract failure, never first-wins"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['partitions'][1]['primary'] = True
+json.dump(facts, open('$TMP/facts-twoprimary.json', 'w'))
+"
+expect_fail "duplicate primary" 4 "more than one primary" "FACTS_INVALID" \
+  engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-twoprimary.json" --env-file "$TMP/x.env"
+
 note "infra: an unencodable resolved value is typed, never a traceback"
 python3 -c "
 import json
@@ -426,5 +456,34 @@ assert schema['properties']['schemaVersion']['const'] == 3
 assert 'keyvault:' in schema['\$defs']['binding']['properties']['source']['pattern']
 "
 ok "service-descriptor.schema.json consistent"
+
+note "published descriptor examples validate against the engine"
+ROOT="$HERE/../../.."
+for doc in "$ROOT/doc/src/architecture/deploy_test.md" \
+           "$ROOT/.github/actions/acceptance-resolver/README.md"; do
+  python3 - "$doc" "$TMP/doc-example.yaml" <<'PY'
+import sys
+blocks, buf, fence = [], [], False
+for line in open(sys.argv[1]):
+    stripped = line.rstrip("\n")
+    if stripped.strip() == "```yaml":
+        fence, buf = True, []
+    elif stripped.strip() == "```" and fence:
+        fence = False
+        if any(".spi/service.yaml" in b for b in buf):
+            blocks.append("\n".join(buf) + "\n")
+    elif fence:
+        buf.append(stripped)
+assert len(blocks) == 1, \
+    f"expected exactly one descriptor example in {sys.argv[1]}, found {len(blocks)}"
+open(sys.argv[2], "w").write(blocks[0])
+PY
+  RC=0
+  engine --mode bind --descriptor "$TMP/doc-example.yaml" --facts "$FACTS" \
+    --env-file "$TMP/doc-example.env" --report "$TMP/doc-example.json" \
+    >/dev/null 2>"$TMP/doc-example-err.txt" || RC=$?
+  [ "$RC" -eq 0 ] || die "descriptor example in $doc does not validate (exit $RC): $(cat "$TMP/doc-example-err.txt")"
+done
+ok "published examples are valid schema v3"
 
 printf '\nAll acceptance resolver harness checks passed.\n'

@@ -127,7 +127,7 @@ by design.
 | 0 | — | Resolved (bind mode may carry warnings) |
 | 2 | `descriptor` | Contract violation: unknown key or source, reserved name, bad shape. The descriptor author must fix the file. |
 | 3 | `env-not-ready` | Run mode: a required answer is missing (unpublished fact, unsupplied secret, unset `user` variable). Deploy gates report this, tests never start. |
-| 4 | `infra` | The environment answered wrongly: facts envelope unreadable or wrong `apiVersion`, agreement mismatch, unsafe value. |
+| 4 | `infra` | The environment answered wrongly: facts envelope unreadable, wrong `apiVersion`, or malformed (wrong-typed values, non-mapping nodes, more than one primary partition), agreement mismatch, unsafe value. Only an *absent* fact reads as env-not-ready. |
 
 ## Report schema (v1)
 

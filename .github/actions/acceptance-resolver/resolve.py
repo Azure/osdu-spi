@@ -512,8 +512,11 @@ def load_facts(path):
 
 def _fact_at(facts, path):
     node = facts
-    for key in path:
-        if not isinstance(node, dict) or key not in node:
+    for depth, key in enumerate(path):
+        if not isinstance(node, dict):
+            raise Infra("FACTS_INVALID",
+                        f"facts value at '{'.'.join(path[:depth])}' is not a mapping")
+        if key not in node:
             return ""
         node = node[key]
     if not isinstance(node, str):
@@ -541,26 +544,32 @@ def fact_value(facts, kind):
             return ""
         if not isinstance(partitions, list):
             raise Infra("FACTS_INVALID", "facts value at 'partitions' is not a list")
+        primary_entry = None
         for entry in partitions:
             if not isinstance(entry, dict):
-                continue
+                raise Infra("FACTS_INVALID",
+                            "facts value at 'partitions[]' is not a mapping")
             primary = entry.get("primary", False)
             if not isinstance(primary, bool):
                 raise Infra("FACTS_INVALID",
                             "facts value at 'partitions[].primary' is not a boolean")
-            if not primary:
-                continue
-            value = entry.get(PARTITION_FACT_KEYS[kind])
-            if value is None:
-                return ""
-            if not isinstance(value, str):
-                raise Infra(
-                    "FACTS_INVALID",
-                    f"facts value at 'partitions[].{PARTITION_FACT_KEYS[kind]}' "
-                    "is not a string",
-                )
-            return _require_printable_fact(kind, value).strip()
-        return ""
+            if primary:
+                if primary_entry is not None:
+                    raise Infra("FACTS_INVALID",
+                                "facts declare more than one primary partition")
+                primary_entry = entry
+        if primary_entry is None:
+            return ""
+        value = primary_entry.get(PARTITION_FACT_KEYS[kind])
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise Infra(
+                "FACTS_INVALID",
+                f"facts value at 'partitions[].{PARTITION_FACT_KEYS[kind]}' "
+                "is not a string",
+            )
+        return _require_printable_fact(kind, value).strip()
     return _require_printable_fact(kind, _fact_at(facts, FACT_PATHS[kind])).strip()
 
 
@@ -743,8 +752,14 @@ def write_report(path, report):
 def write_env_file(path, resolved):
     # The file can carry Key Vault secrets: create it owner-only, tighten a
     # pre-existing destination, and never write through a symlink planted at
-    # the workspace-relative path.
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+    # the workspace-relative path. O_NOFOLLOW and fchmod are POSIX-only; on
+    # other platforms an islink pre-check keeps the refusal typed.
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow and os.path.islink(path):
+        raise Infra("ENV_FILE_SYMLINK",
+                    f"{path} is a symlink; refusing to write secret values "
+                    "through it")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | nofollow
     try:
         fd = os.open(path, flags, 0o600)
     except OSError as error:
@@ -753,7 +768,8 @@ def write_env_file(path, resolved):
                         f"{path} is a symlink; refusing to write secret values "
                         "through it")
         raise
-    os.fchmod(fd, 0o600)
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
         for name in sorted(resolved):
             stream.write(f"{name}={resolved[name]}\n")

@@ -71,7 +71,7 @@ tests:
       MY_TENANT:           { source: partition }
       TEST_OPENID_PROVIDER_URL: { source: openid }
       LEGAL_TAG:           { source: legalTag }   # published as a fact by Tier-1 bootstrap (§6)
-    keyVaultBindings: []                # secret names, resolved from the stack's vault at run time
+    keyVaultBindings: {}                # env name → Key Vault secret NAME, resolved at run time
     requires:                           # the declaration layer nobody built (§6)
       loads: []                         # e.g. [reference-data] for search / indexer
       groups: []                        # entitlements groups the caller must hold
@@ -149,13 +149,14 @@ spi connect -g my-rg -c my-cluster && spi status
 # resolve answers: descriptor × facts × vault → .env  (bind warns; run refuses — two audiences)
 resolver bind
 
-# iterate however you like — the contract is a starting point, not a cage
-cd partition-acceptance-test && mvn verify -Dtest=GetInfoApiTest
-# …or the exact image CI will run:
+# the env file is `docker run` data, never shell code — mvn does not read it,
+# and sourcing it would evaluate secret values as shell. consume it through
+# the suite image, exactly as CI does (rebuild the image locally to iterate):
 docker run --env-file .env ghcr.io/<org>/partition-acceptance:<sha>
 
-# explicit env always wins — point HOST at localhost to test a laptop service
-HOST=http://localhost:8080 resolver bind && mvn verify
+# explicit env always wins — point the base URL at a laptop service
+PARTITION_BASE_URL=http://host.docker.internal:8080/ resolver bind \
+  && docker run --env-file .env ghcr.io/<org>/partition-acceptance:<sha>
 ```
 
 **Release verification**: `release.yml` tags the acceptance image alongside the service image, so "prove release X on stack Y" is one `workflow_dispatch` with two inputs — or one local `docker run`. An optional nightly scheduled run re-converges the fleet against the shared stack.
