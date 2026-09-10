@@ -28,7 +28,7 @@ permissions:
 jobs:
   check-repo-state:
     if: github.actor == 'dependabot[bot]'
-    name: "🔍 Check Repository State"
+    name: "Check Repository"
     runs-on: ubuntu-latest
     outputs:
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
@@ -86,20 +86,10 @@ jobs:
           generate_coverage: true
           maven_profile: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
 
-      - name: "Post Build Status Comment"
-        uses: ./.github/actions/pr-status
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pr_number: ${{ github.event.pull_request.number }}
-          status_items: |
-            ${{ steps.build.outputs.build_result == 'success' && 
-            '["✅ Dependency Update Build Successful"]' || 
-            '["❌ Dependency Update Build Failed"]' }}
-
   docker-build:
-    # The name must differ from validate.yml's "🐳 Docker Build", which also reports on these
+    # The name must differ from validate.yml's "Docker Build", which also reports on these
     # PRs. Advisory only: the required summary passes Dependabot through.
-    name: "🐳 Dependabot Docker Build (validate)"
+    name: "Dependabot Docker Build"
     needs: java-build
     if: needs.java-build.outputs.build_result == 'success'
     runs-on: ubuntu-latest

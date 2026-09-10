@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   check-initialization:
-    name: "🔍 Check Repository State"
+    name: "Check Repository"
     runs-on: ubuntu-latest
     outputs:
       initialized: ${{ steps.check.outputs.initialized }}

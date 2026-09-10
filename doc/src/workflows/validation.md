@@ -12,7 +12,7 @@ The validation workflow runs on:
 - **Direct pushes** to protected branches, where the rulesets permit them
 - **Manual trigger** for a check during setup or troubleshooting
 
-The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `📋 Validation Summary` context reflects a real build.
+The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `Validation Summary` context reflects a real build.
 
 ## What Gets Validated
 
@@ -31,6 +31,8 @@ CodeQL runs in its own workflow and supplies the required `CodeQL` status. Depen
 On a push to `main` or `fork_integration`, and on the fork's own pull requests, the lane borrows the service's slot in the attached stack, proves the pushed image with every suite `.spi/service.yaml` declares, and restores the canonical image (ADR-041). A gate job ahead of it always reports, so a run without the lane says why: a pull request from another repository, a fork not yet onboarded, no descriptor, or no image pushed.
 
 ## Validation Results
+
+The summary job posts one comment on the pull request, updated in place on every push: a table of every job with its result and the reason for any skip, followed by one line per suite the lane ran, and a link to the run. A failed suite names its failure count there; the Surefire and Failsafe reports are attached to the run as the `suite-reports` artifact. Pull requests from other repositories get no comment, because their token cannot write one; the checks list and run summary carry the same content.
 
 When every check passes the PR can merge once a reviewer approves it. When a check fails the PR is blocked; the failing check links to the job log with the reason.
 
@@ -79,16 +81,16 @@ The workflow coordinates the following validation jobs:
 
 | Job | Purpose | What It Checks |
 |-----|---------|----------------|
-| **Initialization Check** | Verifies repository setup | Ensures workflows are properly deployed |
-| **Repository State** | Detects project type | Identifies Java projects via `pom.xml` |
-| **Path Check** | Avoids unnecessary work | Skips heavy jobs for docs/config-only PRs |
+| **Check Initialization** | Verifies repository setup | Ensures workflows are properly deployed |
+| **Check Repository** | Detects project type | Identifies Java projects via `pom.xml` |
+| **Check Paths** | Avoids unnecessary work | Skips heavy jobs for docs/config-only PRs |
 | **Java Build** | Compiles and tests | Uses `core,azure` by default; `core` on `fork_upstream` |
 | **Docker Build** | Validates both images | Builds the canonical service and test-suite Dockerfiles without registry credentials |
 | **Docker Push** | Publishes trusted builds | Pushes multi-arch SHA and branch tags to public GHCR, with the test-suite image beside them |
 | **Deploy Gate** | Decides whether to borrow | Always reports; names the reason when the lane does not run |
-| **Deploy and Test on spi-stack** | Proves the pushed image | Borrow, prove every declared suite, restore |
-| **Code Validation** | Process compliance | Semantic PR title, conflict markers, branch status |
-| **Validation Summary** | Required status | Always reports; one table of every job, its result, and any skip reason |
+| **Deploy and Test** | Proves the pushed image | Borrow, prove every declared suite, restore |
+| **Check Code Quality** | Process compliance | Semantic PR title, conflict markers, branch status |
+| **Validation Summary** | Required status | Always reports; one table of every job, its result, and any skip reason, posted on the pull request |
 
 ## Branch-Specific Rules
 
@@ -111,7 +113,7 @@ All protected branches use the same validation rules, with exemptions for specif
 
 ### Required Checks on `main`
 - `CodeQL` - Stable summary from the separate CodeQL workflow
-- `📋 Validation Summary` - Stable summary covering the Java build, both image builds, the push, and the deploy lane; code quality stays advisory
+- `Validation Summary` - Stable summary covering the Java build, both image builds, the push, and the deploy lane; code quality stays advisory
 
 The integration-branch ruleset does not currently require status checks.
 
