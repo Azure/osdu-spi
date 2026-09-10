@@ -532,20 +532,20 @@ jobs:
             suite_dir=$(jq -r .contract.test_dir "$report")
             timeout_min=$(jq -r .contract.timeout_minutes "$report")
             mapfile -t mvn_args < <(jq -r '.contract.maven_arguments[]' "$report")
-            # --rm means target/ reports don't survive; the Maven log is the only signal left.
-            if timeout "${timeout_min}m" docker run --rm --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" 2>&1 | tee "$suite.log"; then
-              tests=$( (grep -Eo 'Tests run: [0-9]+' "$suite.log" || true) | awk '{s+=$3} END {print s+0}')
-              if [ "$tests" -gt 0 ]; then
-                echo "suite $suite: pass" >> "$GITHUB_STEP_SUMMARY"
-              else
-                echo "suite $suite: FAIL (no tests executed)" >> "$GITHUB_STEP_SUMMARY"
-                echo "::error::suite $suite executed no tests"
-                failed="$failed $suite"
-              fi
+            # The verdict comes from the report XML copied out before the container goes.
+            container="suite-$suite-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            code=0
+            timeout "${timeout_min}m" docker run --name "$container" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
+            rm -rf "$suite-reports"
+            docker cp "$container:/suite/$suite_dir" "$suite-reports" > /dev/null 2>&1 || mkdir -p "$suite-reports"
+            docker rm -f "$container" > /dev/null 2>&1 || true
+            if verdict=$(python3 .github/actions/acceptance-image/suite-verdict.py --exit-code "$code" --reports "$suite-reports"); then
+              echo "suite $suite: $verdict" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "suite $suite: FAIL" >> "$GITHUB_STEP_SUMMARY"; failed="$failed $suite"
+              echo "suite $suite: $verdict" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::suite $suite $verdict"; failed="$failed $suite"
             fi
-            rm -f "$suite.env" "$suite.log"
+            rm -rf "$suite.env" "$suite-reports"
             echo "::endgroup::"
           done
           [ -z "$failed" ] || { echo "::error::failed suites:$failed"; exit 1; }

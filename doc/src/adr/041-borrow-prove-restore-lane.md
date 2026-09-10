@@ -30,7 +30,7 @@ The lane installs the latest `spi` release to reach the environment, then reads 
 
 ### One image carries every suite
 
-`tests` in the descriptor is a map of named suites of one shape; `acceptance` is required and is the run-time default. The acceptance image bakes every declared suite path, with each suite's dependencies prewarmed and a multi-module suite installed first so its sibling modules resolve. `SUITE_DIR` selects the suite at run time, and the resolver's `--suite` selects which bindings to resolve. The lane runs one `docker run` per suite under the suite's own timeout and fails if any suite fails.
+`tests` in the descriptor is a map of named suites of one shape; `acceptance` is required and is the run-time default. The acceptance image bakes every declared suite path, with each suite's dependencies prewarmed and a multi-module suite installed first so its sibling modules resolve. `SUITE_DIR` selects the suite at run time, and the resolver's `--suite` selects which bindings to resolve. The lane runs one `docker run` per suite under the suite's own timeout and fails if any suite fails. A suite's verdict comes from the Surefire and Failsafe reports copied out of the container, never from the exit code or console alone: it passes only with a zero exit, at least one test that was not skipped, and no failures or errors.
 
 ### The summary is the required check
 

@@ -44,6 +44,17 @@ exit 2 instead of skipping. The default is a convention this action guesses at;
 a descriptor path is an assertion the fork made, and a typo in it must never
 read as "this fork has no acceptance suite".
 
+## Suite verdict
+
+`suite-verdict.py` decides whether one suite run passed. The deploy lane copies
+the suite directory out of the container after `docker run` returns and hands
+the script the exit code and that directory. It reads every `TEST-*.xml` under a
+`surefire-reports` or `failsafe-reports` directory, at any depth, so a
+multi-module suite counts its submodules. A pass needs a zero exit, at least one
+test that was not skipped, and no failures or errors. The console is never
+consulted: `-q` hides Maven's summary lines and `-Dmaven.test.failure.ignore`
+turns a failing suite into a zero exit.
+
 Each suite resolves its own dependency graph. A suite that is a Maven reactor
 (the upstream `testing/` tree, whose provider module depends on a sibling core
 module) is installed without tests first so the sibling resolves, then warmed

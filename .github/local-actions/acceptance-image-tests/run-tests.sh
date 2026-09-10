@@ -162,6 +162,37 @@ SUITE_DIR=nope PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" verify >/dev/null 2>&1
 [ "$RC" -eq 2 ] || die "an unbaked SUITE_DIR must exit 2, got $RC"
 ok "entrypoint suite selection"
 
+note "verdict: reports decide, not the exit code or the console"
+VERDICT="$HERE/../../actions/acceptance-image/suite-verdict.py"
+report() {  # dir tests skipped failures errors
+  mkdir -p "$1"
+  printf '<?xml version="1.0"?><testsuite name="t" tests="%s" skipped="%s" failures="%s" errors="%s"/>\n' "$2" "$3" "$4" "$5" > "$1/TEST-t.xml"
+}
+verdict() {  # exit-code reports-dir -> prints line, returns script status
+  python3 "$VERDICT" --exit-code "$1" --reports "$2"
+}
+V="$TMP/verdict"
+report "$V/pass/target/surefire-reports" 3 1 0 0
+OUT="$(verdict 0 "$V/pass")" || die "a zero exit with tests run must pass: $OUT"
+[[ "$OUT" == "pass: 2 tests, 1 skipped" ]] || die "pass line wrong: $OUT"
+report "$V/nested/mod-azure/target/failsafe-reports" 2 0 0 0
+verdict 0 "$V/nested" >/dev/null || die "reports in a submodule's failsafe dir must count"
+report "$V/skipped/target/surefire-reports" 1 1 0 0
+OUT="$(verdict 0 "$V/skipped" || true)"
+verdict 0 "$V/skipped" >/dev/null && die "all tests skipped must not pass"
+[[ "$OUT" == FAIL:*"no tests executed"* ]] || die "skipped verdict wrong: $OUT"
+report "$V/ignored/target/surefire-reports" 1 0 1 0
+verdict 0 "$V/ignored" >/dev/null && die "a failure under a zero exit (failure.ignore) must not pass"
+mkdir -p "$V/empty"
+verdict 0 "$V/empty" >/dev/null && die "no reports at all must not pass"
+report "$V/nonzero/target/surefire-reports" 5 0 0 0
+verdict 1 "$V/nonzero" >/dev/null && die "a nonzero exit must fail even with green reports"
+OUT="$(verdict 124 "$V/nonzero" || true)"
+[[ "$OUT" == FAIL:*"timed out"* ]] || die "exit 124 must read as a timeout: $OUT"
+mkdir -p "$V/stray/target/other"; report "$V/stray/target/other" 9 0 0 0
+verdict 0 "$V/stray" >/dev/null && die "TEST-*.xml outside a surefire or failsafe dir must not count"
+ok "suite verdict"
+
 note "build context: the sidecar ignore file overrides the upstream .dockerignore"
 IGNORE="${DOCKERFILE}.dockerignore"
 [ -f "$IGNORE" ] || die "missing ${IGNORE##*/}: forks inherit an upstream .dockerignore excluding .*, which strips .mvn"
