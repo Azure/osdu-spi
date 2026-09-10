@@ -8,8 +8,8 @@ Each step ends with the observation that proves it worked. Do not move on withou
 
 - Admin on the GitHub organization that will hold the fork, so you can create the repository and read its variables.
 - The organization already carries `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` as organization secrets, or you can set them on the repository as [Initialization](../workflows/initialization.md) describes.
-- The `spi` CLI installed from a release of `Azure/osdu-spi-stack`, connected to the environment the fork will borrow (`spi connect`, then `spi status` reports deployable).
-- `az` logged in to the subscription that holds that environment, with rights to update federated credentials on its deploy identity.
+- The `spi` CLI installed from a release of `Azure/osdu-spi-stack`, connected to the environment the fork will borrow: `spi connect --resource-group <rg> --cluster <cluster>`, then `spi status` reports deployable.
+- `az` logged in to the subscription that holds that environment, with rights to update federated credentials on both of its identities, the deployer and the no-access identity.
 
 ## Establish
 
@@ -18,7 +18,7 @@ Each step ends with the observation that proves it worked. Do not move on withou
 A repository name that was used before leaves container packages behind in GHCR when the repository is deleted. A package no longer linked to any repository refuses pushes from a new repository's workflow token, so the first Docker Push on the recreated fork fails.
 
 ```bash
-gh api "orgs/<org>/packages?package_type=container" --jq '.[] | "\(.name) \(.repository.full_name // "unlinked")"'
+gh api --paginate "orgs/<org>/packages?package_type=container" --jq '.[] | "\(.name) \(.repository.full_name // "unlinked")"'
 ```
 
 Delete any unlinked package that carries the service's name (`<service>`, `<service>-acceptance`, `<service>-fork`). GitHub keeps a deleted package restorable for thirty days.
@@ -42,12 +42,14 @@ Proof: within a minute the repository has an open issue titled "Repository Initi
 Reply to that issue with the upstream repository, as a full URL for GitLab or `owner/name` for GitHub.
 
 ```
-https://community.opengroup.org/osdu/platform/system/<service>.git
+https://community.opengroup.org/osdu/platform/system/<service>
 ```
+
+Initialization appends `.git` itself.
 
 The reply starts the `Initialize Complete` workflow. It generates the filtered `fork_upstream`, seeds the Azure trees on `fork_integration`, deploys the fork workflows, applies the rulesets, and closes the issue. Expect four to six minutes.
 
-Proof: the issue is closed, and the repository has the three branches and the two variables.
+Proof: the issue is closed, and the repository has the three branches and the two initialization variables.
 
 ```bash
 gh api repos/<org>/<service>/branches --jq '.[].name'
@@ -89,7 +91,7 @@ Onboard cannot prove the credential itself, because only a workflow run in the f
 
 ### 6. Prove a change
 
-Push a build-relevant change to the descriptor pull request, or open a new one. A change under `provider/`, `testing/`, or a `pom.xml` counts; a change confined to `.github/`, docs, or dotfiles does not, and Check Paths skips the build.
+Push a build-relevant change to the descriptor pull request, or open a new one. A change under `provider/`, `testing/`, `.mvn/`, or a `pom.xml` counts; a change confined to `.github/`, docs, or other dotfiles does not, and Check Paths skips the build.
 
 Proof: the Deploy and Test job runs. Its "Log in as deploy identity" step succeeding is the proof of the credential. The pull request comment from Validation Summary lists every job and one verdict line per suite, and the job's Restore step returns the service to the canonical image.
 
@@ -97,7 +99,7 @@ Merge the pull request. The push to `main` runs the lane again on the merged dig
 
 ## Operate
 
-- **Every same-repository pull request borrows the environment.** Pull requests wait on each other through the per-service concurrency group.
+- **Every same-repository pull request that pushes an image borrows the environment.** A docs-only change skips the build and never borrows. Pull requests that do borrow wait on each other through the per-service concurrency group.
 - **A pull request from another repository never borrows.** The gate names the refusal; a maintainer who wants to prove such a change pushes it to a branch in the fork.
 - **`spi onboard <service> --repo <org>/<service>`** without `--write` is the drift check. Run it when the lane's login step starts failing.
 - **A required reviewer on the `spi-stack` environment** holds every borrow for a human. Add one in the repository's environment settings; the workflow needs no change.

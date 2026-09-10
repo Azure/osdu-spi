@@ -55,7 +55,7 @@ tests:
 
 ## Bindings
 
-A binding names the variable the suite reads and the symbol it takes its value from. The value itself is never in the file. The sources:
+A binding names the variable the suite reads and the symbol it takes its value from. Values that come from the environment, the caller, or a vault are never in the file; only `static` and `template` carry a declared `value`. The sources:
 
 | Source | Value | Use it for |
 |---|---|---|
@@ -76,7 +76,7 @@ An explicit variable in the caller's environment always wins over the file. That
 
 ## Write it
 
-1. Find the variables. Upstream suites read them through `System.getProperty` or `System.getenv`; grep the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them.
+1. Find the variables. Upstream suites read them through `System.getenv` or `System.getProperty`; grep the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them. A value the suite reads as a system property does not arrive from the environment on its own; pass it through in `mavenArguments` as `-DNAME=${env.NAME}` or map it in the suite's `pom.xml`.
 2. Bind each one. A URL is `gateway`, an id is `partition`, a token is `token`. If none of the sources fits, the suite wants something the stack does not publish; open an issue on the stack rather than a `user` binding with a default, because a default outlives the reason it was added.
 3. Set the timeout from a real run, plus margin.
 4. Check the contract:
@@ -93,8 +93,10 @@ An explicit variable in the caller's environment always wins over the file. That
     ```bash
     spi info --json > facts.json
     export RESOLVER_TOKEN=$(spi token)
-    python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite acceptance \
-      --descriptor .spi/service.yaml --facts facts.json --env-file acceptance.env
+    for suite in acceptance integration; do
+      python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
+        --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env"
+    done
     ```
 
     Run mode is what the lane uses: it refuses with exit 3 and names every binding it could not answer. Bind mode warns instead, for iterating against a personal stack.
@@ -102,13 +104,15 @@ An explicit variable in the caller's environment always wins over the file. That
 6. Run the suite as the lane will, through the image:
 
     ```bash
-    docker run --env-file acceptance.env ghcr.io/<org>/<service>-acceptance:<sha>
-    docker run --env-file integration.env -e SUITE_DIR=testing ghcr.io/<org>/<service>-acceptance:<sha> -pl <service>-test-azure -am test
+    docker run --env-file acceptance.env ghcr.io/<org>/<service>-acceptance:sha-<short-sha>
+    docker run --env-file integration.env -e SUITE_DIR=testing ghcr.io/<org>/<service>-acceptance:sha-<short-sha> -pl <service>-test-azure -am test
     ```
+
+    The tag is `sha-` followed by the twelve-character commit hash Docker Push printed; the digest from the same job works too.
 
     The env file is data for `docker run`, never a file to source: sourcing it would evaluate a token as shell.
 
-7. Open the pull request. The Docker Build job's "Acceptance Image" step proves the image bakes every declared path, and once the fork is onboarded the Deploy and Test job runs each suite and reports one verdict line per suite on the pull request.
+7. Open the pull request. A pull request that changes only the descriptor skips the build, because Check Paths treats `.spi/` as configuration. On the first build-relevant pull request after it, the Docker Build job's "Acceptance Image" step proves the image bakes every declared path, and once the fork is onboarded the Deploy and Test job runs each suite and reports one verdict line per suite on the pull request.
 
 ## Common mistakes
 
