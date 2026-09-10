@@ -529,6 +529,7 @@ jobs:
           failed=""
           verdicts=""
           mkdir -p reports
+          trap '{ echo "verdicts<<EOF"; printf "%s" "$verdicts"; echo "EOF"; } >> "$GITHUB_OUTPUT"' EXIT
           python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
             --descriptor .spi/service.yaml --report suites.json > /dev/null
           for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
@@ -555,14 +556,14 @@ jobs:
             rm -f "$suite.env"
             echo "::endgroup::"
           done
-          { echo "verdicts<<EOF"; printf '%s' "$verdicts"; echo "EOF"; } >> "$GITHUB_OUTPUT"
           [ -z "$failed" ] || { echo "::error::failed suites:$failed"; exit 1; }
 
       - name: "Upload suite reports"
         if: always() && steps.prove.outcome != 'skipped'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: suite-reports-${{ github.run_attempt }}
+          name: suite-reports
+          overwrite: true
           path: |
             reports/**/target/surefire-reports/**
             reports/**/target/failsafe-reports/**
@@ -695,6 +696,10 @@ jobs:
        (github.event.pull_request.head.repo.full_name == github.repository &&
         startsWith(github.event.pull_request.head.ref, 'sync/')))
     runs-on: ubuntu-latest
+    # One summary at a time per pull request, so two rapid pushes cannot each create a comment.
+    concurrency:
+      group: validation-summary-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: false
     steps:
       - name: "Summarize"
         env:
@@ -714,7 +719,7 @@ jobs:
             echo "| Job | Result | Note |"
             echo "|---|---|---|"
             jq -rn --arg gate "$GATE_REASON" --arg init "$INITIALIZED" --arg relevant "$BUILD_RELEVANT" \
-              --arg java "$JAVA_REPO" --argjson needs "$NEEDS" '
+              --arg java "$JAVA_REPO" --arg event "$EVENT_NAME" --argjson needs "$NEEDS" '
               def names: {
                 "check-initialization": "Check Initialization", "check-repo-state": "Check Repository",
                 "check-paths": "Check Paths", "java-build": "Java Build", "docker-build": "Docker Build",
@@ -724,10 +729,12 @@ jobs:
               def build: . == "java-build" or . == "docker-build" or . == "docker-push";
               def note:
                 if . == "deploy-test" and $gate != "" then $gate
-                elif build and $init != "true" then "repository not yet initialized"
+                elif $needs[.].result != "skipped" then ""
+                elif $init != "true" then "repository not yet initialized"
                 elif build and $relevant == "false" then "only configuration or docs changed"
                 elif build and $java != "true" then "not a Java repository"
-                else "" end;
+                elif build and $event == "pull_request_target" then "sync lane; images validate on the cascade PR"
+                else "a job it needs did not run" end;
               names | keys_unsorted[] | select(in($needs)) | . as $job
                 | "| \(names[$job]) | \($needs[$job].result | icon) \($needs[$job].result) | \($job | note) |"'
             if [ -n "$VERDICTS" ]; then
@@ -741,8 +748,12 @@ jobs:
           cat summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: "Comment on the pull request"
-        # A fork-head pull_request token is read-only, so an outside PR carries no comment.
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        # A fork-head or Dependabot pull_request token is read-only, so those PRs carry no comment.
+        if: |
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -750,8 +761,8 @@ jobs:
           set -euo pipefail
           marker="<!-- validation-summary -->"
           { echo "$marker"; cat summary.md; } > comment.md
-          existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
-            --jq "[.[] | select(.body | startswith(\"$marker\"))] | first | .id // empty")
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)
           if [ -n "$existing" ]; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -F body=@comment.md > /dev/null
           else

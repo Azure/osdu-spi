@@ -32,7 +32,7 @@ On a push to `main` or `fork_integration`, and on the fork's own pull requests, 
 
 ## Validation Results
 
-The summary job posts one comment on the pull request, updated in place on every push: a table of every job with its result and the reason for any skip, followed by one line per suite the lane ran, and a link to the run. A failed suite names its failure count there; the Surefire and Failsafe reports are attached to the run as the `suite-reports` artifact. Pull requests from other repositories get no comment, because their token cannot write one; the checks list and run summary carry the same content.
+The summary job posts one comment on the pull request, updated in place on every push: a table of every job with its result and the reason for any skip, followed by one line per suite the lane ran, and a link to the run. A failed suite names its failure count there; the Surefire and Failsafe reports are attached to the run as the `suite-reports` artifact. Pull requests from other repositories and from Dependabot get no comment, because their token cannot write one, and sync PRs on the `pull_request_target` lane never had one; the checks list and run summary carry the same content.
 
 When every check passes the PR can merge once a reviewer approves it. When a check fails the PR is blocked; the failing check links to the job log with the reason.
 

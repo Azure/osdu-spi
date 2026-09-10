@@ -8,8 +8,7 @@ This directory contains reusable GitHub Actions components used across our workf
 .github/
 ├── actions/              # Composite and local actions
 │   ├── java-build/      # Maven build action
-│   │   ├── action.yml   # Action definition (required name)
-│   │   └── README.md    # Action-specific documentation
+│   │   └── action.yml   # Action definition (required name)
 │   └── README.md        # This file
 └── workflows/           # Reusable and standard workflows
     ├── build.yml        # Main build workflow

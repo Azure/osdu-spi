@@ -45,7 +45,7 @@ jobs:
           fi
 
   java-build:
-    name: "🔨 Dependabot Build Validation"
+    name: "Dependabot Build Validation"
     needs: check-repo-state
     if: needs.check-repo-state.outputs.is_java_repo == 'true'
     runs-on: ubuntu-latest
