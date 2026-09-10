@@ -23,7 +23,7 @@ ARG SUITE_DIRS
 COPY . /src/
 RUN set -eu; mkdir -p /suite; \
     for dir in ${SUITE_DIRS:?SUITE_DIRS build-arg is required}; do \
-      mkdir -p "/suite/$(dirname "$dir")"; cp -R "/src/$dir" "/suite/$dir"; \
+      mkdir -p "/suite/$dir"; cp -R "/src/$dir/." "/suite/$dir/"; \
     done; \
     if [ -d /src/.mvn ]; then cp -R /src/.mvn /suite/.mvn; fi; \
     if [ -d /src/.spi ]; then cp -R /src/.spi /suite/.spi; fi; \

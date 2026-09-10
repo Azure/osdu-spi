@@ -135,6 +135,7 @@ grep -q 'SUITE_DIRS=${{ steps.suite.outputs.suite_dirs }}' "$HERE/../../actions/
 grep -q ' AS select$' "$DOCKERFILE" || die "select stage missing: the service source must not reach the image"
 grep -q '^COPY --from=select /suite/ /suite/$' "$DOCKERFILE" || die "maven stage must copy only the selected suites"
 grep -q '/suite/.default-suite-dir' "$DOCKERFILE" || die "the default suite must be recorded for the entrypoint"
+grep -qF 'cp -R "/src/$dir/." "/suite/$dir/"' "$DOCKERFILE" || die "select stage must copy suite contents into the destination, not nest under it"
 grep -q 'acceptance-entrypoint.sh' "$DOCKERFILE" || die "entrypoint not baked"
 grep -q '^CMD \["verify"\]$' "$DOCKERFILE" || die "default command must be verify"
 grep -q 'dependency:go-offline' "$DOCKERFILE" || die "dependencies must be pre-resolved at build"

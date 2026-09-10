@@ -304,7 +304,7 @@ jobs:
         github.actor != 'dependabot[bot]' &&
         github.event_name != 'pull_request_target' &&
         github.event_name != 'workflow_dispatch' &&
-        github.ref_name != 'fork_upstream' &&
+        (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream') &&
         (github.event_name != 'pull_request' ||
          github.event.pull_request.head.repo.full_name == github.repository)
       ) || (
@@ -367,7 +367,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           ACTOR: ${{ github.actor }}
-          REF: ${{ github.ref_name }}
+          REF: ${{ github.base_ref || github.ref_name }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           ONBOARDED: ${{ vars.SPI_STACK_CLUSTER != '' }}
           CLUSTER: ${{ vars.SPI_STACK_CLUSTER }}
@@ -472,7 +472,9 @@ jobs:
           jq -e '.deployable == true' status.json > /dev/null || {
             echo "::error::environment is not deployable: $(jq -r '.reason.message // "unknown"' status.json)"; exit 1; }
           spi info --json > facts.json
-          echo "audience=$(jq -r .azure.token_audience facts.json)" >> "$GITHUB_OUTPUT"
+          audience=$(jq -r .azure.token_audience facts.json)
+          echo "$audience" | grep -Eq '^[A-Za-z0-9:/._-]+$' || { echo "::error::token_audience is empty or malformed: $audience"; exit 1; }
+          echo "audience=$audience" >> "$GITHUB_OUTPUT"
 
       - name: "Borrow"
         run: |
@@ -494,9 +496,11 @@ jobs:
 
       - name: "Mint test caller"
         # The deploy identity's own bearer, for the audience the facts publish.
+        env:
+          AUDIENCE: ${{ steps.gate.outputs.audience }}
         run: |
           set -euo pipefail
-          TOKEN=$(az account get-access-token --resource "${{ steps.gate.outputs.audience }}" --query accessToken -o tsv)
+          TOKEN=$(az account get-access-token --resource "$AUDIENCE" --query accessToken -o tsv)
           echo "::add-mask::$TOKEN"
           echo "RESOLVER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
