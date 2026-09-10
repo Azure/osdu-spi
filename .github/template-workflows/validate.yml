@@ -445,7 +445,10 @@ jobs:
           spi --version
 
       - name: "Connect"
-        run: spi connect --resource-group "${{ vars.SPI_STACK_RESOURCE_GROUP }}" --cluster "${{ vars.SPI_STACK_CLUSTER }}"
+        env:
+          RESOURCE_GROUP: ${{ vars.SPI_STACK_RESOURCE_GROUP }}
+          CLUSTER: ${{ vars.SPI_STACK_CLUSTER }}
+        run: spi connect --resource-group "$RESOURCE_GROUP" --cluster "$CLUSTER"
 
       - name: "Match the environment's stack version"
         # The CLI that proves an environment is the release the environment was built with.

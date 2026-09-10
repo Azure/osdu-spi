@@ -40,6 +40,10 @@ The lane installs the latest `spi` release to reach the environment, then reads 
 
 The positive-path caller is the environment's deploy identity, the same principal the lane logs in as, minted for the audience `spi info --json` publishes as `azure.token_audience`. The bearer reaches the resolver as `RESOLVER_TOKEN` and lands in every binding with `source: token`, so a suite may call the variable whatever it likes and a developer supplies the same input from `spi token`. The negative-path identity the stack provisions is not yet exercised by a suite.
 
+### Not yet wired
+
+Two parts of the descriptor contract (ADR-040) are validated and reported by the resolver but not enforced by the lane. `keyvault:` bindings are not materialized: the lane passes no `--secrets` file, so a suite that declares one fails as env-not-ready ([#175](https://github.com/Azure/osdu-spi/issues/175)). `requires.loads`, `requires.groups`, and `dependencies` are not compared with the status facts before the borrow, because the stack does not yet publish seeded loads ([osdu-spi-stack#133](https://github.com/Azure/osdu-spi-stack/issues/133), [#176](https://github.com/Azure/osdu-spi/issues/176)). No shipped descriptor uses either yet.
+
 ## Consequences
 
 ### Positive

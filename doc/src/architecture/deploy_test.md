@@ -8,7 +8,7 @@
 
 ## §1 Problem and constraints
 
-The engineering system builds and pushes a digest-addressed service image per commit (the `docker-push` job in `validate.yml`). Nothing yet deploys that image or proves it against a live platform. The end state: each internal push or PR deploys its image into the shared `osdu-spi-stack` AKS environment, runs the service's acceptance suite against it, and returns the environment to its previous state, as a required check.
+The engineering system builds and pushes a digest-addressed service image per commit (the `docker-push` job in `validate.yml`). Before this lane, nothing deployed that image or proved it against a live platform. The end state: each internal push or PR deploys its image into the shared `osdu-spi-stack` AKS environment, runs the service's acceptance suite against it, and returns the environment to its previous state, as a required check.
 
 The hard part is not the deployment. It is the question every OSDU test asks first: *where is the service, how do I authenticate, and which identifiers do I use?* The subgroup-core wiki names the root cause of a decade of pain:
 
@@ -112,7 +112,7 @@ mint    → az account get-access-token --resource <azure.token_audience>   → 
 bind    → resolver --suite <name>: descriptor × facts × token × Key Vault → <name>.env
 prove   → docker run --env-file <name>.env -e SUITE_DIR=<path> <svc>-acceptance@<digest>   per suite
 restore → spi service reset --if-run $GITHUB_RUN_ID           (if: always)
-verdict → validation-summary: one table; fails on any failed or cancelled job
+verdict → validation-summary: one table; fails on any failed or cancelled build, push, or deploy job
 ```
 
 - **Deploy is a lock write, not a kubectl mutation.** `spi service pin` updates the `osdu-image-lock` ConfigMap under compare-and-set; Flux re-renders the HelmRelease. GitOps stays alive the whole time: no suspended-Flux CI mode, no weekly first-deploy failure, no loss of self-healing (stack ADR-031: "a lock write is the whole deploy"). The pin returns at the lock write (the fork identity holds no Flux write; the lock's watch label triggers reconciliation), so the lane polls `spi service verify` until the digest is live or the borrow budget expires. A typed `lock_mismatch` from verify means the pin was replaced mid-borrow.

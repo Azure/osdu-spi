@@ -36,7 +36,7 @@ Failure is typed and fail-closed, serving two audiences. `bind` mode, the develo
 
 ### Consumers
 
-The `acceptance-image` action bakes every declared suite into one `<service>-acceptance` image beside the service image in `validate.yml`, `release.yml` runs the resolver's suite lookup before tagging that image with the release version, and the deploy lane (ADR-041) resolves each suite with `--suite` and runs it from that image. The image and release consumers skip when a fork has no descriptor; the lane reports why.
+The `acceptance-image` action bakes every declared suite into one `<service>-acceptance` image beside the service image in `validate.yml`, `release.yml` runs the resolver's suite lookup before tagging that image with the release version, and the deploy lane (ADR-041) resolves each suite with `--suite` and runs it from that image. Without a descriptor the image and release consumers fall back to the upstream `<service>-acceptance-test` directory and skip only when that is absent too; the deploy lane skips on a missing descriptor and reports why.
 
 ## Consequences
 
