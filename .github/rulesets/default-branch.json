@@ -40,7 +40,7 @@
             "context": "CodeQL"
           },
           {
-            "context": "🐳 Docker Build"
+            "context": "📋 Validation Summary"
           }
         ]
       }

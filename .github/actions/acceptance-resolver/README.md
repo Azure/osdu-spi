@@ -37,6 +37,7 @@ python3 resolve.py --mode {bind|run}
                    --descriptor .spi/service.yaml
                    --facts <spi-info.json>
                    --env-file <out.env>
+                   [--suite <name>]
                    [--secrets <name-to-value.json>]
                    [--expect-gateway <url>]
                    [--expect-partition <name>]
@@ -44,15 +45,19 @@ python3 resolve.py --mode {bind|run}
 
 python3 resolve.py --contract-only
                    --descriptor .spi/service.yaml
+                   [--suite <name>]
                    [--report <path>]
 ```
 
-The composite `action.yml` wraps exactly the first invocation.
-`--contract-only` validates the descriptor and reports the contract fields
-(suite path, Maven argv, requires, secret names) with no facts, no
-resolution, and no env file — it is how the build lane reads the descriptor
-where no environment exists (e.g. selecting the suite module the acceptance
-image bakes). Descriptor violations exit 2 exactly as in the full modes.
+The composite `action.yml` wraps exactly the first invocation. `--suite`
+selects which of the descriptor's named suites to resolve, `acceptance` by
+default; the whole descriptor is validated either way, and a name it does not
+declare exits 2. `--contract-only` validates the descriptor and reports the
+contract fields (suite path, Maven argv, requires, secret names, and every
+suite's path) with no facts, no resolution, and no env file. It is how the
+build lane reads the descriptor where no environment exists, to select the
+suite modules the acceptance image bakes, and how the deploy lane enumerates
+the suites to run. Descriptor violations exit 2 exactly as in the full modes.
 
 ## Modes: two audiences
 
@@ -77,6 +82,7 @@ naming the offending key — the resolver refuses to guess.
 | `static` | The declared `value`, verbatim |
 | `template` | The declared `value` with `${NAME}` references to other bindings, rendered after everything else resolves; may only reference non-template, non-secret bindings |
 | `user` | Nothing — the caller's environment must supply it (or a declared `default`) |
+| `token` | `RESOLVER_TOKEN`, the bearer the caller minted for this run: the deploy lane's per-run mint, or `spi token` on a laptop. No `default`: a default token is a secret in the repository |
 
 `openid` and `legalTag` are agreed with the stack
 ([osdu-spi-stack#131](https://github.com/Azure/osdu-spi-stack/issues/131)) but
@@ -144,11 +150,13 @@ Written to `--report` (and always attempted, even on failure):
 
 ```json
 {
-  "engine_version": "1.0.0",
+  "engine_version": "1.1.0",
   "report_schema": 1,
   "mode": "bind",
   "service": "partition",
   "contract": {
+    "suite": "acceptance",
+    "suites": {"acceptance": "partition-acceptance-test", "integration": "testing"},
     "test_type": "maven",
     "test_dir": "partition-acceptance-test",
     "maven_arguments": ["verify"],
@@ -173,7 +181,7 @@ follows the category.
 # .spi/service.yaml — fork-owned, reviewed with the code, survives any stack rehome
 schemaVersion: 3
 service: { name: partition, archetype: java-maven-azure }
-tests:
+tests:                                  # named suites of one shape; acceptance is required
   acceptance:
     type: maven
     path: partition-acceptance-test     # upstream-maintained module, kept by the filter
@@ -184,7 +192,7 @@ tests:
       TEST_OPENID_PROVIDER_URL: { source: openid }
       LEGAL_TAG:           { source: legalTag }
       CLIENT_TENANT:       { source: tenant }
-      INTEGRATION_TESTER_TOKEN: { source: user }   # minted per run, never stored
+      INTEGRATION_TESTER_TOKEN: { source: token }  # minted per run, never stored
       SEARCH_URL:          { source: template, value: "${PARTITION_BASE_URL}api/search/v2/" }
     keyVaultBindings: {}                # env name -> Key Vault secret NAME, resolved at run time
     requires:                           # checked against published load facts by the deploy gate
@@ -192,9 +200,17 @@ tests:
       groups: []
     dependencies: []                    # sibling services this suite calls
     timeoutMinutes: 25
+  integration:                          # a fork-owned suite, selected with --suite integration
+    type: maven
+    path: testing
+    mavenArguments: [-pl, partition-test-azure, -am, test]
+    bindings:
+      PARTITION_BASE_URL: { source: gateway, suffix: / }
+      MY_TENANT:          { source: partition }
+      INTEGRATION_TESTER_ACCESS_TOKEN: { source: token }
 ```
 
-The formal contract is `service-descriptor.schema.json` beside this file. The
+Suite names are lowercase slugs. The formal contract is `service-descriptor.schema.json` beside this file. The
 descriptor accepts a fixed YAML subset (block and flow mappings/lists, quoted
 or plain scalars, comments — no anchors, no multi-line scalars, no tabs),
 parsed by the engine itself so the contract never depends on the runner image.

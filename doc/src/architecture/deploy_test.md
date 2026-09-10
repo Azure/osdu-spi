@@ -4,11 +4,11 @@
 
 > After CI builds a service image, **borrow** the service's slot in a running SPI stack, **prove** the image with the acceptance suite, and **restore** the slot. Every environment answer is **discovered at run time**, never pushed into a repository.
 >
-> Status: Draft for review · 2026-08-31 · Applies to the filter tier and the customer mirror tier · Implementation tracked in [the "deploy & test capability" tracking issue](https://github.com/Azure/osdu-spi/issues/158).
+> Status: Built · designed 2026-08-31, lane shipped 2026-09-10 (ADR-040, ADR-041) · Applies to the filter tier and the customer mirror tier · History in [the "deploy & test capability" tracking issue](https://github.com/Azure/osdu-spi/issues/158). Where this document and the two records differ, the records govern.
 
 ## §1 Problem and constraints
 
-The engineering system builds and pushes a digest-addressed service image per commit (the `docker-push` job in `validate.yml`). Nothing yet deploys that image or proves it against a live platform. The end state: each internal push or PR deploys its image into the shared `osdu-spi-stack` AKS environment, runs the service's acceptance suite against it, and returns the environment to its previous state, as a required check.
+The engineering system builds and pushes a digest-addressed service image per commit (the `docker-push` job in `validate.yml`). Before this lane, nothing deployed that image or proved it against a live platform. The end state: each internal push or PR deploys its image into the shared `osdu-spi-stack` AKS environment, runs the service's acceptance suite against it, and returns the environment to its previous state, as a required check.
 
 The hard part is not the deployment. It is the question every OSDU test asks first: *where is the service, how do I authenticate, and which identifiers do I use?* The subgroup-core wiki names the root cause of a decade of pain:
 
@@ -62,24 +62,31 @@ The same three-owner split subgroup-core proved: the environment owns its facts,
 # .spi/service.yaml: fork-owned, reviewed with the code, survives any stack rehome
 schemaVersion: 3
 service: { name: partition, archetype: java-maven-azure }
-tests:
+tests:                                  # named suites of one shape; acceptance is required
   acceptance:
     type: maven
     path: partition-acceptance-test     # upstream-maintained module, kept by the filter
+    mavenArguments: [test]
     bindings:                           # symbols, never values; resolved against facts per run
-      PARTITION_BASE_URL:  { source: gateway, suffix: / }
-      MY_TENANT:           { source: partition }
-      TEST_OPENID_PROVIDER_URL: { source: openid }
-      LEGAL_TAG:           { source: legalTag }   # published as a fact by Tier-1 bootstrap (§6)
-    keyVaultBindings: {}                # env name → Key Vault secret NAME, resolved at run time
-    requires:                           # the declaration layer nobody built (§6)
-      loads: []                         # e.g. [reference-data] for search / indexer
-      groups: []                        # entitlements groups the caller must hold
-    dependencies: []                    # sibling services this suite calls
-    timeoutMinutes: 25
+      HOST:                  { source: gateway }
+      DATA_PARTITION_ID:     { source: partition }
+      PRIVILEGED_USER_TOKEN: { source: token }     # the run's minted bearer (RESOLVER_TOKEN)
+    timeoutMinutes: 15
+  integration:                          # the fork-owned provider suite, selectable by name
+    type: maven
+    path: testing
+    mavenArguments: [-pl, partition-test-azure, -am, test]
+    bindings:
+      ENVIRONMENT:        { source: static, value: dev }
+      PARTITION_BASE_URL: { source: gateway, suffix: / }
+      MY_TENANT:          { source: partition }
+      INTEGRATION_TESTER_ACCESS_TOKEN: { source: token }
+    timeoutMinutes: 20
 ```
 
-Ports the prototype's ADR-043 contract (reserved-name blocklist, argv-token Maven args, no identity/cluster selection) and subgroup-core's closed-vocabulary posture: an unknown source kind halts loudly. Resolution precedence: explicit env → facts → declared default; templates render last, so the same contract runs in CI, against a personal stack, or fully offline.
+Every suite may also carry `keyVaultBindings` (env name to Key Vault secret name), `requires` (`loads`, `groups`), and `dependencies`; the partition suites need none of them.
+
+Ports the prototype's ADR-043 contract (reserved-name blocklist, argv-token Maven args, no identity/cluster selection) and subgroup-core's closed-vocabulary posture: an unknown source kind halts loudly. Resolution precedence: explicit env → facts → declared default; templates render last, so the same contract runs in CI, against a personal stack, or fully offline. `token` is the one caller input with a fixed name, `RESOLVER_TOKEN`, so the lane and a developer supply the bearer the same way whatever a suite calls it.
 
 ### What the repository holds, in full
 
@@ -93,21 +100,24 @@ That is the entire per-repo surface. The prototype's other ~13 pushed variables 
 
 ## §5 The CI lane: one borrow transaction
 
-One credentialed job, chained on `docker-push` in `validate.yml`, behind the existing ADR-036 trust gate (internal heads only; never dependabot; never `pull_request_target`). Concurrency group `spi-stack-<service>`, `cancel-in-progress: false`.
+One credentialed job, `deploy-test`, chained on `docker-push` in `validate.yml` behind a gate job that carries the ADR-036 trust clause (push or same-repository pull request; never Dependabot, `pull_request_target`, or `fork_upstream`) and always says why the lane did not run. It runs on the fork's own pull requests and again on the push after merge, since the merge is a new build with a new digest. Concurrency group `spi-stack-<service>`, `cancel-in-progress: false`.
 
 ```
+gate    → deploy-gate                 trusted event? onboarded? descriptor? image pushed?
+install → the spi release the environment runs (environment.stackVersion from spi status)
 gate    → spi status --json          deployable? seeded per requires? dependencies unpinned?
 borrow  → spi service pin --image ghcr…@sha256:… --ephemeral --run-id $GITHUB_RUN_ID
-verify  → spi service verify         live pod imageID == our digest
-bind    → resolver: descriptor × facts × Key Vault → .env
-prove   → docker run --env-file .env <svc>-acceptance:<sha>   (against the gateway)
+verify  → spi service verify         poll until the live pod imageID == our digest
+mint    → az account get-access-token --resource <azure.token_audience>   → RESOLVER_TOKEN
+bind    → resolver --suite <name>: descriptor × facts × token × Key Vault → <name>.env
+prove   → docker run --env-file <name>.env -e SUITE_DIR=<path> <svc>-acceptance@<digest>   per suite
 restore → spi service reset --if-run $GITHUB_RUN_ID           (if: always)
-verdict → pass ⇔ borrow ∧ prove ∧ restore all green, with attribution
+verdict → validation-summary: one table; fails on any failed or cancelled build, push, or deploy job
 ```
 
 - **Deploy is a lock write, not a kubectl mutation.** `spi service pin` updates the `osdu-image-lock` ConfigMap under compare-and-set; Flux re-renders the HelmRelease. GitOps stays alive the whole time: no suspended-Flux CI mode, no weekly first-deploy failure, no loss of self-healing (stack ADR-031: "a lock write is the whole deploy"). The pin returns at the lock write (the fork identity holds no Flux write; the lock's watch label triggers reconciliation), so the lane polls `spi service verify` until the digest is live or the borrow budget expires. A typed `lock_mismatch` from verify means the pin was replaced mid-borrow.
 - **Restore is ownership-checked.** `reset --if-run` restores the recorded canonical only while the live pin still belongs to this run, so a crashed run can't be "restored" over a newer sibling. Push events to protected branches may pin without restore; the environment's refresh converges the canonical.
-- **Not-onboarded is a clean skip.** When the pointer variables are absent, the lane reports a neutral pass ("deploy skipped: no stack attached"). Required checks arm only after onboarding verification.
+- **Not-onboarded is a visible skip.** When the pointer variables are absent, the gate reports "repository is not onboarded to a stack" and the lane does not run; the summary check stays green. The same ruleset serves every fork, onboarded or not.
 - **The gate replaces the sticky boolean.** `spi status` is consulted every run: the stack's maintenance flag is fail-closed after a red rebuild, so PRs get "environment in maintenance" in seconds instead of marching into a dead cluster.
 - **Verdicts carry attribution** (cimpl-test's taxonomy): env-not-ready, infra, and test-failure are distinct outcomes; a suite that collects zero tests is never a pass; an interrupted run is never a pass.
 
@@ -129,10 +139,10 @@ Boundary rule (cimpl-stack ADR-025, adopted verbatim): *persistent state → a d
 
 Adopts stack ADR-032 wholesale (designed there, not yet built):
 
-- **Per-fork user-assigned managed identity** in a persistent identity RG (survives environment rebuilds), with one federated credential trusting only `repo:<org>/<fork>:environment:spi-stack`, a *protected GitHub environment used for identity protection, not config storage*.
+- **One deploy identity per environment**, a user-assigned managed identity in the environment's resource group, with one federated credential per trusted fork whose subject is the one GitHub signs for `repo:<org>/<fork>:environment:spi-stack`. The GitHub environment is used for identity protection, not config storage, and admits every branch: write access to the fork is the boundary, and a pull request from another repository never receives an OIDC token.
 - **Least-privilege Azure roles**: AKS Cluster User + Key Vault Secrets User. **Namespace-scoped Kubernetes Roles**: lock-object patch restricted by `resourceNames` to `osdu-image-lock`; read-only over deployments/pods/logs; no create, no delete, no secrets verbs.
-- **Test callers, secretless**: the positive-path token is minted per run (`az account get-access-token --resource <data-plane app id from facts>`) as the fork's own UAMI, whose entitlements the Tier-1 ensure step seeds at every rebuild. Negative-path (403) tests use a shared stack-provisioned *no-access* identity via a second, isolated OIDC exchange. No long-lived secrets anywhere.
-- **Onboarding** = `spi onboard <service> --repo <org>/<fork>` (identity, federation, bindings, pointer variables, first canary) + one reviewed stack PR adding the RoleBinding subject. Verification arms the two required checks, `🚀 Deploy to spi-stack` and `🧪 Acceptance Tests`, via computed readiness.
+- **Test callers, secretless**: the positive-path token is minted per run as the deploy identity for the audience the facts publish as `azure.token_audience`; the Azure-provider services admit any app-only token from the tenant, so no entitlements seeding is needed for the suites built so far. A developer mints the same token with `spi token`. The stack also provisions a *no-access* identity for negative-path tests, not yet exercised by a suite. No long-lived secrets anywhere.
+- **Onboarding** = `spi onboard <service> --repo <org>/<fork>`: the federated credential on both identities, the open `spi-stack` environment, the five repository values, and the fork's entry in the cluster's trusted-repository projection. Nothing arms afterwards; the lane runs on the next trusted event.
 
 **Customer mirrors**: the identical machinery arrives by mirror sync. A customer runs their own stack (same CLI, same facts contract), sets their own pointer + identity triplet at adoption time (an `Adopt Fork` extension), and pins their own GHCR images. External-fork PR heads never reach the credentialed lane; the existing ADR-036 gate already guarantees it.
 
@@ -146,16 +156,26 @@ The developer loop uses the same three contracts with no CI in the path:
 # once: stand up or connect to your own stack
 spi connect -g my-rg -c my-cluster && spi status
 
+# the caller: the environment's deploy identity, minted through the cluster
+export RESOLVER_TOKEN=$(spi token)
+
 # resolve answers: descriptor × facts × vault → .env  (bind warns; run refuses: two audiences)
-resolver bind
+spi info --json > facts.json
+python3 .github/actions/acceptance-resolver/resolve.py --mode bind --suite acceptance \
+  --descriptor .spi/service.yaml --facts facts.json --env-file .env
 
 # the env file is `docker run` data, never shell code: mvn does not read it,
 # and sourcing it would evaluate secret values as shell. consume it through
 # the suite image, exactly as CI does (rebuild the image locally to iterate):
 docker run --env-file .env ghcr.io/<org>/partition-acceptance:<sha>
 
+# another suite from the same image: its own bindings, its own env file
+python3 .github/actions/acceptance-resolver/resolve.py --mode bind --suite integration \
+  --descriptor .spi/service.yaml --facts facts.json --env-file integration.env
+docker run --env-file integration.env -e SUITE_DIR=testing ghcr.io/<org>/partition-acceptance:<sha> -pl partition-test-azure -am test
+
 # explicit env always wins: point the base URL at a laptop service
-PARTITION_BASE_URL=http://host.docker.internal:8080/ resolver bind \
+PARTITION_BASE_URL=http://host.docker.internal:8080/ python3 .github/actions/acceptance-resolver/resolve.py --mode bind ... \
   && docker run --env-file .env ghcr.io/<org>/partition-acceptance:<sha>
 ```
 
@@ -172,13 +192,13 @@ PARTITION_BASE_URL=http://host.docker.internal:8080/ resolver bind \
 | D1 | Deploy through the stack's image-lock pin, never direct cluster mutation. Restore is `reset --if-run`. | Settled | Suspend-Flux + `kubectl set image`: reverted by reconciliation unless the stack lives permanently in CI mode, costing self-healing and failing the first deploy after every rebuild. Stack ADR-031 already rejected it. |
 | D2 | Config transport is a pointer plus per-run discovery: repos hold five values (§4); everything else from `spi info/status --json` per run. | Settled | Pushing ~16 facts per fork: six go stale weekly across N forks with no reconciliation loop; GitHub Environments as config storage. Discovery is proven twice and mandated by the mirror tier. |
 | D3 | Test configuration is a fork-owned descriptor with symbolic bindings (closed vocabulary, halt-on-unknown, reserved-name blocklist, branch-versioned). | Settled | Repo-variable config (not branch-versioned, not reviewable with test changes); free-form Maven command strings. Proven by subgroup-core on 13 services; re-derived independently by prototype ADR-043. |
-| D4 | Gate on live environment status every run; onboarding verification only arms the required checks. | Settled | The sticky `DEPLOY_VALIDATED=true` boolean: it keeps asserting a canary that ran against an environment that no longer exists. |
+| D4 | Gate on live environment status every run; a fork that is not onboarded skips with a visible reason under the same required check. | Settled | The sticky `DEPLOY_VALIDATED=true` boolean: it keeps asserting a canary that ran against an environment that no longer exists. Per-fork ruleset filtering, which the visible skip makes unnecessary. |
 | D5 | Acceptance tests ship as images, built from the same commit as the service image; canonical Dockerfile owned by the template. | Settled | Bare Maven on the runner per run: loses months-later re-runnability of released tests and re-resolves dependencies every CI run. |
 | D6 | Test images execute on the runner (`docker run --env-file` against the gateway), not in-cluster. | Judgment call | A Kubernetes Job in-cluster: closer to production networking, but requires create/delete verbs the fork identity deliberately lacks (stack ADR-032), plus log/lifecycle machinery. Cost accepted: runner→gateway egress must be open. |
-| D7 | Positive test caller is the fork's own UAMI (entitlements seeded by the Tier-1 ensure step); negative caller is a shared stack-provisioned no-access identity. Fully secretless. | Judgment call | One shared acceptance-tester SP with a client secret in Key Vault: fewer identities to seed, but revives a long-lived credential and blurs attribution. Cost accepted: the ensure step seeds N identities from the onboarding roster. |
-| D8 | Default suite is the upstream `<svc>-acceptance-test` module (kept by the filter, community-maintained); the fork-owned `testing/<svc>-test-azure` remains selectable per descriptor. | Judgment call | Defaulting to the fork-owned Azure testing module: fork-maintained forever, and drifts from the community suite. |
+| D7 | Positive test caller is the environment's deploy identity, minted per run for `azure.token_audience`; negative caller is the stack-provisioned no-access identity. Fully secretless. | Settled | One shared acceptance-tester SP with a client secret in Key Vault: revives a long-lived credential. A per-fork identity: the stack chose one deploy identity per environment (its ADR-032), and partition-class services admit any tenant app-only token, so per-fork attribution bought nothing. |
+| D8 | Default suite is the upstream `<svc>-acceptance-test` module (kept by the filter, community-maintained); it runs on Entra as-is, taking a static `PRIVILEGED_USER_TOKEN`. The fork-owned `testing/<svc>-test-azure` is a second named suite in the same image. | Settled | Defaulting to the fork-owned Azure testing module: fork-maintained forever, and drifts from the community suite. One image per suite: more to tag and retain for no gain. |
 | D9 | A pinned dependency blocks the gate: wait briefly, then refuse with a typed reason (visible via `spi status` → `pinnedServices`). | Judgment call | Advisory-only probes (a contaminated pass was still a pass) and a fleet-wide lock (serializes all services on no evidence of universal conflict). |
-| D10 | The resolver lives in the template as a synced action; the stack CLI stays the sole authority on facts; one agreement point cross-checks endpoint/partition. | Judgment call | Folding resolution into the `spi` CLI: one tool, but couples test semantics into the environment's release cadence and adds a version-skew axis. |
+| D10 | The resolver lives in the template as a synced action; the stack CLI stays the sole authority on facts; one agreement point cross-checks endpoint/partition. The lane runs the CLI release the environment reports. | Judgment call | Folding resolution into the `spi` CLI: one tool, but couples test semantics into the environment's release cadence and adds a version-skew axis. |
 | D11 | Seeding follows the three-tier model with descriptor-declared requirements (`requires`) and load-state facts. | Settled | Test-harness-owned seeding (every suite re-seeds, slow and racy); load-as-GitOps (a failed 80k-record load should never block platform readiness). |
 | D12 | Loads run at rebuild time with pinned, mirrored sources; registry as YAML data; state published durably in facts. | Judgment call | Manual-afterthought loads (right for a laptop, wrong for an unattended weekly rebuild); live-fetch-from-community-master provenance (two "identical" environments holding different data). Mirror/digest work may fast-follow but not past Phase 3. |
 
@@ -190,10 +210,10 @@ PARTITION_BASE_URL=http://host.docker.internal:8080/ resolver bind \
 
 **Service forks**: one `.spi/service.yaml` each, typically seven to ten symbolic bindings.
 
-Phases:
+Phases (1 and 2 complete on partition, 2026-09-10):
 
 1. **Prove the contracts on partition, by hand.** Descriptor + resolver + acceptance image on `osdu-spi-partition`; bind and run manually against the shared stack using today's built surface. *Exit: a green partition acceptance run whose every answer came from facts, with zero pushed environment variables.*
-2. **Build the seams.** Stack: ephemeral pin surface, onboarding, Tier-1 bootstrap + ensure step. Template: the transactional lane wired into `validate.yml`, neutral-skip semantics, summaries. *Exit: partition PRs run borrow → prove → restore unattended; checks not yet required.*
+2. **Build the seams.** Stack: ephemeral pin surface, onboarding, Tier-1 bootstrap, `spi token`. Template: the transactional lane wired into `validate.yml`, the gate that explains a skip, the summary as the required check. *Exit: partition PRs run borrow → prove → restore unattended.*
 3. **Arm and harden.** Required checks armed by onboarding verification; drift tripwire on; D9 dependency gate on; `spi load` + `requires` for search/indexer; nightly run; descriptors rolled out across the remaining forks. *Exit: the fleet gates merges on proven images; a weekly rebuild needs no repo-side action.*
 4. **Extend to the mirror tier.** `Adopt Fork` collects the pointer + identity; docs for customer stack onboarding; release-verification dispatch lane. *Exit: a customer proves their change green in their environment with the same machinery, untouched.*
 
@@ -201,7 +221,7 @@ Phases:
 
 - **Coordination before code.** This design arbitrates between the prototype's ADRs and the stack's ADRs; both authors should review the "union of latest decisions" framing (§2) before either repo lands its half. The prototype's ADR numbering collides with the template's (038/039 mean different things); renumber during porting.
 - **Tier-2 initial scope.** Registry + `spi load` + load facts are required for §6; the mirror/digest provenance work (D12) can fast-follow, but unpinned community-`master` data will eventually cost a debugging day, so it should not slip past Phase 3.
-- **Ensure-step fan-out.** D7 makes the rebuild's ensure step seed N fork identities' entitlements. Bounded (≤ ~10 forks per stack) and roster-driven, but it is new rebuild-critical code and needs its own typed failure reporting.
+- **Entitlements for other services.** Partition admits any app-only token from the tenant, so the deploy identity needs no seeding there. Services that check entitlements need the stack's members Job to seed the deploy identity and the no-access identity before their suites can join the lane.
 - **Runner egress.** D6 assumes the gateway is reachable from GitHub-hosted runners. True today (public FQDN); if the stack ever goes private-endpoint, revisit D6 (self-hosted runners or the in-cluster Job alternative).
 - **Chart-contract changes don't ride the image seam.** A service change needing a new chart env var lands a stack PR first, then the fork PR deploys against the upgraded environment (stack ADR-031's sequencing note). Document this in the fork contribution guide.
 - **Concurrency starvation.** Per-service groups with `cancel-in-progress: false` can queue long chains on a busy fork; descriptor `timeoutMinutes` caps each hold, and the gate's typed refusals keep waits explainable.

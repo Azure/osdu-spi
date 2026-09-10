@@ -18,9 +18,9 @@ The stack repository ships a versioned discovery contract: `spi info --json` and
 
 ### The descriptor is fork-owned and symbolic
 
-`.spi/service.yaml` declares what the suite needs, never where anything is: which Maven module is the suite, environment bindings drawn from a closed source vocabulary (`gateway | partition | openid | tenant | legalTag | keyvault:<name> | static | template | user`), Key Vault secret names (never values), required data loads and entitlement groups (`requires.loads` and `requires.groups`), sibling-service dependencies, and a timeout. The contract is branch-versioned: a test change and the declaration it needs are reviewed in the same PR, and running the tests that shipped with a given release stays a one-command operation later.
+`.spi/service.yaml` declares what each suite needs, never where anything is. `tests` is a map of named suites of one shape, `acceptance` required and the others the fork's own (an `integration` suite for its provider module, say); each names its Maven module and its environment bindings drawn from a closed source vocabulary (`gateway | partition | openid | tenant | legalTag | keyvault:<name> | static | template | user | token`), Key Vault secret names (never values), required data loads and entitlement groups (`requires.loads` and `requires.groups`), sibling-service dependencies, and a timeout. The contract is branch-versioned: a test change and the declaration it needs are reviewed in the same PR, and running the tests that shipped with a given release stays a one-command operation later.
 
-The vocabulary is closed in both directions. An unknown source kind, an unknown key, or a reserved environment name (exact names such as `AZURE_CLIENT_ID`, and the prefixes `ACTIONS_`, `GITHUB_`, `RESOLVER_`, `RUNNER_`, `SPI_STACK_`) is a hard failure naming the offending key. The resolver refuses to guess, as the upstream filter does (ADR-038). Maven arguments are an array of argv tokens passed directly to Maven, never a shell string. The descriptor cannot select identity, cluster, namespace, or workflow behavior, and it cannot carry a secret value: `keyvault:` bindings take no default and no literal.
+The vocabulary is closed in both directions. An unknown source kind, an unknown key, or a reserved environment name (exact names such as `AZURE_CLIENT_ID`, and the prefixes `ACTIONS_`, `GITHUB_`, `RESOLVER_`, `RUNNER_`, `SPI_STACK_`) is a hard failure naming the offending key. The resolver refuses to guess, as the upstream filter does (ADR-038). Maven arguments are an array of argv tokens passed directly to Maven, never a shell string. The descriptor cannot select identity, cluster, namespace, or workflow behavior, and it cannot carry a secret value: `keyvault:` and `token` bindings take no default and no literal.
 
 `.spi/` is listed in the exclusions of `sync-config.json` beside the other fork-owned files, so template sync never delivers or overwrites it. The JSON Schema, `service-descriptor.schema.json`, travels with the resolver action instead.
 
@@ -34,9 +34,9 @@ Where the caller and the facts could both answer the same question, one owns it 
 
 Failure is typed and fail-closed, serving two audiences. `bind` mode, the developer loop, warns on missing answers and still writes the env file. `run` mode, the CI lane, refuses with every unresolved binding named. Exit codes separate descriptor violations (2), environment not ready (3), and infra contradictions (4), so a deploy gate can report "environment not seeded" in seconds instead of a mystery test failure.
 
-### Consumers today
+### Consumers
 
-Two places already read the descriptor ahead of the deploy lane. The `acceptance-image` action packages the declared suite module as a `<service>-acceptance` image beside the service image in `validate.yml`, and `release.yml` runs the resolver's suite lookup before tagging that image with the release version. Both skip when a fork has no descriptor.
+The `acceptance-image` action bakes every declared suite into one `<service>-acceptance` image beside the service image in `validate.yml`, `release.yml` runs the resolver's suite lookup before tagging that image with the release version, and the deploy lane (ADR-041) resolves each suite with `--suite` and runs it from that image. Without a descriptor the image and release consumers fall back to the upstream `<service>-acceptance-test` directory and skip only when that is absent too; the deploy lane skips on a missing descriptor and reports why.
 
 ## Consequences
 
@@ -51,7 +51,7 @@ Two places already read the descriptor ahead of the deploy lane. The `acceptance
 
 - A new schema is a new maintenance surface. Vocabulary growth (a new fact kind, a new archetype) requires a template contract change, deliberately.
 - Until the stack publishes the two agreed fact keys, descriptors binding `openid` or `legalTag` resolve as env-not-ready. Correct, but visible.
-- Each service fork must author one descriptor before it can join the deploy lane.
+- Each service fork must author one descriptor before it can join the deploy lane; until then the lane reports that no descriptor declares the suites.
 
 ### Neutral
 

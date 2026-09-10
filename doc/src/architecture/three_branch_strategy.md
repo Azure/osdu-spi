@@ -177,7 +177,7 @@ A downstream repository does not have to stop at pulling release tags. It can be
 | Protection Setting | :material-source-branch: *main* | :material-source-branch: *fork_upstream* | :material-source-branch: *fork_integration* |
 |-------------------|-------|---------------|------------------|
 | **Required Reviews** | 1 minimum | Not required | Not required |
-| **Status Checks** | `CodeQL`, `🐳 Docker Build` | Not required | Not required |
+| **Status Checks** | `CodeQL`, `📋 Validation Summary` | Not required | Not required |
 | **Up-to-date Branch** | Required | Not enforced | Not enforced |
 | **Force Push** | Blocked | Allowed | Allowed |
 | **Expected Writers** | Reviewed PRs | Sync automation | Cascade and cleanup automation |
