@@ -710,6 +710,8 @@ jobs:
           BUILD_RELEVANT: ${{ needs.check-paths.outputs.should_run }}
           JAVA_REPO: ${{ needs.check-repo-state.outputs.is_java_repo }}
           EVENT_NAME: ${{ github.event_name }}
+          SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          ACTOR: ${{ github.actor }}
           REF_NAME: ${{ github.head_ref || github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -719,7 +721,8 @@ jobs:
             echo "| Job | Result | Note |"
             echo "|---|---|---|"
             jq -rn --arg gate "$GATE_REASON" --arg init "$INITIALIZED" --arg relevant "$BUILD_RELEVANT" \
-              --arg java "$JAVA_REPO" --arg event "$EVENT_NAME" --argjson needs "$NEEDS" '
+              --arg java "$JAVA_REPO" --arg event "$EVENT_NAME" --arg same_repo "$SAME_REPO" --arg actor "$ACTOR" \
+              --argjson needs "$NEEDS" '
               def names: {
                 "check-initialization": "Check Initialization", "check-repo-state": "Check Repository",
                 "check-paths": "Check Paths", "java-build": "Java Build", "docker-build": "Docker Build",
@@ -734,6 +737,8 @@ jobs:
                 elif build and $relevant == "false" then "only configuration or docs changed"
                 elif build and $java != "true" then "not a Java repository"
                 elif build and $event == "pull_request_target" then "sync lane; images validate on the cascade PR"
+                elif . == "docker-push" and $actor == "dependabot[bot]" then "Dependabot validates through dependabot-validation.yml"
+                elif . == "docker-push" and $same_repo != "true" then "pull request from another repository"
                 else "a job it needs did not run" end;
               names | keys_unsorted[] | select(in($needs)) | . as $job
                 | "| \(names[$job]) | \($needs[$job].result | icon) \($needs[$job].result) | \($job | note) |"'
@@ -757,12 +762,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          # A run for a superseded push never overwrites the newer push's comment.
+          current=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+          [ "$current" = "$HEAD_SHA" ] || { echo "head moved to $current; leaving the comment to the newer run"; exit 0; }
           marker="<!-- validation-summary -->"
           { echo "$marker"; cat summary.md; } > comment.md
           existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
           if [ -n "$existing" ]; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -F body=@comment.md > /dev/null
           else
