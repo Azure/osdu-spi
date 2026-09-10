@@ -736,6 +736,7 @@ jobs:
             fi
             echo
             echo "[Run]($RUN_URL)"
+            echo
           } > summary.md
           cat summary.md >> "$GITHUB_STEP_SUMMARY"
 
