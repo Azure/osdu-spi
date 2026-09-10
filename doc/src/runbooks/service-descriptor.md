@@ -51,11 +51,11 @@ tests:
 
 **A single module** has its `pom.xml` at the path and runs with `[test]` or `[verify]`. Upstream's `<service>-acceptance-test` is this shape.
 
-**A reactor** has a parent `pom.xml` at the path and the Azure module beneath it. Name the path as the parent and select the module in the arguments: `[-pl, <service>-test-azure, -am, test]`. The image installs the reactor before it prewarms dependencies, so the sibling modules the Azure module depends on resolve offline. Upstream's `testing/` tree is this shape.
+**A reactor** has a parent `pom.xml` at the path and the Azure module beneath it. Name the path as the parent and select the module in the arguments: `[-pl, <service>-test-azure, -am, test]`. The image installs the reactor before it prewarms dependencies, so the sibling modules the Azure module depends on resolve from the image's local Maven repository. Upstream's `testing/` tree is this shape.
 
 ## Bindings
 
-A binding names the variable the suite reads and the symbol it takes its value from. Values that come from the environment, the caller, or a vault are never in the file; only `static` and `template` carry a declared `value`. The sources:
+A binding names the variable the suite reads and the symbol it takes its value from. Values that come from the environment, the caller, or a vault are never in the file; only `static`, `template`, and a `user` binding's `default` carry a value. The sources:
 
 | Source | Value | Use it for |
 |---|---|---|
@@ -93,11 +93,15 @@ An explicit variable in the caller's environment always wins over the file. That
     ```bash
     spi info --json > facts.json
     export RESOLVER_TOKEN=$(spi token)
-    for suite in acceptance integration; do
+    python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
+      --descriptor .spi/service.yaml --report suites.json > /dev/null
+    for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
       python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
-        --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env"
+        --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env" || break
     done
     ```
+
+    This is the loop the lane runs: the suite names come from the contract report, never from a list kept elsewhere.
 
     Run mode is what the lane uses: it refuses with exit 3 and names every binding it could not answer. Bind mode warns instead, for iterating against a personal stack.
 
