@@ -17,7 +17,7 @@
 #
 # amd64 only: this build runs Maven, and under QEMU arm64 emulation that costs minutes per push
 # with no consumer. CI runners are amd64 and Apple Silicon runs the amd64 image emulated.
-FROM docker.io/library/alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce AS select
+FROM docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS select
 # Space-separated suite paths; the first is the run-time default.
 ARG SUITE_DIRS
 COPY . /src/
@@ -29,7 +29,7 @@ RUN set -eu; mkdir -p /suite; \
     if [ -d /src/.spi ]; then cp -R /src/.spi /suite/.spi; fi; \
     printf '%s' "${SUITE_DIRS%% *}" > /suite/.default-suite-dir
 
-FROM docker.io/library/maven:3.9-eclipse-temurin-17@sha256:a8746f15d5bb26b5b8bacb056cc76211553850f4c71d16aff845cfa004cbc197
+FROM docker.io/library/maven:3-eclipse-temurin-26@sha256:2bc6924d954a6efefde0a9629228914acf72e4abcdb927b68f19edd1135a0cb1
 
 ARG SUITE_DIRS
 WORKDIR /suite
