@@ -22,7 +22,7 @@ Write access to the fork is the trust boundary. A pull request from another repo
 
 ### Absence is explained
 
-`deploy-gate` runs after `docker-push` on every run and writes one line to the run summary: the cluster it is about to borrow, or the reason it will not. The reasons are the trust refusals above, a fork not yet onboarded (no `SPI_STACK_CLUSTER`), no `.spi/service.yaml`, no image pushed, or a descriptor that declares no suite. `deploy-test` runs only when the gate decided to borrow.
+`deploy-gate` runs after `docker-push` on every run and writes one line to the run summary: the cluster it is about to borrow, or the reason it will not. The reasons are the trust refusals above, a fork not yet onboarded (missing any of `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `SPI_STACK_RESOURCE_GROUP`, `SPI_STACK_CLUSTER`), no `.spi/service.yaml`, no image pushed, or a descriptor that declares no suite. `deploy-test` runs only when the gate decided to borrow.
 
 ### The CLI is the environment's release
 
