@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   check-repo-state:
-    name: "🔍 Check Repository State"
+    name: "Check Repository"
     runs-on: ubuntu-latest
     outputs:
       initialized: ${{ steps.check_init.outputs.initialized }}
@@ -60,7 +60,7 @@ jobs:
           fi
 
   java-build:
-    name: "🔨 Java Build"
+    name: "Java Build"
     needs: check-repo-state
     if: needs.check-repo-state.outputs.initialized == 'true' && needs.check-repo-state.outputs.is_java_project == 'true'
     runs-on: ubuntu-latest
