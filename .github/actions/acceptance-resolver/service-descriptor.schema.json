@@ -33,96 +33,19 @@
     },
     "tests": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["acceptance"],
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/suite"
+      },
       "properties": {
         "acceptance": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "path"],
-          "properties": {
-            "type": {
-              "const": "maven"
-            },
-            "path": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$",
-              "description": "Repository-relative working directory of the suite, e.g. the upstream <svc>-acceptance-test module."
-            },
-            "mavenArguments": {
-              "type": "array",
-              "minItems": 1,
-              "default": ["verify"],
-              "items": {
-                "type": "string",
-                "maxLength": 240,
-                "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
-              },
-              "description": "Individual Maven argv tokens. Consumers pass the decoded array directly to Maven and never evaluate it as a shell string."
-            },
-            "bindings": {
-              "type": "object",
-              "propertyNames": {
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
-              },
-              "additionalProperties": {
-                "$ref": "#/$defs/binding"
-              },
-              "description": "Environment variables the suite reads, each bound to a symbol from the closed source vocabulary -- never to an environment value. Resolution precedence per variable: explicit process environment (verbatim) -> source resolution -> declared default. template sources render last."
-            },
-            "keyVaultBindings": {
-              "type": "object",
-              "propertyNames": {
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
-              },
-              "additionalProperties": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,126}$"
-              },
-              "description": "Environment variable to Key Vault secret NAME, resolved from the stack's vault at run time. Secret values never appear in the descriptor."
-            },
-            "requires": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "loads": {
-                  "type": "array",
-                  "default": [],
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
-                  },
-                  "description": "Named data loads the environment must have seeded (checked against published load facts by the deploy gate)."
-                },
-                "groups": {
-                  "type": "array",
-                  "default": [],
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]{0,254}$"
-                  },
-                  "description": "Entitlement groups the test caller must hold."
-                }
-              }
-            },
-            "dependencies": {
-              "type": "array",
-              "default": [],
-              "items": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
-              },
-              "description": "Sibling services this suite calls; a pinned dependency blocks the deploy gate with a typed reason."
-            },
-            "timeoutMinutes": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 180,
-              "default": 25
-            }
-          }
+          "$ref": "#/$defs/suite"
         }
-      }
+      },
+      "description": "Named suites of one shape. acceptance is required and is the upstream <svc>-acceptance-test by default; a fork adds others, for example integration for its provider suite. The acceptance image bakes every declared suite path."
     }
   },
   "$defs": {
@@ -133,8 +56,8 @@
       "properties": {
         "source": {
           "type": "string",
-          "pattern": "^(gateway|partition|openid|tenant|legalTag|static|template|user|keyvault:[A-Za-z0-9][A-Za-z0-9-]{0,126})$",
-          "description": "Closed source vocabulary. Facts: gateway (base_url), partition (primary partition name), openid (OIDC v2.0 issuer URL, published explicitly by the stack), tenant (azure.tenant_id), legalTag (primary partition's legal_tag). keyvault:<name> reads that secret from the stack's vault. static carries the declared value; template renders ${NAME} references to other (non-template, non-secret) bindings after everything else resolves; user must be supplied by the caller's environment. Anything else is a hard failure naming the key."
+          "pattern": "^(gateway|partition|openid|tenant|legalTag|static|template|user|token|keyvault:[A-Za-z0-9][A-Za-z0-9-]{0,126})$",
+          "description": "Closed source vocabulary. Facts: gateway (base_url), partition (primary partition name), openid (OIDC v2.0 issuer URL, published explicitly by the stack), tenant (azure.tenant_id), legalTag (primary partition's legal_tag). keyvault:<name> reads that secret from the stack's vault. static carries the declared value; template renders ${NAME} references to other (non-template, non-secret) bindings after everything else resolves; user must be supplied by the caller's environment; token is the bearer the caller minted for this run, supplied as RESOLVER_TOKEN. Anything else is a hard failure naming the key."
         },
         "suffix": {
           "type": "string",
@@ -149,7 +72,93 @@
         },
         "default": {
           "type": "string",
-          "description": "Fallback when the fact or caller environment does not supply an answer. Invalid for keyvault sources (a default secret would put a secret value in the repository) and for static/template."
+          "description": "Fallback when the fact or caller environment does not supply an answer. Invalid for keyvault and token sources (a default secret would put a secret value in the repository) and for static/template."
+        }
+      }
+    },
+    "suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path"],
+      "properties": {
+        "type": {
+          "const": "maven"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$",
+          "description": "Repository-relative working directory of the suite, e.g. the upstream <svc>-acceptance-test module."
+        },
+        "mavenArguments": {
+          "type": "array",
+          "minItems": 1,
+          "default": ["verify"],
+          "items": {
+            "type": "string",
+            "maxLength": 240,
+            "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+          },
+          "description": "Individual Maven argv tokens. Consumers pass the decoded array directly to Maven and never evaluate it as a shell string."
+        },
+        "bindings": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/binding"
+          },
+          "description": "Environment variables the suite reads, each bound to a symbol from the closed source vocabulary -- never to an environment value. Resolution precedence per variable: explicit process environment (verbatim) -> source resolution -> declared default. template sources render last."
+        },
+        "keyVaultBindings": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,126}$"
+          },
+          "description": "Environment variable to Key Vault secret NAME, resolved from the stack's vault at run time. Secret values never appear in the descriptor."
+        },
+        "requires": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "loads": {
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+              },
+              "description": "Named data loads the environment must have seeded (checked against published load facts by the deploy gate)."
+            },
+            "groups": {
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]{0,254}$"
+              },
+              "description": "Entitlement groups the test caller must hold."
+            }
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "description": "Sibling services this suite calls; a pinned dependency blocks the deploy gate with a typed reason."
+        },
+        "timeoutMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 180,
+          "default": 25
         }
       }
     }

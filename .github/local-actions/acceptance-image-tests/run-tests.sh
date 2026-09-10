@@ -54,8 +54,32 @@ tests:
 EOF
 resolve_suite "$WS2" "$TMP/out2.txt" SERVICE_NAME=demo >/dev/null
 [ "$(output_value "$TMP/out2.txt" suite_dir)" = "custom-tests" ] || die "descriptor override lost"
+[ "$(output_value "$TMP/out2.txt" suite_dirs)" = "custom-tests" ] || die "single suite must list itself"
 [ "$(output_value "$TMP/out2.txt" buildable)" = "true" ] || die "override suite must be buildable"
 ok "descriptor override honored"
+
+note "named suites: every declared path is baked, acceptance first"
+WS2B="$TMP/ws-suites"
+mkdir -p "$WS2B/.spi" "$WS2B/demo-acceptance-test" "$WS2B/testing"
+cat > "$WS2B/.spi/service.yaml" <<'EOF'
+schemaVersion: 3
+service: { name: demo, archetype: java-maven-azure }
+tests:
+  integration:
+    type: maven
+    path: testing
+  acceptance:
+    type: maven
+    path: demo-acceptance-test
+EOF
+resolve_suite "$WS2B" "$TMP/out2b.txt" SERVICE_NAME=demo >/dev/null
+[ "$(output_value "$TMP/out2b.txt" suite_dir)" = "demo-acceptance-test" ] || die "acceptance must be the default suite"
+[ "$(output_value "$TMP/out2b.txt" suite_dirs)" = "demo-acceptance-test testing" ] || die "suite_dirs must list acceptance first"
+rmdir "$WS2B/testing"
+RC=0
+resolve_suite "$WS2B" "$TMP/out2c.txt" SERVICE_NAME=demo >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "a declared suite that is absent must exit 2, got $RC"
+ok "named suites resolved"
 
 note "clean skip: an absent suite directory is not an error"
 WS3="$TMP/ws-absent"
@@ -105,15 +129,37 @@ env -u SERVICE_NAME GITHUB_OUTPUT="$TMP/out5.txt" "$RESOLVE_SUITE" >/dev/null 2>
 [ "$RC" -ne 0 ] || die "missing SERVICE_NAME must fail"
 ok "missing SERVICE_NAME fails"
 
-note "Dockerfile contract: suite arg, entrypoint, argv default"
-grep -q '^ARG SUITE_DIR$' "$DOCKERFILE" || die "SUITE_DIR build arg missing"
+note "Dockerfile contract: suite paths, select stage, entrypoint, argv default"
+grep -q '^ARG SUITE_DIRS$' "$DOCKERFILE" || die "SUITE_DIRS build arg missing"
+grep -q 'SUITE_DIRS=${{ steps.suite.outputs.suite_dirs }}' "$HERE/../../actions/acceptance-image/action.yml" || die "action must pass every suite path"
+grep -q ' AS select$' "$DOCKERFILE" || die "select stage missing: the service source must not reach the image"
+grep -q '^COPY --from=select /suite/ /suite/$' "$DOCKERFILE" || die "maven stage must copy only the selected suites"
+grep -q '/suite/.default-suite-dir' "$DOCKERFILE" || die "the default suite must be recorded for the entrypoint"
 grep -q 'acceptance-entrypoint.sh' "$DOCKERFILE" || die "entrypoint not baked"
 grep -q '^CMD \["verify"\]$' "$DOCKERFILE" || die "default command must be verify"
 grep -q 'dependency:go-offline' "$DOCKERFILE" || die "dependencies must be pre-resolved at build"
+grep -q 'install -DskipTests' "$DOCKERFILE" || die "a reactor suite must be installed so sibling modules resolve"
 grep -q 'linux/amd64' "$HERE/../../actions/acceptance-image/action.yml" || die "amd64-only platform lost"
 head -1 "$ENTRYPOINT" | grep -q '^#!/bin/sh' || die "entrypoint must be POSIX sh"
 grep -q 'exec mvn' "$ENTRYPOINT" || die "entrypoint must exec maven with argv"
+grep -q '/suite/.default-suite-dir' "$ENTRYPOINT" || die "entrypoint must default SUITE_DIR from the image"
 ok "Dockerfile and entrypoint contract"
+
+note "entrypoint: selects a baked suite and refuses one that is not"
+IMG="$TMP/image"
+mkdir -p "$IMG/suite/demo-acceptance-test" "$IMG/suite/testing" "$IMG/bin"
+printf 'demo-acceptance-test' > "$IMG/suite/.default-suite-dir"
+touch "$IMG/suite/demo-acceptance-test/pom.xml" "$IMG/suite/testing/pom.xml"
+printf '#!/bin/sh\necho "mvn $PWD $*"\n' > "$IMG/bin/mvn"; chmod +x "$IMG/bin/mvn"
+sed "s|/suite|$IMG/suite|g" "$ENTRYPOINT" > "$IMG/entrypoint.sh"; chmod +x "$IMG/entrypoint.sh"
+OUT="$(PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" verify 2>/dev/null)"
+[[ "$OUT" == "mvn $IMG/suite/demo-acceptance-test -B --no-transfer-progress verify" ]] || die "default suite not selected: $OUT"
+OUT="$(SUITE_DIR=testing PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" -pl x test 2>/dev/null)"
+[[ "$OUT" == "mvn $IMG/suite/testing -B --no-transfer-progress -pl x test" ]] || die "SUITE_DIR not honored: $OUT"
+RC=0
+SUITE_DIR=nope PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" verify >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "an unbaked SUITE_DIR must exit 2, got $RC"
+ok "entrypoint suite selection"
 
 note "build context: the sidecar ignore file overrides the upstream .dockerignore"
 IGNORE="${DOCKERFILE}.dockerignore"
@@ -123,9 +169,9 @@ if grep -qE '^[[:space:]]*(\.\*|\.mvn)' "$IGNORE"; then
 fi
 ok "sidecar dockerignore present and keeps .mvn"
 
-note "root .mvn is optional: the settings-less RUN branch must stay reachable"
-grep -qE '^COPY \.mvn\*/ ' "$DOCKERFILE" || die "COPY of root .mvn must glob — a fork without one gets an illegible BuildKit checksum error"
-grep -q 'else' "$DOCKERFILE" || die "settings-less fallback branch lost"
+note "root .mvn is optional: the settings-less path must stay reachable"
+grep -q 'if \[ -d /src/.mvn \]' "$DOCKERFILE" || die "the select stage must tolerate a fork without .mvn"
+grep -q 'if \[ -f /suite/.mvn/community-maven.settings.xml \]' "$DOCKERFILE" || die "settings must be optional at prewarm"
 ok "optional .mvn keeps the fallback live"
 
 note "a suiteless fork skips before the push path demands a token"

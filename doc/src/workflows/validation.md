@@ -2,7 +2,7 @@
 
 The validation workflow supplies the required checks on protected branches. It verifies that a change builds and that the PR meets process requirements before merge.
 
-The validation system applies different build rules by context. Sync PRs targeting the provider-less `fork_upstream` tree build `core` only and skip the image jobs; other Java changes build the Azure profile set and validate a service image.
+The validation system applies different build rules by context. Sync PRs targeting the provider-less `fork_upstream` tree build `core` only and skip the image jobs; other Java changes build the Azure profile set, validate a service image, and, once the fork is onboarded to a stack, deploy and test it.
 
 ## When It Runs
 
@@ -12,11 +12,11 @@ The validation workflow runs on:
 - **Direct pushes** to protected branches, where the rulesets permit them
 - **Manual trigger** for a check during setup or troubleshooting
 
-The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `🐳 Docker Build` context reflects a real build.
+The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `📋 Validation Summary` context reflects a real build.
 
 ## What Gets Validated
 
-Validation covers three areas:
+Validation covers four areas:
 
 ### Code Quality Validation
 The system verifies that code compiles, dependencies resolve, and tests pass. Pull-request builds can generate JaCoCo coverage reports. Documentation and configuration-only PRs keep the required summary checks reporting while skipping the heavy Java and container jobs.
@@ -26,6 +26,9 @@ Beyond code quality, the workflow validates semantic PR titles for ordinary PRs 
 
 ### Security and Dependency Analysis
 CodeQL runs in its own workflow and supplies the required `CodeQL` status. Dependabot PRs use `dependabot-validation.yml` for one Java build with coverage followed by validate-only container construction; they do not run the regular Java and container jobs in this workflow.
+
+### Deploy and Test
+On a push to `main` or `fork_integration`, and on the fork's own pull requests, the lane borrows the service's slot in the attached stack, proves the pushed image with every suite `.spi/service.yaml` declares, and restores the canonical image (ADR-041). A gate job ahead of it always reports, so a run without the lane says why: a pull request from another repository, a fork not yet onboarded, no descriptor, or no image pushed.
 
 ## Validation Results
 
@@ -80,10 +83,12 @@ The workflow coordinates the following validation jobs:
 | **Repository State** | Detects project type | Identifies Java projects via `pom.xml` |
 | **Path Check** | Avoids unnecessary work | Skips heavy jobs for docs/config-only PRs |
 | **Java Build** | Compiles and tests | Uses `core,azure` by default; `core` on `fork_upstream` |
-| **Docker Build (validate)** | Validates the service image | Builds the canonical `build/Dockerfile` without registry credentials |
-| **Docker Push** | Publishes trusted builds | Pushes multi-arch SHA and branch tags to public GHCR |
+| **Docker Build** | Validates both images | Builds the canonical service and test-suite Dockerfiles without registry credentials |
+| **Docker Push** | Publishes trusted builds | Pushes multi-arch SHA and branch tags to public GHCR, with the test-suite image beside them |
+| **Deploy Gate** | Decides whether to borrow | Always reports; names the reason when the lane does not run |
+| **Deploy and Test on spi-stack** | Proves the pushed image | Borrow, prove every declared suite, restore |
 | **Code Validation** | Process compliance | Semantic PR title, conflict markers, branch status |
-| **Docker Build summary** | Required status | Always reports a stable `🐳 Docker Build` result |
+| **Validation Summary** | Required status | Always reports; one table of every job, its result, and any skip reason |
 
 ## Branch-Specific Rules
 
@@ -91,10 +96,10 @@ All protected branches use the same validation rules, with exemptions for specif
 
 | Branch | Standard Validation | Exemptions |
 |--------|-------------------|------------|
-| **`main`** | Azure Maven and image validation + human approval | Docs/config-only changes skip heavy jobs |
-| **`fork_integration`** | Azure Maven and image validation | Docs/config-only changes skip heavy jobs |
-| **`fork_upstream`** | Core-only Maven validation | No Azure JAR or container image exists on this branch |
-| **Feature branches** | N/A - not protected | Standard PR validation when targeting protected branches |
+| **`main`** | Azure Maven, image validation, deploy and test + human approval | Docs/config-only changes skip heavy jobs |
+| **`fork_integration`** | Azure Maven, image validation, deploy and test | Docs/config-only changes skip heavy jobs |
+| **`fork_upstream`** | Core-only Maven validation | No Azure JAR or container image exists on this branch, so nothing to deploy |
+| **Feature branches** | N/A - not protected | Standard PR validation, including deploy and test, when targeting protected branches |
 
 ## Special Cases
 
@@ -106,7 +111,7 @@ All protected branches use the same validation rules, with exemptions for specif
 
 ### Required Checks on `main`
 - `CodeQL` - Stable summary from the separate CodeQL workflow
-- `🐳 Docker Build` - Stable summary covering Java and validate-only image build results
+- `📋 Validation Summary` - Stable summary covering the Java build, both image builds, the push, and the deploy lane; code quality stays advisory
 
 The integration-branch ruleset does not currently require status checks.
 
@@ -115,6 +120,7 @@ The integration-branch ruleset does not currently require status checks.
 - **Release and automation PRs**: Skip semantic PR-title validation
 - **Dependabot PRs**: Build with coverage and validate the image through `dependabot-validation.yml`
 - **Docs/config-only PRs**: Skip Java and container work while summary checks still report
+- **Pull requests from other repositories**: Build and validate only; the deploy lane skips because such a run carries no deploy identity
 
 ## Troubleshooting
 
@@ -127,6 +133,8 @@ The integration-branch ruleset does not currently require status checks.
 | "Merge conflicts detected" | Git conflict markers found | Resolve conflicts locally and commit resolution |
 | "Repository not initialized" | Missing required setup files | Complete repository initialization first |
 | "Branch status validation failed" | Branch protection or merge issues | Ensure branch is up to date with target |
+| "Deploy and Test skipped" | The gate declined; the notice names why | Onboard the fork with `spi onboard`, add `.spi/service.yaml`, or open the PR from a branch in this repository |
+| "environment is not deployable" | The stack is in maintenance or holds another pin | Wait for `spi status` to report deployable; the gate rechecks on the next run |
 
 ## Configuration
 
@@ -151,3 +159,5 @@ The engineering system syncs the canonical `build/Dockerfile` to every fork. `SE
 - [Build Workflow](build.md) - Detailed build process
 - [ADR-033: GHCR as Service Image Registry](../adr/033-ghcr-as-service-image-registry.md)
 - [ADR-037: Canonical Service Dockerfile](../adr/037-engineering-system-owns-service-dockerfile.md)
+- [ADR-040: Descriptor-Owned Acceptance Contract](../adr/040-descriptor-acceptance-contract.md)
+- [ADR-041: Borrow, Prove, Restore Lane](../adr/041-borrow-prove-restore-lane.md)

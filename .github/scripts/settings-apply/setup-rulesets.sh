@@ -3,14 +3,10 @@
 # Creates or updates the rulesets in .github/rulesets/*.json by name, so it is
 # safe to run at init and again on the settings-apply cadence.
 #
-# default-branch.json lists the fully onboarded check set. On a fork that is
-# not yet deploy-ready the deploy and integration-test checks are stripped from
-# the payload so PRs are not blocked on checks that cannot pass yet.
-#
 # Arguments:
 #   $1            Repository full name (owner/repo)
 #   $2            Issue number for status comments (optional)
-#   --dry-run     Print planned actions and the filter decision; no mutations
+#   --dry-run     Print planned actions; no mutations
 #
 # Environment:
 #   GH_TOKEN      admin token for ruleset mutations
@@ -35,9 +31,6 @@ REPO_FULL_NAME="${ARGS[0]}"
 ISSUE_NUMBER="${ARGS[1]:-}"
 RULESET_SUCCESS=true
 
-# Stripped from the required checks on forks that are not deploy-ready.
-DEPLOY_CHECKS=("🚀 Deploy to spi-stack" "🧪 Integration Tests")
-
 echo "Reconciling repository rulesets for $REPO_FULL_NAME (dry_run: $DRY_RUN)..."
 
 if [[ -z "${GH_TOKEN:-}" ]] && [[ "$DRY_RUN" != "true" ]]; then
@@ -52,35 +45,6 @@ if [[ -z "${GH_TOKEN:-}" ]] && [[ "$DRY_RUN" != "true" ]]; then
 fi
 export GH_TOKEN
 
-# SERVICE_NAME and MAVEN_PROFILE default at runtime (ADR-035, ADR-037), so they
-# do not gate deploy; only the inputs with no default do.
-deploy_ready() {
-  local ready=true name
-  local secret_names variable_names
-  secret_names="$(gh api --paginate "repos/${REPO_FULL_NAME}/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")"
-  variable_names="$(gh api --paginate "repos/${REPO_FULL_NAME}/actions/variables" --jq '.variables[].name' 2>/dev/null || echo "")"
-  grep -qx "AZURE_CLIENT_ID" <<< "$secret_names" || ready=false
-  for name in ACCEPTANCE_TEST_DIR ACCEPTANCE_TEST_SECRET_MAP ACCEPTANCE_TEST_DEPENDENCIES K8S_DEPLOYMENT_NAME K8S_CONTAINER_NAME; do
-    grep -qx "$name" <<< "$variable_names" || ready=false
-  done
-  [[ "$ready" == "true" ]]
-}
-
-if deploy_ready; then DEPLOY_READY=true; else DEPLOY_READY=false; fi
-echo "Deploy-ready: $DEPLOY_READY (controls whether deploy/integration-test checks are required)"
-
-# Strips the deploy and test checks from the payload when the fork is not deploy-ready.
-build_payload() {
-  local config_file="$1"
-  if [[ "$DEPLOY_READY" == "true" ]]; then
-    cat "$config_file"
-    return
-  fi
-  local filter='(.. | objects | select(has("required_status_checks")).required_status_checks)
-    |= map(select(.context as $c | $strip | index($c) | not))'
-  jq --argjson strip "$(printf '%s\n' "${DEPLOY_CHECKS[@]}" | jq -R . | jq -s .)" "$filter" "$config_file"
-}
-
 apply_ruleset() {
   local config_file="$1"
   if [[ ! -f "$config_file" ]]; then
@@ -90,7 +54,7 @@ apply_ruleset() {
   fi
   local name payload existing_id resp
   name="$(jq -r '.name' "$config_file")"
-  payload="$(build_payload "$config_file")"
+  payload="$(cat "$config_file")"
   existing_id="$(gh api "repos/${REPO_FULL_NAME}/rulesets" --jq ".[] | select(.name == \"$name\") | .id" 2>/dev/null | head -n1 || echo "")"
 
   if [[ "$DRY_RUN" == "true" ]]; then

@@ -82,7 +82,7 @@ Build architecture, dependency management, and documentation:
 
 *"How do services get built and published per PR?"*
 
-Decisions for the container image build, the image registry, and the acceptance-test contract. Cluster deploy and integration-test jobs are designed in [Borrow, Prove, Restore](../architecture/deploy_test.md) and not built yet:
+Decisions for the container image build, the image registry, the acceptance-test contract, and the deploy lane designed in [Borrow, Prove, Restore](../architecture/deploy_test.md):
 
 | ADR | Decision | Impact |
 |-----|----------|--------|
@@ -91,6 +91,7 @@ Decisions for the container image build, the image registry, and the acceptance-
 | [036](036-workflow-trust-boundaries.md) | **Workflow Trust Boundaries for CI/CD** | :material-trending-up: High |
 | [037](037-engineering-system-owns-service-dockerfile.md) | **Engineering System Owns the Canonical Service Dockerfile** | :material-trending-up: High |
 | [040](040-descriptor-acceptance-contract.md) | **Descriptor-Owned Acceptance Contract** | :material-trending-up: High |
+| [041](041-borrow-prove-restore-lane.md) | **Borrow, Prove, Restore Lane** | :material-trending-up: High |
 
 ### :material-package-variant: Release Management
 

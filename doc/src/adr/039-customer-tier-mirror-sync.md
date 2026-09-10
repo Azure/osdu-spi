@@ -84,7 +84,7 @@ The workflow refuses to run where `INITIALIZATION_COMPLETE` is already `true`, w
 
 - The `Filter-Rev: mirror` sentinel keeps the trailer contract intact, so tooling that reads generation provenance needs no special case.
 - `Adopt Fork` ships to every fork as an inert workflow. First-tier forks carry it but cannot run it past the guard.
-- The rulesets script strips deploy and integration-test checks from the required checks when a fork is not deploy-ready, at adoption as at first-tier setup. No shipped ruleset lists those checks yet, so this is inert until the planned deploy lane lands (ADR-036).
+- The required checks are the same on every tier. The deploy lane (ADR-041) skips with a visible reason on a fork that is not onboarded, so the summary check stays green without any per-fork ruleset filtering.
 
 ## Alternatives Considered
 

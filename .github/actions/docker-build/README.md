@@ -21,7 +21,7 @@ java-build (uploads build-artifacts) → docker-build (this action)
 
 | Job | `push` | Permissions | Trust boundary |
 |-----|--------|-------------|----------------|
-| `🐳 Docker Build` | `'false'` | `contents: read` | Runs on every event, including external-fork PRs |
+| `🐳 Docker Build` | `'false'` | `contents: read` | Runs on every event, including external-fork PRs; the same job validates the test-suite image |
 | `🐳 Docker Push` | `'true'` | `packages: write` | Gated by the §5.5 `if:` clause (no `pull_request_target`, external-fork, or `dependabot[bot]`) — the gate lives on the **job**, not in this action |
 
 ## Inputs

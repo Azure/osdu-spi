@@ -1,12 +1,12 @@
 name: 'Acceptance Image Build'
-description: 'Build the acceptance test image (suite source + pre-resolved dependencies) beside the service image and optionally push it to GHCR'
+description: 'Build the test-suite image (every declared suite with pre-resolved dependencies) beside the service image and optionally push it to GHCR'
 
 inputs:
   image_name:
     description: 'Short service name (e.g. partition); the image is named <image_name>-acceptance. Required.'
     required: true
   descriptor:
-    description: 'Path to the fork-owned service descriptor; its tests.acceptance.path selects the suite when present'
+    description: 'Path to the fork-owned service descriptor; every tests.<name>.path it declares is baked when present'
     required: false
     default: '.spi/service.yaml'
   dockerfile_path:
@@ -37,8 +37,11 @@ outputs:
     description: '"true" when no acceptance suite directory exists and the image build was skipped'
     value: ${{ steps.suite.outputs.buildable != 'true' }}
   suite_dir:
-    description: 'Suite module directory baked into the image'
+    description: 'Acceptance suite directory, the image''s run-time default'
     value: ${{ steps.suite.outputs.suite_dir }}
+  suite_dirs:
+    description: 'Every suite directory baked into the image, space-separated'
+    value: ${{ steps.suite.outputs.suite_dirs }}
   image_repository:
     description: 'Full registry path, e.g. ghcr.io/<org>/<service>-acceptance (empty when skipped)'
     value: ${{ steps.meta.outputs.image_repository }}
@@ -123,7 +126,7 @@ runs:
         provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}
         build-args: |
-          SUITE_DIR=${{ steps.suite.outputs.suite_dir }}
+          SUITE_DIRS=${{ steps.suite.outputs.suite_dirs }}
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
         # Own cache scope: the suite layers share nothing with the service image.
@@ -149,10 +152,10 @@ runs:
           MSG="Skipped: ${REASON}"
         elif [ "$PUSH" = "true" ]; then
           HEADING="🧪 Acceptance Image Push"
-          MSG="Image pushed: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\` (suite: \`${SUITE_DIR}\`)"
+          MSG="Image pushed: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\` (suites: \`${SUITE_DIRS}\`)"
         else
           HEADING="🧪 Acceptance Image Build"
-          MSG="Dockerfile validated for suite \`${SUITE_DIR}\`; no GHCR push (validate-only job)"
+          MSG="Dockerfile validated for suites \`${SUITE_DIRS}\`; no GHCR push (validate-only job)"
         fi
         echo "$MSG"
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
@@ -165,7 +168,7 @@ runs:
       env:
         BUILDABLE: ${{ steps.suite.outputs.buildable }}
         REASON: ${{ steps.suite.outputs.reason }}
-        SUITE_DIR: ${{ steps.suite.outputs.suite_dir }}
+        SUITE_DIRS: ${{ steps.suite.outputs.suite_dirs }}
         IMAGE_REPOSITORY: ${{ steps.meta.outputs.image_repository }}
         IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         PUSH: ${{ inputs.push }}
