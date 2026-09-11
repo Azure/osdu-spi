@@ -13,27 +13,7 @@ Each step ends with an expected result. Check it before you move on.
 
 ## Create and initialize
 
-### 1. Delete orphaned container packages
-
-Deleting a repository leaves its container packages in GHCR. A package that is no longer linked to a repository rejects pushes from a new repository's workflow token, so a repository recreated under a name that was used before fails its first Docker Push.
-
-List the organization's container packages and the repository each one is linked to:
-
-```bash
-gh api --paginate "orgs/<org>/packages?package_type=container" --jq '.[] | "\(.name) \(.repository.full_name // "unlinked")"'
-```
-
-Delete each unlinked package named `<service>`, `<service>-acceptance`, or `<service>-fork`. For example:
-
-```bash
-gh api --method DELETE "orgs/<org>/packages/container/<service>-acceptance"
-```
-
-GitHub keeps a deleted package restorable for thirty days.
-
-**Expected result:** the listing shows no unlinked package with the service's name. For a name that was never used, there is nothing to delete.
-
-### 2. Create the repository from the template
+### 1. Create the repository from the template
 
 ```bash
 gh repo create <org>/<service> --template Azure/osdu-spi --public
@@ -41,7 +21,9 @@ gh repo create <org>/<service> --template Azure/osdu-spi --public
 
 **Expected result:** within a minute, the repository has an open issue titled "Repository Initialization Required".
 
-### 3. Configure the upstream repository
+If the name belonged to a repository that was deleted, its container packages may still exist in GHCR, and the new repository's first Docker Push fails with a permission error. Delete them as [step 7](#7-delete-the-repository-and-its-packages) describes, then rerun the push.
+
+### 2. Configure the upstream repository
 
 Reply to the initialization issue with the upstream repository: a full URL for GitLab, or `owner/name` for GitHub. Leave off `.git`; initialization adds it.
 
@@ -58,7 +40,7 @@ gh api repos/<org>/<service>/branches --jq '.[].name'
 gh variable list --repo <org>/<service>
 ```
 
-### 4. Add the service descriptor
+### 3. Add the service descriptor
 
 The deploy lane reads `.spi/service.yaml` to learn which test suites to build into the acceptance image and run. Clone the repository and create a branch for the descriptor:
 
@@ -77,7 +59,7 @@ git push -u origin add-service-descriptor
 gh pr create --base main --fill
 ```
 
-Leave the pull request open; step 6 uses it.
+Leave the pull request open; step 5 uses it.
 
 **Expected result:** the Deploy Gate job reports "repository is not onboarded to a stack" and lists the five missing values. This is expected before onboarding, and the Validation Summary check still passes.
 
@@ -85,7 +67,7 @@ Leave the pull request open; step 6 uses it.
 
 Onboarding lets the repository's workflows borrow the stack environment. A borrow deploys a candidate image of the service to the stack, runs the descriptor's suites against it, and restores the canonical image afterward.
 
-### 5. Onboard the repository
+### 4. Onboard the repository
 
 Run the onboarding plan first. It changes nothing:
 
@@ -108,9 +90,9 @@ gh secret list --repo <org>/<service>
 
 `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `SPI_STACK_RESOURCE_GROUP`, and `SPI_STACK_CLUSTER` are variables; `AZURE_CLIENT_ID` is a secret.
 
-Onboarding can't test the credential itself, because only a workflow run in the repository's `spi-stack` environment can get the repository's OIDC token. Step 6 tests it.
+Onboarding can't test the credential itself, because only a workflow run in the repository's `spi-stack` environment can get the repository's OIDC token. Step 5 tests it.
 
-### 6. Test a change in the environment
+### 5. Test a change in the environment
 
 Push a change that triggers a build to the descriptor pull request, or open a new pull request. Changes under `provider/`, `testing/`, or `.mvn/`, or to a `pom.xml`, trigger a build. A pull request that changes only `.github/`, other dot-directories such as `.spi/`, or Markdown files skips the build and deploys nothing.
 
@@ -129,7 +111,7 @@ Merge the pull request. The push to `main` runs the deploy lane again with the i
 
 Remove the repository from the environment before you delete it. Otherwise the environment keeps a credential for a repository id that no longer exists.
 
-### 7. Remove the repository from the environment
+### 6. Remove the repository from the environment
 
 The first command shows what will be removed; the second removes it:
 
@@ -140,12 +122,24 @@ spi onboard <service> --remove --write
 
 **Expected result:** `spi onboard --list` no longer lists the repository for the service. The repository's own values and `spi-stack` environment stay in place until the repository is deleted.
 
-### 8. Delete the repository and its packages
+### 7. Delete the repository and its packages
 
 ```bash
 gh repo delete <org>/<service>
 ```
 
-Then delete the container packages the repository published, as in step 1. A package left behind blocks the next repository created with the same name.
+Deleting the repository leaves its container packages in GHCR, no longer linked to any repository. A package in that state rejects pushes from a new repository's workflow token, so a repository created later under the same name fails its first Docker Push. List the organization's container packages and the repository each one is linked to:
 
-**Expected result:** the package listing from step 1 shows nothing with the service's name.
+```bash
+gh api --paginate "orgs/<org>/packages?package_type=container" --jq '.[] | "\(.name) \(.repository.full_name // "unlinked")"'
+```
+
+Delete each unlinked package named `<service>`, `<service>-acceptance`, or `<service>-fork`. For example:
+
+```bash
+gh api --method DELETE "orgs/<org>/packages/container/<service>-acceptance"
+```
+
+GitHub keeps a deleted package restorable for thirty days.
+
+**Expected result:** the listing shows no unlinked package with the service's name.
