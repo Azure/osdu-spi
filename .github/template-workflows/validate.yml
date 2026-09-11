@@ -530,8 +530,9 @@ jobs:
             fi
             reason=$(jq -r '.reason.message // "unknown"' status.json)
             if [ $SECONDS -ge $deadline ]; then
-echo "::error::environment is not deployable after 10 minutes: $reason"
-echo "Deploy and Test: environment is not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"; exit 1
+              echo "::error::environment is not deployable after 10 minutes: $reason"
+              echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
             fi
             echo "::notice::pin refused, environment not deployable ($reason); retrying"
             sleep 20
