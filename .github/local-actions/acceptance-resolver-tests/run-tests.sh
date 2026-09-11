@@ -526,6 +526,23 @@ expect_fail "a token default is a secret in the repository" 2 "default is not va
   engine --contract-only --descriptor "$TMP/token-default.yaml"
 ok "token source"
 
+note "noAccessToken: the no-access bearer arrives as RESOLVER_NO_ACCESS_TOKEN, never as a default"
+variant "$TMP/noaccess.yaml" "TESTER_TOKEN: { source: user }" "NO_ACCESS_TOKEN: { source: noAccessToken }"
+ENV_NA="$TMP/noaccess.env"
+RESOLVER_NO_ACCESS_TOKEN="tok-none" engine --mode run --descriptor "$TMP/noaccess.yaml" --facts "$FACTS" --secrets "$SECRETS" \
+  --env-file "$ENV_NA" --report "$TMP/noaccess.json" >/dev/null 2>&1 || die "noAccessToken must resolve from RESOLVER_NO_ACCESS_TOKEN"
+[ "$(env_value "$ENV_NA" NO_ACCESS_TOKEN)" = "tok-none" ] || die "noAccessToken value wrong"
+expect_fail "run refuses without the no-access token" 3 "unresolved required bindings: NO_ACCESS_TOKEN" "ENV_NOT_READY" \
+  env -u RESOLVER_NO_ACCESS_TOKEN RESOLVER_TOKEN="tok-minted" python3 "$ENGINE" --mode run --descriptor "$TMP/noaccess.yaml" --facts "$FACTS" --secrets "$SECRETS" --env-file "$TMP/none.env"
+[ "$(report_field "$TMP/fail-report.json" "r['missing'][0]['reason']")" = "source noAccessToken: set RESOLVER_NO_ACCESS_TOKEN to the no-access identity's bearer (spi token --no-access)" ] \
+  || die "missing no-access token must say how to supply it"
+expect_fail "run refuses an empty no-access token" 3 "unresolved required bindings: NO_ACCESS_TOKEN" "ENV_NOT_READY" \
+  env RESOLVER_NO_ACCESS_TOKEN="" RESOLVER_TOKEN="tok-minted" python3 "$ENGINE" --mode run --descriptor "$TMP/noaccess.yaml" --facts "$FACTS" --secrets "$SECRETS" --env-file "$TMP/none.env"
+variant "$TMP/noaccess-default.yaml" "TESTER_TOKEN: { source: user }" 'NO_ACCESS_TOKEN: { source: noAccessToken, default: "x" }'
+expect_fail "a no-access token default is a secret in the repository" 2 "default is not valid for source noAccessToken" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/noaccess-default.yaml"
+ok "noAccessToken source"
+
 note "infra: wrong facts apiVersion is a typed refusal"
 python3 -c "
 import json
