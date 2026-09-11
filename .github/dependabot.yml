@@ -23,9 +23,9 @@ updates:
     cooldown:
       default-days: 7
 
-  # Bumps the base image digest in build/Dockerfile; template-sync carries the
-  # updated Dockerfile to every fork (ADR-037). The App Insights agent is an ADD
-  # with a checksum, not a FROM, so its version bump stays manual.
+  # Digest and patch bumps for the base images in build/; template-sync carries the
+  # updated Dockerfiles to every fork (ADR-037). Major and minor image changes (the
+  # Java release) and the App Insights agent, an ADD with a checksum, stay manual.
   - package-ecosystem: "docker"
     directory: "/build"
     schedule:
@@ -34,6 +34,15 @@ updates:
     target-branch: "main"
     labels:
       - "dependencies"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      # Dependabot reads the JDK in maven's tag as the patch: 3.9-eclipse-temurin-17 is 3.9.17.
+      - dependency-name: "library/maven"
+        update-types:
+          - "version-update:semver-patch"
     groups:
       docker:
         patterns:

@@ -5,6 +5,7 @@
 **Updated** - 2025-10-24 (Separation of Concerns Architecture)
 **Updated** - 2025-10-28 (Removed pip/doc from template to prevent fork caching issues)
 **Updated** - 2025-12-19 (Changed Maven schedule from weekly to daily for faster rebasing)
+**Updated** - 2026-09-11 (Initialization closes PRs from the inherited template configuration; docker limited to digest and patch updates)
 
 ## Context
 
@@ -14,7 +15,7 @@ Forks of OSDU services need dependency updates that arrive promptly, do not brea
 
 Dependabot is split by ownership:
 
-1. **The template owns the engineering system.** The template's `.github/dependabot.yml` scans GitHub Actions under `.github` and the base image in `build/Dockerfile`.
+1. **The template owns the engineering system.** The template's `.github/dependabot.yml` scans GitHub Actions under `.github` and the base images in `build/`.
 2. **Forks own application code.** The fork configuration deployed from `.github/fork-resources/dependabot.yml` scans Maven only.
 3. **Template sync carries platform updates.** Action and Dockerfile bumps merged in the template reach forks through `sync-template.yml`, never through a fork's Dependabot.
 4. **Conservative policy.** Fork Maven updates are patch-only; build tooling is pinned by hand.
@@ -33,9 +34,11 @@ Disabling Dependabot leaves security fixes to manual monitoring. Allowing minor 
 **Template repository** (`.github/dependabot.yml`): two ecosystems, both targeting `main` with the `dependencies` label and a limit of 5 open PRs.
 
 - `github-actions` on `/.github`, daily at 08:00, all actions grouped, minor and patch only, with a 7-day cooldown
-- `docker` on `/build`, daily at 08:30, grouped, for the base image digest in the canonical Dockerfile ([ADR-037](037-engineering-system-owns-service-dockerfile.md)); the App Insights agent is an `ADD` with a checksum rather than a `FROM`, so its bump stays manual
+- `docker` on `/build`, daily at 08:30, grouped, digest and patch updates only, for the base images in the Dockerfiles the template owns ([ADR-037](037-engineering-system-owns-service-dockerfile.md)); major and minor image changes (the Java release) and the App Insights agent, an `ADD` with a checksum rather than a `FROM`, stay manual
 
 There is no pip ecosystem for `doc/`. A fork inherits this file until `deploy-fork-resources.sh` replaces it, and Dependabot caches the ecosystem list, so a `doc/` entry made forks fail on a directory they do not have.
+
+The same inheritance means Dependabot runs this file in a new repository until initialization replaces it, starting with the initial commit, and can open PRs against `build/` or `.github`. It never revisits them after the swap, so `init-complete.yml` closes every open Dependabot PR outside the fork's `maven` ecosystem once the fork configuration lands.
 
 **Fork repositories** (`.github/fork-resources/dependabot.yml`, deployed to `.github/dependabot.yml`): one `maven` ecosystem, daily at 09:00, targeting `main` with the `dependencies` label.
 
