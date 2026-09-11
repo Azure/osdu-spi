@@ -84,11 +84,9 @@ naming the offending key — the resolver refuses to guess.
 | `user` | Nothing — the caller's environment must supply it (or a declared `default`) |
 | `token` | `RESOLVER_TOKEN`, the bearer the caller minted for this run: the deploy lane's per-run mint, or `spi token` on a laptop. No `default`: a default token is a secret in the repository |
 
-`openid` and `legalTag` are agreed with the stack
-([osdu-spi-stack#131](https://github.com/Azure/osdu-spi-stack/issues/131)) but
-not yet published; until the envelope carries them, bindings on them resolve
-as env-not-ready. The fact locations live in one table (`FACT_PATHS` /
-`PARTITION_FACT_KEYS`), so an envelope rename is a one-line change.
+The fact locations live in one table (`FACT_PATHS` / `PARTITION_FACT_KEYS`),
+so an envelope rename is a one-line change. A fact an environment does not
+publish resolves as env-not-ready in run mode.
 
 ## Resolution precedence
 

@@ -28,7 +28,7 @@ The vocabulary is closed in both directions. An unknown source kind, an unknown 
 
 The resolver lives at `.github/actions/acceptance-resolver/`, a composite action wrapping a standard-library-only Python engine, extracted per ADR-028 so it runs identically in CI, on a laptop, and in the fixture harness. It never calls Azure or the cluster: the caller hands it a saved `spi info --json` envelope, validated against `apiVersion: spi.osdu.dev/v1`, and, when secrets are named, a file mapping secret names to values.
 
-Resolution precedence per variable is explicit process environment, then facts, then declared default, with `template` sources rendering last. An explicit environment value wins verbatim, which lets a developer point one variable at localhost without forking the contract. Fact locations live in one table, so an envelope rename is a one-line change. Two agreed keys, `openid` and the primary partition's `legal_tag`, are not yet published by the stack and resolve as typed env-not-ready until they land ([osdu-spi-stack#131](https://github.com/Azure/osdu-spi-stack/issues/131)).
+Resolution precedence per variable is explicit process environment, then facts, then declared default, with `template` sources rendering last. An explicit environment value wins verbatim, which lets a developer point one variable at localhost without forking the contract. Fact locations live in one table, so an envelope rename is a one-line change. A fact an environment does not publish resolves as typed env-not-ready; `openid` and the primary partition's `legal_tag` arrived with [osdu-spi-stack#131](https://github.com/Azure/osdu-spi-stack/issues/131).
 
 Where the caller and the facts could both answer the same question, one owns it and the other asserts agreement. If the caller passes an expected gateway or partition and the facts publish it too, a mismatch is a typed infra error, never a silent preference.
 
@@ -50,7 +50,6 @@ The `acceptance-image` action bakes every declared suite into one `<service>-acc
 ### Negative
 
 - A new schema is a new maintenance surface. Vocabulary growth (a new fact kind, a new archetype) requires a template contract change, deliberately.
-- Until the stack publishes the two agreed fact keys, descriptors binding `openid` or `legalTag` resolve as env-not-ready. Correct, but visible.
 - Each service fork must author one descriptor before it can join the deploy lane; until then the lane reports that no descriptor declares the suites.
 
 ### Neutral

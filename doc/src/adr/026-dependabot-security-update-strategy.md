@@ -44,7 +44,7 @@ There is no pip ecosystem for `doc/`. A fork inherits this file until `deploy-fo
 - Build tooling ignored entirely: JaCoCo, git-commit-id, Lombok, Maven plugins, the Spring Boot Maven plugin
 - Groups: `spring`, `logging`, `jackson`, `azure`
 
-**Validation** (`.github/template-workflows/dependabot-validation.yml`): runs on PRs from `dependabot[bot]` against `main`, `fork_integration`, and `fork_upstream`, skipping `.github` and documentation paths. It builds the Java project, runs a validate-only Docker build, posts a build status comment, and opens an issue labelled `build-failed` when the build fails. There is no auto-approve and no auto-merge; a human merges every Dependabot PR.
+**Validation** (`.github/template-workflows/dependabot-validation.yml`): runs on PRs from `dependabot[bot]` against `main`, `fork_integration`, and `fork_upstream`, skipping `.github` and documentation paths. It builds the Java project, runs a validate-only Docker build, and opens an issue labelled `build-failed` when the build fails. There is no auto-approve and no auto-merge; a human merges every Dependabot PR.
 
 ### Update flow
 
