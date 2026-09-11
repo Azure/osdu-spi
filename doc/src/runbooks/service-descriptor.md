@@ -41,7 +41,7 @@ tests:
       INTEGRATION_TESTER_ACCESS_TOKEN: { source: token }
 ```
 
-`service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. `archetype` is always `java-maven-azure`.
+`service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. It must equal the slug the workflows build and pin under, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise. `archetype` is always `java-maven-azure`.
 
 `tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
 
@@ -135,7 +135,7 @@ A suite that runs its tests through Failsafe takes the same `systemPropertyVaria
     )
     ```
 
-    The suite names come from the contract report, the same source the lane uses. Each suite gets an env file, `<suite>.env`, and a report, `<suite>-report.json`. The subshell stops at the first resolver failure and returns its exit code without closing your terminal.
+    The suite names come from the contract report, the same source the lane uses. Each suite gets an env file, `<suite>.env`, and a report, `<suite>-report.json`. The subshell stops at the first resolver failure and returns its exit code without closing your terminal. A descriptor with `keyvault:<name>` or `keyVaultBindings` also needs `--secrets <file>`, a JSON object of secret name to value that you fetch from the vault yourself; without it, run mode exits 3 for those bindings.
 
     Run mode is what the lane uses: when a binding has no value, it exits 3 and names every such binding. While iterating against a personal stack, `--mode bind` warns instead.
 
@@ -159,12 +159,12 @@ image="ghcr.io/<org>/<service>-acceptance:sha-<short-sha>"
 for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
   maven_args=()
   while IFS= read -r arg; do maven_args+=("$arg"); done < <(jq -r '.contract.maven_arguments[]' "$suite-report.json")
-  docker run --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
-    "$image" "${maven_args[@]}"
+  docker run --rm --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
+    "$image" "${maven_args[@]}" || { echo "suite $suite failed"; break; }
 done
 ```
 
-Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches Maven as one token instead of being expanded by the shell. The loop runs in Bash 3.2 and zsh alike.
+Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches Maven as one token instead of being expanded by the shell. The loop stops at the first failing suite, as the lane fails when any suite fails, and runs in Bash 3.2 and zsh alike.
 
 ## Common mistakes
 

@@ -94,7 +94,7 @@ Onboarding can't test the credential itself, because only a workflow run in the 
 
 ### 5. Test a change in the environment
 
-Push a change that triggers a build to the descriptor pull request, or open a new pull request. Changes under `provider/`, `testing/`, or `.mvn/`, or to a `pom.xml`, trigger a build. A pull request that changes only `.github/`, other dot-directories such as `.spi/`, or Markdown files skips the build and deploys nothing.
+Push a change that triggers a build to the descriptor pull request, or open a new pull request from a branch that includes the descriptor. Changes under `provider/`, `testing/`, or `.mvn/`, or to a `pom.xml`, trigger a build. A pull request that changes only `.github/`, other dot-directories such as `.spi/`, or Markdown files skips the build and deploys nothing.
 
 **Expected result:** the Deploy and Test job runs, and its "Log in as deploy identity" step succeeds, which confirms the federated credential. The Validation Summary comment on the pull request lists every job and one result line per suite. The job's Restore step returns the service to its canonical image.
 
