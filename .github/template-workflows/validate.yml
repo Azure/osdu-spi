@@ -463,8 +463,9 @@ jobs:
           set -euo pipefail
           # Exit 2 means not deployable, which the next step decides; the version is still in the output.
           spi status --json > status.json || true
-          version=$(jq -r '.environment.stackVersion // empty' status.json) \
+          jq -e 'type == "object"' status.json > /dev/null 2>&1 \
             || { echo "::error::spi status --json produced no JSON"; cat status.json; exit 1; }
+          version=$(jq -r '.environment.stackVersion // empty' status.json)
           case "$version" in
             v[0-9]*)
               if [ "$(spi --version)" != "spi ${version#v}" ]; then
@@ -486,8 +487,12 @@ jobs:
           started=$SECONDS
           deadline=$((started + 10 * 60))
           waited=false
-          until spi status --json > status.json; jq -e '.deployable == true' status.json > /dev/null; do
-            reason=$(jq -r '.reason.message // "unknown"' status.json 2>/dev/null || echo "status produced no JSON")
+          until spi status --json > status.json; jq -e '.deployable == true' status.json > /dev/null 2>&1; do
+            if jq -e 'type == "object"' status.json > /dev/null 2>&1; then
+              reason=$(jq -r '.reason.message // "unknown"' status.json)
+            else
+              reason="spi status --json produced no JSON"
+            fi
             if [ $SECONDS -ge $deadline ]; then
               echo "::error::environment is not deployable after 10 minutes: $reason"
               echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
@@ -518,13 +523,16 @@ jobs:
               --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
               --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; do
             spi status --json > status.json || true
+            jq -e 'type == "object"' status.json > /dev/null 2>&1 \
+              || { echo "::error::pin refused and spi status --json produced no JSON"; cat status.json; exit 1; }
             if jq -e '.deployable == true' status.json > /dev/null 2>&1; then
               echo "::error::pin refused while the environment is deployable"; exit 1
             fi
+            reason=$(jq -r '.reason.message // "unknown"' status.json)
             if [ $SECONDS -ge $deadline ]; then
-              echo "::error::environment not deployable after 10 minutes: $(jq -r '.reason.message // "unknown"' status.json 2>/dev/null)"; exit 1
+              echo "::error::environment not deployable after 10 minutes: $reason"; exit 1
             fi
-            echo "::notice::environment borrowed by another lane; retrying the pin"
+            echo "::notice::pin refused, environment not deployable ($reason); retrying"
             sleep 20
           done
 
