@@ -111,7 +111,7 @@ nav:
   - Runbooks:
       - Fork Lifecycle: runbooks/fork-lifecycle.md
       - Service Descriptor: runbooks/service-descriptor.md
-      - Adoption: workflows/adoption.md
+      - Customer Fork Adoption: workflows/adoption.md
   - Decisions:
       - Index: adr/index.md
       - Learnings: adr/learnings.md

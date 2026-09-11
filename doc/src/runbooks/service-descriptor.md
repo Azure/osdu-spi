@@ -1,10 +1,18 @@
 # Service Descriptor
 
-`.spi/service.yaml` tells the engineering system which test suites a fork ships and what each suite needs from a stack environment. The acceptance image bakes every suite the file declares, the deploy lane runs each one against the borrowed environment, and a developer resolves the same file against a personal stack. The file is fork-owned: template sync never touches it, and it is reviewed with the code.
+`.spi/service.yaml` tells the engineering system which test suites a service repository has and what each suite needs from a stack environment. The acceptance image includes every suite the file declares, and the deploy lane runs each one against the stack environment. Developers resolve the same file against their own stack. The repository owns the file: template sync never changes it, and changes to it are reviewed with the code.
 
-This page is how to write one. The resolver's README beside `.github/actions/acceptance-resolver/resolve.py` is the contract it is checked against, and [ADR-040](../adr/040-descriptor-acceptance-contract.md) is the decision behind it.
+This page covers writing a descriptor, checking it, and running its suites. The resolver's README beside `.github/actions/acceptance-resolver/resolve.py` is the contract the resolver checks, and [ADR-040](../adr/040-descriptor-acceptance-contract.md) records the decision behind it.
 
-## Shape
+## Prerequisites
+
+- A local clone of the service repository. Run every command on this page from its root. Template sync delivers the resolver at `.github/actions/acceptance-resolver/resolve.py`.
+- Python 3. The resolver uses only the standard library.
+- `jq`.
+- From step 5 on, the `spi` CLI connected to a stack environment: run `spi connect --resource-group <rg> --cluster <cluster>`, then `spi status`.
+- For [running suites locally](#run-suites-locally), Docker. The acceptance image is built for `linux/amd64` only; on an Apple silicon Mac it runs under emulation.
+
+## Descriptor format
 
 ```yaml
 schemaVersion: 3
@@ -33,52 +41,74 @@ tests:
       INTEGRATION_TESTER_ACCESS_TOKEN: { source: token }
 ```
 
-`service.name` is the service as the stack knows it, the name `spi onboard` was given. `archetype` is always `java-maven-azure`.
+`service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. `archetype` is always `java-maven-azure`.
 
-`tests` is a map of suites. `acceptance` is required and is the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
+`tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
 
 | Field | Meaning |
 |---|---|
 | `type` | Always `maven` |
-| `path` | The directory holding the suite's `pom.xml`, relative to the repository root. The image bakes exactly the directories the suites name |
-| `mavenArguments` | Maven argv tokens, passed as an array and never as a shell string. Default `[verify]` |
-| `timeoutMinutes` | The lane kills the suite past this. Default 25, maximum 180 |
-| `bindings` | The environment variables the suite reads, each bound to a source below |
-| `keyVaultBindings` | Variable to Key Vault secret name, for values that must never be in the file. Declared and validated today, not yet materialized by the lane |
-| `requires`, `dependencies` | Seeded loads, entitlement groups, and sibling services the suite depends on. Declared and validated today, not yet enforced by the gate |
+| `path` | The directory holding the suite's `pom.xml`, relative to the repository root. The image includes only the directories the suites name |
+| `mavenArguments` | Maven arguments as an array of tokens, never as one shell string. Default `[verify]` |
+| `timeoutMinutes` | The lane stops the suite after this many minutes. Default 25, maximum 180 |
+| `bindings` | The environment variables the suite reads, each bound to a source from the table below |
+| `keyVaultBindings` | Variable name to Key Vault secret name, for values that must never be in the file. The resolver validates it, but the lane doesn't supply these values yet |
+| `requires`, `dependencies` | Seeded data loads, entitlement groups, and other services the suite depends on. The resolver validates them, but the gate doesn't enforce them yet |
 
-## Two suite shapes
+## Single-module and reactor suites
 
-**A single module** has its `pom.xml` at the path and runs with `[test]` or `[verify]`. Upstream's `<service>-acceptance-test` is this shape.
+**A single module** has its `pom.xml` at the path and runs with `[test]` or `[verify]`. Upstream's `<service>-acceptance-test` is laid out this way.
 
-**A reactor** has a parent `pom.xml` at the path and the Azure module beneath it. Name the path as the parent and select the module in the arguments: `[-pl, <service>-test-azure, -am, test]`. The image installs the reactor before it prewarms dependencies, so the sibling modules the Azure module depends on resolve from the image's local Maven repository. Upstream's `testing/` tree is this shape.
+**A reactor** has a parent `pom.xml` at the path, with the Azure module beneath it. Set the path to the parent directory and select the module in the arguments: `[-pl, <service>-test-azure, -am, test]`. The image installs the reactor before it downloads dependencies, so the modules the Azure module depends on resolve from the image's local Maven repository. Upstream's `testing/` tree is laid out this way.
 
 ## Bindings
 
-A binding names the variable the suite reads and the symbol it takes its value from. Values that come from the environment, the caller, or a vault are never in the file. The only values the file carries are a `static` or `template` binding's `value` and a fallback `default`, which `user` and the environment's sources (`gateway`, `partition`, `openid`, `tenant`, `legalTag`) accept. The sources:
+A binding maps an environment variable the suite reads to a source that supplies its value. Name the variable whatever the suite reads; the stack never sees these names. Two suites can bind the same source under different names, as the example does for the token.
 
 | Source | Value | Use it for |
 |---|---|---|
-| `gateway` | The environment's base URL, with `suffix` appended if given | Every service URL. Add `suffix: /` when the suite concatenates paths onto it |
-| `partition` | The primary data partition's name | Partition ids and tenant names |
+| `gateway` | The stack's base URL, with `suffix` appended if given | Service URLs. Add `suffix: /` when the suite appends paths to it |
+| `partition` | The primary data partition's name | Data partition ids and tenant names |
 | `openid` | The OIDC issuer the stack publishes | Suites that discover the token endpoint |
 | `tenant` | The Entra tenant id | Suites that build authority URLs themselves |
-| `legalTag` | The primary partition's seeded legal tag | Storage and legal suites |
-| `token` | The bearer the caller minted: the lane's per-run mint, or `spi token` on a laptop | Every access-token variable. No default is allowed |
+| `legalTag` | The primary data partition's seeded legal tag | Storage and legal suites |
+| `token` | The bearer token the caller supplies as `RESOLVER_TOKEN`: minted per run by the lane, or from `spi token` on a laptop | Access-token variables. No default allowed |
 | `static` | The literal `value` | Fixed settings such as an environment label |
 | `template` | The `value` with `${OTHER}` references to the suite's other bindings, rendered last; never to another `template` or a `keyvault:` binding | A URL built from the gateway and a fixed path |
-| `user` | Nothing; the caller's shell supplies it, or the declared `default` | A knob only a developer sets |
-| `keyvault:<name>` | That secret from the stack's vault | Not yet delivered by the lane; prefer `token` |
+| `user` | Nothing from the stack; the caller's shell supplies it, or the declared `default` | A setting only a developer changes |
+| `keyvault:<name>` | The named secret, from a secrets file the caller passes to the resolver | Secrets other than access tokens. The lane doesn't supply these yet; for an access token, use `token` |
 
-Name the variable whatever the suite reads. The stack never learns these names; only the source is shared vocabulary. Two suites may bind the same source under different names, as the example does for the token.
+### Values and defaults
 
-An explicit variable in the caller's environment always wins over the file. That is how a developer points a suite at a service on their laptop without editing the descriptor.
+- Values from the stack, the caller, or a vault never appear in the file.
+- `static` and `template` bindings carry a `value`.
+- `user` and the five sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`) accept a `default`, used when nothing else supplies a value. `token`, `keyvault:<name>`, `static`, and `template` don't.
 
-## Write it
+A variable set in the caller's environment always wins over the file. That's how a developer points a suite at a service running on their laptop without editing the descriptor.
 
-1. Find the variables. Upstream suites read them through `System.getenv` or `System.getProperty`; grep the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them. Bindings arrive as environment variables, and `mavenArguments` reach Maven verbatim with nothing expanded, so a value the suite reads only as a system property needs a `systemPropertyVariables` entry of `${env.NAME}` in the suite's `pom.xml`. The upstream acceptance module belongs to upstream, so a mapping it lacks goes there.
-2. Bind each one. A URL is `gateway`, an id is `partition`, a token is `token`. If none of the sources fits, the suite wants something the stack does not publish; open an issue on the stack rather than a `user` binding with a default, because a default outlives the reason it was added.
-3. Set the timeout from a real run, plus margin.
+### System properties
+
+Bindings reach the suite as environment variables, and `mavenArguments` reach Maven unchanged, so `${env.NAME}` in an argument is never expanded. A suite that reads a value only with `System.getProperty` needs the property mapped from the environment in its `pom.xml`:
+
+```xml
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-surefire-plugin</artifactId>
+  <configuration>
+    <systemPropertyVariables>
+      <NAME>${env.NAME}</NAME>
+    </systemPropertyVariables>
+  </configuration>
+</plugin>
+```
+
+A suite that runs its tests through Failsafe takes the same `systemPropertyVariables` block under `maven-failsafe-plugin`. Upstream owns the `<service>-acceptance-test` module, so a mapping it lacks belongs in an upstream merge request, not in the fork.
+
+## Create and validate a descriptor
+
+1. Find the variables each suite reads. Upstream suites read them with `System.getenv` or `System.getProperty`; search the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them. A variable read with `System.getProperty` also needs the mapping in [System properties](#system-properties).
+2. Bind each variable. Use `gateway` for the stack base URL, `partition` for the primary data partition name, and `token` for access tokens; the [table](#bindings) covers the rest. If no source fits, the suite needs something the stack doesn't publish. Open an issue on the stack instead of adding a `user` binding with a default, because a default stays in the file after the reason for it is gone.
+3. Set `timeoutMinutes` from a real run's duration, plus margin.
 4. Check the contract:
 
     ```bash
@@ -86,9 +116,9 @@ An explicit variable in the caller's environment always wins over the file. That
       --descriptor .spi/service.yaml --report /dev/stdout
     ```
 
-    Exit 0 prints the suites the image will bake. Exit 2 names the violation.
+    Exit 0 prints the suites the image will include. Exit 2 names the problem.
 
-5. Resolve it against a real environment:
+5. Resolve the descriptor against a stack environment:
 
     ```bash
     spi info --json > facts.json
@@ -105,31 +135,34 @@ An explicit variable in the caller's environment always wins over the file. That
     )
     ```
 
-    This is the loop the lane runs: the suite names come from the contract report, never from a list kept elsewhere. The subshell stops at the first resolver failure and returns its exit code without closing your terminal.
+    The suite names come from the contract report, the same source the lane uses. Each suite gets an env file, `<suite>.env`, and a report, `<suite>-report.json`. The subshell stops at the first resolver failure and returns its exit code without closing your terminal.
 
-    Run mode is what the lane uses: it refuses with exit 3 and names every binding it could not answer. Bind mode warns instead, for iterating against a personal stack.
+    Run mode is what the lane uses: when a binding has no value, it exits 3 and names every such binding. While iterating against a personal stack, `--mode bind` warns instead.
 
-6. Run each suite as the lane will, through the image:
+    An env file can contain a token. Pass it to `docker run --env-file` and never `source` it, which would run the token as shell.
 
-    ```bash
-    image="ghcr.io/<org>/<service>-acceptance:sha-<short-sha>"
-    for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
-      docker run --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
-        "$image" $(jq -r '.contract.maven_arguments[]' "$suite-report.json")
-    done
-    ```
+6. Commit the descriptor and open a pull request. A pull request that changes only the descriptor skips the build, because Check Paths treats `.spi/` as configuration. The acceptance image is built by the first build that includes the descriptor: a change that triggers a build, pushed to the same pull request or a later one. In that build, the Docker Build job's "Acceptance Image" step fails if a declared path doesn't exist. Once the repository is onboarded, the Deploy and Test job runs each suite, and the Validation Summary comment reports one result line per suite.
 
-    Each suite runs from its declared path with its declared Maven arguments, read from the report step 5 wrote. The arguments stay unquoted so each lands as its own token; the contract refuses an argument with whitespace in it.
+## Run suites locally
 
-    The tag is `sha-` followed by the twelve-character commit hash Docker Push printed; the digest from the same job works too.
+Run the suites through the acceptance image, the same way the lane does. You need:
 
-    The env file is data for `docker run`, never a file to source: sourcing it would evaluate a token as shell.
+- An acceptance image built from a commit that includes the descriptor and every suite you want to run. The Docker Push job publishes one for pushes and same-repository pull requests that trigger a build, and prints its tag: `sha-` followed by the first twelve characters of the commit hash. The digest from the same job works too.
+- The env files and reports from step 5, resolved from the same descriptor.
 
-7. Open the pull request. A pull request that changes only the descriptor skips the build, because Check Paths treats `.spi/` as configuration. On the first build-relevant pull request after it, the Docker Build job's "Acceptance Image" step proves the image bakes every declared path, and once the fork is onboarded the Deploy and Test job runs each suite and reports one verdict line per suite on the pull request.
+```bash
+image="ghcr.io/<org>/<service>-acceptance:sha-<short-sha>"
+for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
+  docker run --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
+    "$image" $(jq -r '.contract.maven_arguments[]' "$suite-report.json")
+done
+```
+
+Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments stay unquoted so each becomes its own token; the contract rejects any argument that contains whitespace.
 
 ## Common mistakes
 
-- **A `user` binding with a default token.** A default is stored in the repository, which makes it a secret in the file. Use `token`.
-- **`mavenArguments` as one string.** `"-pl x -am test"` is one token to Maven and fails. Write the array.
-- **A path outside the suites.** The image ships only the declared directories plus `.mvn` and `.spi`. A suite that reaches for `../shared` fails inside the image although it passed on a laptop.
-- **A suite name with capitals or underscores.** Names are `^[a-z][a-z0-9-]{0,31}$`.
+- **A `user` binding with a default token.** A default is stored in the repository, so a default token is a secret committed to the file. Use `token`.
+- **`mavenArguments` as one string.** `"-pl x -am test"` reaches Maven as one token and fails. Write the array.
+- **A path outside the suites.** The image contains only the declared directories plus `.mvn` and `.spi`. A suite that reads `../shared` passes on a laptop and fails in the image.
+- **A suite name with capitals or underscores.** Names must match `^[a-z][a-z0-9-]{0,31}$`.
