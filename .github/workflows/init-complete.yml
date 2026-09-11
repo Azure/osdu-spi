@@ -183,7 +183,13 @@ jobs:
             echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
             cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
           else
-            SERVICE_SLUG=$(basename "${REPO_URL%.git}")
+            # The config's service key is the Maven module prefix. Upstream names it in
+            # provider/<prefix>-azure; the repository name only agrees by convention.
+            SERVICE_SLUG=$(git ls-tree --name-only "upstream/$DEFAULT_BRANCH" provider/ 2>/dev/null \
+              | sed -n 's|^provider/\(.*\)-azure$|\1|p')
+            if [ "$(printf '%s\n' "$SERVICE_SLUG" | grep -c .)" != "1" ]; then
+              SERVICE_SLUG=$(basename "${REPO_URL%.git}")
+            fi
             echo "::notice::Substituting filter config template for service: $SERVICE_SLUG"
             SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
             sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/upstream-filter.yml" > "$FILTER_CONFIG"
@@ -500,13 +506,13 @@ jobs:
               echo "1. If the unclassified entry applies to every service, add it to the template repository's \`.github/fork-resources/upstream-filter.yml\`. New forks pick the change up automatically."
               echo "2. If it is specific to this service, commit a complete \`.github/upstream-filter.yml\` to this repository's \`main\` branch. Initialization prefers that file over the template."
               echo ""
-              echo "Then comment on this issue again to retry initialization."
+              echo "Then post the upstream repository on this issue again to retry initialization."
             } > "$COMMENT_FILE"
           else
             {
               echo "## ❌ Initialization failed"
               echo ""
-              echo "The workflow failed without a filter halt. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details, then comment on this issue again to retry initialization."
+              echo "The workflow failed without a filter halt. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details, then post the upstream repository on this issue again to retry initialization."
             } > "$COMMENT_FILE"
           fi
           gh issue comment "${{ github.event.issue.number }}" --body-file "$COMMENT_FILE"

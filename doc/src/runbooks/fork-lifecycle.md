@@ -38,6 +38,8 @@ gh api repos/<org>/<service>/branches --jq '.[].name'
 gh variable list --repo <org>/<service>
 ```
 
+**If the issue reports a filter halt** instead, the upstream tree has something the filter config does not classify, and the comment names it. Add the entry to the template's `.github/fork-resources/upstream-filter.yml` when every service carries it, or commit a complete `.github/upstream-filter.yml` to this repository's `main` when it is specific to this service. In that file, `service` is the Maven module prefix, which initialization reads from `provider/<prefix>-azure` upstream; it equals the repository name only by convention, and `entitlements`, whose modules are `entitlements-v2-*`, is the standing exception. Then post the upstream repository on the issue again. A retry converges on the branches a partial run left behind.
+
 ### 3. Add the service descriptor
 
 The deploy lane reads `.spi/service.yaml` to learn which test suites to build into the acceptance image and run. Clone the repository and create a branch for the descriptor:

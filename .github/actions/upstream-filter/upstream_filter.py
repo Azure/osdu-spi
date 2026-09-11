@@ -374,7 +374,23 @@ def filter_fossa(path, fossa_cfg, checkout):
 # ---------------------------------------------------------------------------
 # Generate
 
+def check_module_prefix(checkout, cfg):
+    # provider/ is discarded wholesale, so this is the only point where a wrong
+    # prefix can be caught before seeding fails on a path that never existed.
+    provider = os.path.join(checkout, "provider")
+    if not os.path.isdir(provider):
+        return
+    azure = sorted(e[: -len("-azure")] for e in os.listdir(provider) if e.endswith("-azure"))
+    if azure and cfg["service"] not in azure:
+        raise Halt(
+            "MODULE_PREFIX_MISMATCH",
+            f"provider/{cfg['service']}-azure does not exist upstream; "
+            f"set 'service' to the module prefix (found: {', '.join(azure)})",
+        )
+
+
 def generate(checkout, cfg, report):
+    check_module_prefix(checkout, cfg)
     initial = count_files(checkout)
     discarded = []
 
