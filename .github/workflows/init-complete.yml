@@ -98,6 +98,7 @@ jobs:
       contents: write
       actions: write
       issues: write
+      pull-requests: write
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -411,6 +412,23 @@ jobs:
           if [ -n "$GH_TOKEN" ]; then
             GH_TOKEN=$GH_TOKEN gh variable set INITIALIZATION_COMPLETE --body "true"
           fi
+
+      - name: Close template Dependabot PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Dependabot runs the template's config until the fork config lands (ADR-026).
+          # No --author: that goes through search, which can miss a PR opened seconds ago.
+          if ! PRS=$(gh pr list --state open --json number,author,headRefName \
+            --jq '.[] | select(.author.login == "app/dependabot" and (.headRefName | startswith("dependabot/maven/") | not)) | .number'); then
+            echo "::warning::Could not list Dependabot PRs"
+            exit 0
+          fi
+          for pr in $PRS; do
+            gh pr close "$pr" --delete-branch \
+              --comment "Closed by initialization: this repository's Dependabot only covers Maven. The template owns these files, and template sync delivers their updates." \
+              || echo "::warning::Could not close Dependabot PR #$pr"
+          done
 
       - name: Configure Security
         env:
