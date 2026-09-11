@@ -103,12 +103,15 @@ nav:
       - Deploy & Test: architecture/deploy_test.md
   - Workflows:
       - Initialization: workflows/initialization.md
-      - Adoption: workflows/adoption.md
       - Synchronization: workflows/synchronization.md
       - Cascade: workflows/cascade.md
       - Validation: workflows/validation.md
       - Build: workflows/build.md
       - Release: workflows/release.md
+  - Runbooks:
+      - Fork Lifecycle: runbooks/fork-lifecycle.md
+      - Service Descriptor: runbooks/service-descriptor.md
+      - Customer Fork Adoption: workflows/adoption.md
   - Decisions:
       - Index: adr/index.md
       - Learnings: adr/learnings.md

@@ -118,26 +118,26 @@ jobs:
           assert_yq '.on.push.branches | contains(["!dependabot/**"])' "$BUILD" \
             "Dependabot branches must use the Dependabot Validation workflow"
 
-          # A path-filtered PR trigger leaves the required Docker summary Pending (ADR-030).
+          # A path-filtered PR trigger leaves the required summary Pending (ADR-030).
           assert_yq '.on.pull_request | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request must stay unfiltered so the required summary always reports"
           assert_yq '.on.pull_request_target | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request_target owns sync PRs and must stay unfiltered"
 
-          # One lane per PR: check-initialization routes, and docker-build-required repeats
+          # One lane per PR: check-initialization routes, and validation-summary repeats
           # the test because always() bypasses it.
           SYNC_HEAD="github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'sync/')"
           CHECK_INIT_IF=$(yq -r '.jobs."check-initialization".if | sub("\s+"; " ")' "$VALIDATE")
-          SUMMARY_IF=$(yq -r '.jobs."docker-build-required".if | sub("\s+"; " ")' "$VALIDATE")
+          SUMMARY_IF=$(yq -r '.jobs."validation-summary".if | sub("\s+"; " ")' "$VALIDATE")
 
           assert_contains "$CHECK_INIT_IF" "(github.event_name == 'pull_request' && !($SYNC_HEAD))" \
             "The pull_request lane must stand down for same-repository sync PRs"
           assert_contains "$CHECK_INIT_IF" "(github.event_name == 'pull_request_target' && $SYNC_HEAD)" \
             "The pull_request_target lane must own same-repository sync PRs, and only those"
           assert_contains "$SUMMARY_IF" "(github.event_name != 'pull_request' || !($SYNC_HEAD))" \
-            "The lane that did not build must not report the required Docker summary"
+            "The lane that did not build must not report the required summary"
           assert_contains "$SUMMARY_IF" "(github.event_name != 'pull_request_target' || ($SYNC_HEAD))" \
-            "The sync lane must report the required Docker summary"
+            "The sync lane must report the required summary"
 
           # Routing lives in check-initialization alone; per-job copies drift apart from it.
           assert_yq '.jobs."java-build".if | contains("head.repo.full_name") | not' "$VALIDATE" \
@@ -153,6 +153,36 @@ jobs:
             "docker-build must stay out of the pull_request_target lane"
           assert_yq '[.jobs."docker-build".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref == null] | select(length > 0) | all' "$VALIDATE" \
             "docker-build must check out github.sha, never a PR head"
+
+          # The deploy lane inherits docker-push's trust and never enters the pull_request_target lane.
+          assert_yq '.jobs."deploy-test".needs | contains(["docker-push", "deploy-gate"])' "$VALIDATE" \
+            "deploy-test must chain on docker-push and the deploy gate"
+          assert_yq '.jobs."deploy-test".if == "needs.deploy-gate.outputs.run == '"'"'true'"'"'"' "$VALIDATE" \
+            "deploy-test must run only when the gate decided to borrow"
+          assert_yq '.jobs."deploy-test".environment == "spi-stack"' "$VALIDATE" \
+            "deploy-test must run in the spi-stack environment the deploy identity trusts"
+          assert_yq '.jobs."deploy-test".concurrency."cancel-in-progress" == false' "$VALIDATE" \
+            "A cancelled borrow could skip Restore; queue instead"
+          assert_yq '.jobs."deploy-gate".if == "always()"' "$VALIDATE" \
+            "deploy-gate must always report why the lane did or did not run"
+          # The gate carries the ADR-036 clause itself, never by skip-propagation from docker-push.
+          GATE_RUN=$(yq -r '.jobs."deploy-gate".steps[] | select(.id == "decide") | .run' "$VALIDATE")
+          assert_contains "$GATE_RUN" 'push|pull_request) ;;' \
+            "The gate must refuse every event other than push and pull_request"
+          assert_contains "$GATE_RUN" '[ "$SAME_REPO" = "true" ] || reason=' \
+            "The gate must admit only same-repository pull requests"
+          assert_contains "$GATE_RUN" '[ "$ACTOR" != "dependabot[bot]" ] || reason=' \
+            "The gate must refuse Dependabot"
+          assert_contains "$GATE_RUN" '[ "$REF" != "fork_upstream" ] || reason=' \
+            "The gate must refuse fork_upstream"
+
+          # The ruleset requires the summary by its job name; the two must not drift apart.
+          SUMMARY_NAME=$(yq -r '.jobs."validation-summary".name' "$VALIDATE")
+          if ! jq --exit-status --arg name "$SUMMARY_NAME" '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | index($name)' \
+              .github/rulesets/default-branch.json > /dev/null; then
+            echo "::error file=.github/rulesets/default-branch.json::must require the validation-summary job by its current name ($SUMMARY_NAME)"
+            exit 1
+          fi
 
           # Dependabot owns one build plus one image validation, under its own check name.
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.maven_profile | contains("core,azure")' "$DEPENDABOT" \

@@ -37,7 +37,7 @@ Three branches cost more than one: the team has to learn the flow, and the branc
 
 ### Branch Protection
 Protection is applied as rulesets by `settings-apply.yml` from `.github/rulesets/`:
-- `default-branch.json` protects `main`: PR required with one approving review, required status checks (`CodeQL`, `🐳 Docker Build`), no deletion, no force push.
+- `default-branch.json` protects `main`: PR required with one approving review, required status checks (`CodeQL`, `Validation Summary`), no deletion, no force push.
 - `integration-branch.json` protects `fork_upstream` and `fork_integration` from deletion only. Automation and humans push to them directly.
 
 ### Branch Preservation

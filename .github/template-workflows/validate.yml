@@ -2,7 +2,7 @@ name: Validation
 
 on:
   # No paths-ignore on either PR trigger: a path-skipped workflow leaves the required
-  # "🐳 Docker Build" check Pending and wedges the PR (ADR-030). check-paths gates the heavy jobs.
+  # "Validation Summary" check Pending and wedges the PR (ADR-030). check-paths gates the heavy jobs.
   pull_request:
     branches: [main, fork_integration, fork_upstream]
   pull_request_target:
@@ -45,7 +45,7 @@ permissions:
 
 jobs:
   check-initialization:
-    name: "🔍 Check Initialization Status"
+    name: "Check Initialization"
     # One lane per PR: same-repo sync/ PRs take pull_request_target, which reads this file from
     # the default branch (fork_upstream has none in filter mode). Every other PR takes pull_request.
     if: |
@@ -104,7 +104,7 @@ jobs:
           fi
 
   check-repo-state:
-    name: "🔍 Check Repository State"
+    name: "Check Repository"
     needs: check-initialization
     if: needs.check-initialization.outputs.initialized == 'true'
     runs-on: ubuntu-latest
@@ -135,7 +135,7 @@ jobs:
           fi
 
   check-paths:
-    name: "🔍 Check for Build-Relevant Changes"
+    name: "Check Paths"
     needs: check-initialization
     if: needs.check-initialization.outputs.initialized == 'true'
     runs-on: ubuntu-latest
@@ -186,7 +186,7 @@ jobs:
           fi
 
   java-build:
-    name: "🔨 Java Build"
+    name: "Java Build"
     needs: [check-initialization, check-repo-state, check-paths]
     # Dependabot PRs build in dependabot-validation.yml; config-only PRs skip the build.
     if: |
@@ -260,11 +260,12 @@ jobs:
           maven_profile: ${{ ((github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && vars.SYNC_MODE != 'mirror') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
 
   docker-build:
-    # Validate-only worker; the required "🐳 Docker Build" check is the summary job below.
+    # Validate-only build of both images; the trusted push is docker-push and the required check
+    # is the summary job at the end.
     # Skipped for filter-mode fork_upstream, which builds core only and has no Azure JAR to package.
     # No pull_request_target lane and no checkout ref: a PR-head ref in a read-only job is a CodeQL
     # cache-poisoning finding in every fork (#164). Sync PRs get their image validated on the cascade PR.
-    name: "🐳 Docker Build (validate)"
+    name: "Docker Build"
     needs: [check-initialization, check-repo-state, java-build]
     if: |
       needs.java-build.outputs.build_result == 'success' &&
@@ -277,7 +278,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
-      - name: "Docker Build (validate-only)"
+      - name: "Service Image"
         uses: ./.github/actions/docker-build
         with:
           push: 'false'
@@ -286,15 +287,15 @@ jobs:
           # (e.g. entitlements-v2-azure) does not match. SERVICE_TARGET_JAR forces a path (ADR-037).
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
 
-      - name: "Acceptance Image (validate-only)"
-        # Proves the suite's go-offline build before the trusted lane bakes it; skips when no suite exists.
+      - name: "Acceptance Image"
+        # Proves every suite's go-offline build before the trusted lane bakes it; skips when no suite exists.
         uses: ./.github/actions/acceptance-image
         with:
           push: 'false'
           image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
 
   docker-push:
-    name: "🐳 Docker Push"
+    name: "Docker Push"
     needs: [check-initialization, check-repo-state, java-build, docker-build]
     # Trust boundary (ADR-036): push to GHCR only on trusted events.
     if: |
@@ -303,7 +304,7 @@ jobs:
         github.actor != 'dependabot[bot]' &&
         github.event_name != 'pull_request_target' &&
         github.event_name != 'workflow_dispatch' &&
-        github.ref_name != 'fork_upstream' &&
+        (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream') &&
         (github.event_name != 'pull_request' ||
          github.event.pull_request.head.repo.full_name == github.repository)
       ) || (
@@ -344,8 +345,240 @@ jobs:
           image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+  deploy-gate:
+    # Decides whether Borrow, Prove, Restore runs and says why when it does not, so the
+    # absence of the lane on a run is never silent. Carries the ADR-036 trust clause in full:
+    # only a push or a same-repository pull request, never Dependabot, never fork_upstream.
+    name: "Deploy Gate"
+    needs: [docker-push]
+    if: always()
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          sparse-checkout: .spi
+          sparse-checkout-cone-mode: false
+
+      - name: "Decide"
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.base_ref || github.ref_name }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          # Same five values check-required-variables.sh gates onboarding on; partial config must fail here, not at Azure login.
+          MISSING: >-
+            ${{ secrets.AZURE_CLIENT_ID == '' && 'AZURE_CLIENT_ID ' || '' }}${{ vars.AZURE_TENANT_ID == '' && 'AZURE_TENANT_ID ' || '' }}${{ vars.AZURE_SUBSCRIPTION_ID == '' && 'AZURE_SUBSCRIPTION_ID ' || '' }}${{ vars.SPI_STACK_RESOURCE_GROUP == '' && 'SPI_STACK_RESOURCE_GROUP ' || '' }}${{ vars.SPI_STACK_CLUSTER == '' && 'SPI_STACK_CLUSTER' || '' }}
+          CLUSTER: ${{ vars.SPI_STACK_CLUSTER }}
+          PUSH_RESULT: ${{ needs.docker-push.result }}
+          ACCEPTANCE_SKIPPED: ${{ needs.docker-push.outputs.acceptance_skipped }}
+        run: |
+          reason=""
+          case "$EVENT" in
+            push|pull_request) ;;
+            *) reason="$EVENT runs never borrow the environment" ;;
+          esac
+          [ -n "$reason" ] || [ "$EVENT" != "pull_request" ] || [ "$SAME_REPO" = "true" ] || reason="pull request from another repository carries no deploy identity"
+          [ -n "$reason" ] || [ "$ACTOR" != "dependabot[bot]" ] || reason="Dependabot updates validate through dependabot-validation.yml"
+          [ -n "$reason" ] || [ "$REF" != "fork_upstream" ] || reason="fork_upstream builds no Azure image"
+          [ -n "$reason" ] || [ -z "${MISSING// /}" ] || reason="repository is not onboarded to a stack (missing: $(echo $MISSING))"
+          [ -n "$reason" ] || [ -f .spi/service.yaml ] || reason="no .spi/service.yaml declares the suites"
+          [ -n "$reason" ] || [ "$PUSH_RESULT" = "success" ] || reason="no image was pushed (docker-push: $PUSH_RESULT)"
+          [ -n "$reason" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="descriptor declares no test suite"
+          if [ -n "$reason" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy and Test skipped::$reason"
+            echo "Deploy and Test: skipped, $reason" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "reason=" >> "$GITHUB_OUTPUT"
+            echo "Deploy and Test: borrowing $CLUSTER for the pushed image" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy-test:
+    # Borrow, Prove, Restore (ADR-041): one credentialed job in the fork's spi-stack environment.
+    # Pins the image just pushed onto the attached stack, proves it with every suite the
+    # descriptor declares, and restores the canonical image whatever happened. A maintainer who
+    # wants a human pause before a borrow adds required reviewers to the environment.
+    name: "Deploy and Test"
+    needs: [docker-push, deploy-gate]
+    if: needs.deploy-gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      verdicts: ${{ steps.prove.outputs.verdicts }}
+    environment: spi-stack
+    concurrency:
+      group: spi-stack-${{ vars.SERVICE_NAME || github.event.repository.name }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+    env:
+      SERVICE: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+      SERVICE_IMAGE: ${{ needs.docker-push.outputs.image_repository }}@${{ needs.docker-push.outputs.image_digest }}
+      TEST_IMAGE: ${{ needs.docker-push.outputs.acceptance_image_repository }}@${{ needs.docker-push.outputs.acceptance_image_digest }}
+      STACK_REPO: Azure/osdu-spi-stack
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: "Log in as deploy identity"
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c  # v3.0.2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Set up uv"
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+
+      - name: "Install spi"
+        # The latest release first, to reach the environment; the exact release it runs follows.
+        id: install
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sudo az aks install-cli
+          tag=$(gh release view --repo "$STACK_REPO" --json tagName --jq .tagName)
+          gh release download "$tag" --repo "$STACK_REPO" --pattern "spi-${tag#v}-py3-none-any.whl" --dir "$RUNNER_TEMP/spi" --clobber
+          uv tool install "$RUNNER_TEMP/spi/spi-${tag#v}-py3-none-any.whl"
+          spi --version
+
+      - name: "Connect to cluster"
+        env:
+          RESOURCE_GROUP: ${{ vars.SPI_STACK_RESOURCE_GROUP }}
+          CLUSTER: ${{ vars.SPI_STACK_CLUSTER }}
+        run: spi connect --resource-group "$RESOURCE_GROUP" --cluster "$CLUSTER"
+
+      - name: "Match stack version"
+        # The CLI that proves an environment is the release the environment was built with.
+        # An environment on a branch (a personal stack tracking main) keeps the latest release.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(spi status --json | jq -r '.environment.stackVersion // empty')
+          case "$version" in
+            v[0-9]*)
+              if [ "$(spi --version)" != "spi ${version#v}" ]; then
+                gh release download "$version" --repo "$STACK_REPO" --pattern "spi-${version#v}-py3-none-any.whl" --dir "$RUNNER_TEMP/spi" --clobber
+                uv tool install --force "$RUNNER_TEMP/spi/spi-${version#v}-py3-none-any.whl"
+              fi
+              ;;
+            *) echo "environment runs ${version:-an unrecorded version}; keeping $(spi --version)" ;;
+          esac
+          spi --version
+
+      - name: "Confirm environment deployable"
+        id: gate
+        run: |
+          set -euo pipefail
+          spi status --json | tee status.json
+          jq -e '.deployable == true' status.json > /dev/null || {
+            echo "::error::environment is not deployable: $(jq -r '.reason.message // "unknown"' status.json)"; exit 1; }
+          spi info --json > facts.json
+          audience=$(jq -r '.azure.token_audience | select(type == "string")' facts.json)
+          echo "$audience" | grep -Eq '^[A-Za-z0-9:/._-]+$' || { echo "::error::token_audience is missing or malformed in spi info output"; exit 1; }
+          echo "audience=$audience" >> "$GITHUB_OUTPUT"
+
+      - name: "Borrow"
+        run: |
+          spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
+            --ephemeral --run-id "$GITHUB_RUN_ID" \
+            --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
+            --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: "Verify"
+        run: |
+          set -uo pipefail
+          deadline=$((SECONDS + 15 * 60))
+          until spi service verify "$SERVICE" --image "$SERVICE_IMAGE" --json | tee verify.json | tail -n1 | jq -e '.outcome == "verified"' > /dev/null; do
+            code=$(tail -n1 verify.json | jq -r '.code // empty' 2>/dev/null || true)
+            if [ "$code" = "lock_mismatch" ]; then echo "::error::pin replaced mid-borrow"; exit 1; fi
+            if [ $SECONDS -ge $deadline ]; then echo "::error::digest not live after 15 minutes"; exit 1; fi
+            sleep 20
+          done
+
+      - name: "Mint test caller"
+        # The deploy identity's own bearer, for the audience the facts publish.
+        env:
+          AUDIENCE: ${{ steps.gate.outputs.audience }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(az account get-access-token --resource "$AUDIENCE" --query accessToken -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "RESOLVER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: "Log in to GHCR"
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Prove"
+        # One docker run per declared suite, bound by the resolver from the descriptor, the
+        # facts, and the minted token, which reaches every binding with source: token.
+        id: prove
+        run: |
+          set -euo pipefail
+          failed=""
+          verdicts=""
+          mkdir -p reports
+          trap '{ echo "verdicts<<EOF"; printf "%s" "$verdicts"; echo "EOF"; } >> "$GITHUB_OUTPUT"' EXIT
+          python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
+            --descriptor .spi/service.yaml --report suites.json > /dev/null
+          for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
+            echo "::group::suite $suite"
+            report="$suite-report.json"
+            python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
+              --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env" --report "$report"
+            suite_dir=$(jq -r .contract.test_dir "$report")
+            timeout_min=$(jq -r .contract.timeout_minutes "$report")
+            mapfile -t mvn_args < <(jq -r '.contract.maven_arguments[]' "$report")
+            # The verdict comes from the report XML copied out before the container goes.
+            container="suite-$suite-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            code=0
+            timeout "${timeout_min}m" docker run --name "$container" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
+            docker cp "$container:/suite/$suite_dir" "reports/$suite" > /dev/null 2>&1 || mkdir -p "reports/$suite"
+            docker rm -f "$container" > /dev/null 2>&1 || true
+            if verdict=$(python3 .github/actions/acceptance-image/suite-verdict.py --exit-code "$code" --reports "reports/$suite"); then
+              icon="✅"
+            else
+              icon="❌"; echo "::error::suite $suite $verdict"; failed="$failed $suite"
+            fi
+            echo "$icon suite $suite: $verdict" >> "$GITHUB_STEP_SUMMARY"
+            verdicts="$verdicts$icon suite $suite: $verdict"$'\n'
+            rm -f "$suite.env"
+            echo "::endgroup::"
+          done
+          [ -z "$failed" ] || { echo "::error::failed suites:$failed"; exit 1; }
+
+      - name: "Upload suite reports"
+        if: always() && steps.prove.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: suite-reports
+          overwrite: true
+          path: |
+            reports/**/target/surefire-reports/**
+            reports/**/target/failsafe-reports/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: "Restore"
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          # Exit 2 means this run no longer owned the pin (or nothing was pinned): restored already.
+          code=0; spi service reset "$SERVICE" --if-run "$GITHUB_RUN_ID" --json || code=$?
+          [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || exit "$code"
+
   code-validation:
-    name: "✅ Code Quality Checks"
+    name: "Check Code Quality"
     needs: [check-initialization, check-repo-state, check-paths, java-build]
     if: |
       always() &&
@@ -448,51 +681,12 @@ jobs:
             exit 1
           fi
 
-      - name: "Prepare Validation Report"
-        id: status
-        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
-        run: |
-          ITEMS="[]"
-
-          ITEMS=$(echo "$ITEMS" | jq '. + ["✓ No Merge Conflicts"]')
-          ITEMS=$(echo "$ITEMS" | jq '. + ["✓ Branch is Up-to-date"]')
-
-          if [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
-            ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Dependabot Build Handled by dependabot-validation.yml"]')
-          elif [[ "${{ needs.check-repo-state.outputs.is_initialized }}" == "true" ]]; then
-            if [[ "${{ needs.check-repo-state.outputs.is_java_repo }}" == "true" ]]; then
-              if [[ "${{ needs.java-build.result }}" == "success" ]]; then
-                ITEMS=$(echo "$ITEMS" | jq '. + ["✓ Java Build Successful"]')
-              elif [[ "${{ needs.java-build.result }}" == "skipped" && "${{ needs.check-paths.outputs.should_run }}" == "false" ]]; then
-                # A skip for any other reason (e.g. check-paths itself failed) falls through to "Failed".
-                ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Java Build Skipped (no build-relevant changes)"]')
-              else
-                ITEMS=$(echo "$ITEMS" | jq '. + ["❌ Java Build Failed"]')
-              fi
-            else
-              ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Non-Java Repository"]')
-            fi
-          else
-            ITEMS=$(echo "$ITEMS" | jq '. + ["ℹ️ Repository Not Yet Initialized"]')
-          fi
-
-          echo "items=$(echo "$ITEMS" | jq -c '.')" >> $GITHUB_OUTPUT
-
-      - name: "Post PR Status"
-        # Fork-head pull_request tokens are read-only, so external-fork PRs get no status
-        # comment; pull_request_target runs are already gated to same-repo heads.
-        if: github.event_name == 'pull_request_target' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-        uses: ./.github/actions/pr-status
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pr_number: ${{ github.event.pull_request.number }}
-          status_items: ${{ steps.status.outputs.items }}
-
-  docker-build-required:
-    # The required "🐳 Docker Build" check (ADR-030): always reports, so it never wedges the PR.
-    # always() bypasses check-initialization's routing, so the lane test is repeated here.
-    name: "🐳 Docker Build"
-    needs: [check-initialization, check-repo-state, check-paths, java-build, docker-build]
+  validation-summary:
+    # The required check (ADR-030): always reports, so a path-skipped or routed-away run never
+    # wedges the PR, and one table shows what ran, what was skipped, and why. always() bypasses
+    # check-initialization's routing, so the lane test is repeated here.
+    name: "Validation Summary"
+    needs: [check-initialization, check-repo-state, check-paths, java-build, docker-build, docker-push, deploy-gate, deploy-test, code-validation]
     if: |
       always() &&
       (github.event_name != 'pull_request' ||
@@ -502,35 +696,100 @@ jobs:
        (github.event.pull_request.head.repo.full_name == github.repository &&
         startsWith(github.event.pull_request.head.ref, 'sync/')))
     runs-on: ubuntu-latest
+    # One summary at a time per pull request, so two rapid pushes cannot each create a comment.
+    concurrency:
+      group: validation-summary-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: false
     steps:
-      - name: "Report Docker Build Status"
+      - name: "Summarize"
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          GATE_REASON: ${{ needs.deploy-gate.outputs.reason }}
+          VERDICTS: ${{ needs.deploy-test.outputs.verdicts }}
+          INITIALIZED: ${{ needs.check-initialization.outputs.initialized }}
+          BUILD_RELEVANT: ${{ needs.check-paths.outputs.should_run }}
+          JAVA_REPO: ${{ needs.check-repo-state.outputs.is_java_repo }}
+          EVENT_NAME: ${{ github.event_name }}
+          SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          ACTOR: ${{ github.actor }}
+          REF_NAME: ${{ github.head_ref || github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          # Test result == failure/cancelled, not != success: a skipped prerequisite is legitimate
-          # (other lane, uninitialized repo) and the output checks below handle it.
-          if [ "${{ needs.check-initialization.result }}" = "failure" ] || [ "${{ needs.check-initialization.result }}" = "cancelled" ] || \
-             [ "${{ needs.check-repo-state.result }}" = "failure" ] || [ "${{ needs.check-repo-state.result }}" = "cancelled" ] || \
-             [ "${{ needs.check-paths.result }}" = "failure" ] || [ "${{ needs.check-paths.result }}" = "cancelled" ]; then
-            echo "❌ A validation prerequisite job failed or was cancelled"; exit 1
+          {
+            echo "## Validation on $EVENT_NAME ($REF_NAME)"
+            echo
+            echo "| Job | Result | Note |"
+            echo "|---|---|---|"
+            jq -rn --arg gate "$GATE_REASON" --arg init "$INITIALIZED" --arg relevant "$BUILD_RELEVANT" \
+              --arg java "$JAVA_REPO" --arg event "$EVENT_NAME" --arg same_repo "$SAME_REPO" --arg actor "$ACTOR" \
+              --argjson needs "$NEEDS" '
+              def names: {
+                "check-initialization": "Check Initialization", "check-repo-state": "Check Repository",
+                "check-paths": "Check Paths", "java-build": "Java Build", "docker-build": "Docker Build",
+                "code-validation": "Check Code Quality", "docker-push": "Docker Push",
+                "deploy-gate": "Deploy Gate", "deploy-test": "Deploy and Test"};
+              def icon: {success: "✅", failure: "❌", cancelled: "⚠️", skipped: "⏭️"}[.] // .;
+              def build: . == "java-build" or . == "docker-build" or . == "docker-push";
+              def note:
+                if . == "deploy-test" and $gate != "" then $gate
+                elif $needs[.].result != "skipped" then ""
+                elif $init != "true" then "repository not yet initialized"
+                elif build and $relevant == "false" then "only configuration or docs changed"
+                elif build and $java != "true" then "not a Java repository"
+                elif build and $event == "pull_request_target" then "sync lane; images validate on the cascade PR"
+                elif . == "docker-push" and $actor == "dependabot[bot]" then "Dependabot validates through dependabot-validation.yml"
+                elif . == "docker-push" and $same_repo != "true" then "pull request from another repository"
+                else "a job it needs did not run" end;
+              names | keys_unsorted[] | select(in($needs)) | . as $job
+                | "| \(names[$job]) | \($needs[$job].result | icon) \($needs[$job].result) | \($job | note) |"'
+            if [ -n "$VERDICTS" ]; then
+              echo
+              printf '%s' "$VERDICTS" | sed 's/$/  /'
+            fi
+            echo
+            echo "[Run]($RUN_URL)"
+            echo
+          } > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "Comment on the pull request"
+        # A fork-head or Dependabot pull_request token is read-only, so those PRs carry no comment.
+        if: |
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # A run for a superseded push never overwrites the newer push's comment.
+          current=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+          [ "$current" = "$HEAD_SHA" ] || { echo "head moved to $current; leaving the comment to the newer run"; exit 0; }
+          marker="<!-- validation-summary -->"
+          { echo "$marker"; cat summary.md; } > comment.md
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -F body=@comment.md > /dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -F body=@comment.md > /dev/null
           fi
-          if [ "${{ needs.check-initialization.outputs.initialized }}" != "true" ]; then
-            echo "✅ Docker Build skipped - repository not yet initialized"; exit 0
-          fi
-          if [ "${{ needs.check-paths.outputs.should_run }}" = "false" ]; then
-            echo "✅ Docker Build skipped - only configuration/docs files changed"; exit 0
-          fi
-          if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
-            echo "✅ Docker Build skipped - Dependabot build handled by dependabot-validation.yml"; exit 0
-          fi
-          if [ "${{ needs.check-repo-state.outputs.is_java_repo }}" != "true" ]; then
-            echo "✅ Docker Build skipped - non-Java repository"; exit 0
-          fi
-          if [ "${{ needs.java-build.result }}" = "failure" ] || [ "${{ needs.java-build.result }}" = "cancelled" ]; then
-            echo "❌ Java build failed or was cancelled"; exit 1
-          fi
-          if [ "${{ needs.docker-build.result }}" = "failure" ] || [ "${{ needs.docker-build.result }}" = "cancelled" ]; then
-            echo "❌ Docker build failed or was cancelled"; exit 1
+
+      - name: "Report"
+        # A skipped job is a decision the gates made; only failure and cancellation fail the check.
+        # Code quality stays advisory, as it was before the summary became the required check.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          broken=$(jq -r 'to_entries[] | select(.key != "code-validation")
+            | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<< "$NEEDS")
+          if [ -n "$broken" ]; then
+            echo "❌ failed or cancelled: $(echo $broken | tr ' ' ',')"; exit 1
           fi
           if [ "${{ github.event_name }}" = "pull_request_target" ]; then
-            echo "✅ Docker Build deferred - the sync lane leaves image validation to the cascade PR"; exit 0
+            echo "✅ Validation deferred - the sync lane leaves image validation to the cascade PR"; exit 0
           fi
-          echo "✅ Docker Build checks completed successfully"
+          echo "✅ Validation completed"

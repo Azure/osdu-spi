@@ -474,6 +474,58 @@ engine --descriptor "$DESCRIPTOR" >/dev/null 2>&1 || RC=$?
 [ "$RC" -ne 0 ] || die "full mode without --mode/--facts/--env-file must be a usage error"
 ok "contract-only mode"
 
+note "suites: a descriptor declares named suites of one shape; --suite selects one"
+TWO="$TMP/two-suites.yaml"
+cat "$DESCRIPTOR" > "$TWO"
+cat >> "$TWO" <<'EOF'
+  integration:
+    type: maven
+    path: testing
+    mavenArguments: [-pl, demo-test-azure, -am, test]
+    bindings:
+      DEMO_BASE_URL: { source: gateway, suffix: / }
+      TESTER_TOKEN: { source: user }
+EOF
+engine --contract-only --descriptor "$TWO" --report "$TMP/suite-default.json" >/dev/null 2>&1 \
+  || die "two-suite descriptor must validate"
+[ "$(report_field "$TMP/suite-default.json" "r['contract']['suite']")" = "acceptance" ] || die "default suite is acceptance"
+[ "$(report_field "$TMP/suite-default.json" "r['contract']['suites']")" = "{'acceptance': 'demo-acceptance-test', 'integration': 'testing'}" ] \
+  || die "contract must list every suite path"
+engine --contract-only --suite integration --descriptor "$TWO" --report "$TMP/suite-int.json" >/dev/null 2>&1 \
+  || die "--suite integration must resolve"
+[ "$(report_field "$TMP/suite-int.json" "r['contract']['test_dir']")" = "testing" ] || die "selected suite test_dir wrong"
+[ "$(report_field "$TMP/suite-int.json" "r['contract']['maven_arguments']")" = "['-pl', 'demo-test-azure', '-am', 'test']" ] \
+  || die "selected suite maven arguments wrong"
+ENV_INT="$TMP/int.env"
+TESTER_TOKEN="tok-int" engine --mode run --suite integration --descriptor "$TWO" --facts "$FACTS" \
+  --env-file "$ENV_INT" --report "$TMP/int-run.json" >/dev/null 2>&1 || die "run mode must honor --suite"
+[ "$(env_value "$ENV_INT" DEMO_BASE_URL)" = "$(report_field "$FACTS" "r['base_url'].rstrip('/') + '/'")" ] || die "suite binding not resolved"
+grep -q "^LEGAL_TAG=" "$ENV_INT" && die "another suite's binding leaked into the env file"
+expect_fail "an undeclared suite halts" 2 "declares no suite named 'smoke'" "DESCRIPTOR_INVALID" \
+  engine --contract-only --suite smoke --descriptor "$TWO"
+sed 's/^  integration:/  Integration:/' "$TWO" > "$TMP/bad-suite-name.yaml"
+expect_fail "suite names are lowercase slugs" 2 "suite names are lowercase slugs" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/bad-suite-name.yaml"
+ok "named suites"
+
+note "token: the caller's bearer arrives as RESOLVER_TOKEN, never as a default"
+variant "$TMP/token.yaml" "TESTER_TOKEN: { source: user }" "TESTER_TOKEN: { source: token }"
+ENV_TOK="$TMP/token.env"
+RESOLVER_TOKEN="tok-minted" engine --mode run --descriptor "$TMP/token.yaml" --facts "$FACTS" --secrets "$SECRETS" \
+  --env-file "$ENV_TOK" --report "$TMP/token.json" >/dev/null 2>&1 || die "token source must resolve from RESOLVER_TOKEN"
+[ "$(env_value "$ENV_TOK" TESTER_TOKEN)" = "tok-minted" ] || die "token value wrong"
+TESTER_TOKEN="tok-explicit" RESOLVER_TOKEN="tok-minted" engine --mode run --descriptor "$TMP/token.yaml" --facts "$FACTS" --secrets "$SECRETS" \
+  --env-file "$ENV_TOK" --report "$TMP/token2.json" >/dev/null 2>&1 || die "explicit env must still win for token"
+[ "$(env_value "$ENV_TOK" TESTER_TOKEN)" = "tok-explicit" ] || die "explicit env did not win over RESOLVER_TOKEN"
+expect_fail "run refuses without a token" 3 "unresolved required bindings: TESTER_TOKEN" "ENV_NOT_READY" \
+  env -u RESOLVER_TOKEN python3 "$ENGINE" --mode run --descriptor "$TMP/token.yaml" --facts "$FACTS" --secrets "$SECRETS" --env-file "$TMP/none.env"
+[ "$(report_field "$TMP/fail-report.json" "r['missing'][0]['reason']")" = "source token: set RESOLVER_TOKEN to the caller's bearer (spi token)" ] \
+  || die "missing token must say how to supply it"
+variant "$TMP/token-default.yaml" "TESTER_TOKEN: { source: user }" 'TESTER_TOKEN: { source: token, default: "x" }'
+expect_fail "a token default is a secret in the repository" 2 "default is not valid for source token" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/token-default.yaml"
+ok "token source"
+
 note "infra: wrong facts apiVersion is a typed refusal"
 python3 -c "
 import json

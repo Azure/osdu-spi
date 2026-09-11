@@ -1,15 +1,19 @@
 # Acceptance Image Build
 
-Builds the acceptance test image beside the service image (design §8, D5;
-ADR-040): the suite's *source* from the same commit, with Maven dependencies
-prewarmed at build time, published as
+Builds the test-suite image beside the service image (design §8, D5;
+ADR-040, ADR-041): every suite the descriptor declares, as *source* from the
+same commit with Maven dependencies prewarmed at build time, published as
 `ghcr.io/<org>/<service>-acceptance:sha-<sha>`, so "run the tests that shipped
 with release X" stays one command months later:
 
 ```bash
-docker run --env-file .env ghcr.io/<org>/partition-acceptance:sha-<sha>          # descriptor default: verify
+docker run --env-file .env ghcr.io/<org>/partition-acceptance:sha-<sha>          # acceptance suite, default argv: verify
 docker run --env-file .env ghcr.io/<org>/partition-acceptance:sha-<sha> verify -Dtest=GetInfoApiTest
+docker run --env-file .env -e SUITE_DIR=testing ghcr.io/<org>/partition-acceptance:sha-<sha> -pl partition-test-azure -am test
 ```
+
+`SUITE_DIR` is a `tests.<name>.path` from the descriptor and defaults to the
+acceptance suite; the entrypoint refuses a path that is not baked in.
 
 Arguments after the image are Maven argv tokens — the lane passes the
 descriptor's `mavenArguments` array verbatim, never a shell string.
@@ -25,24 +29,36 @@ A fork that needs a frozen set pins those ranges in its own suite pom.
 
 ## Suite selection
 
-`resolve-suite.sh` picks the module baked into the image:
+`resolve-suite.sh` picks the modules baked into the image:
 
-1. `.spi/service.yaml` present → the descriptor's `tests.acceptance.path`
-   (validated by the resolver engine's `--contract-only` mode; a broken
-   descriptor halts the build with exit 2).
+1. `.spi/service.yaml` present → every `tests.<name>.path` the descriptor
+   declares, acceptance first (validated by the resolver engine's
+   `--contract-only` mode; a broken descriptor halts the build with exit 2).
 2. No descriptor → the upstream default `<service>-acceptance-test`, the
    module the filter keeps (ADR-038, D8).
 3. Default suite directory absent → a **clean skip**: the action reports
-   `skipped=true` and builds nothing. No new required checks arm here.
+   `skipped=true` and builds nothing.
 
 A descriptor that names a suite path which is not in the checkout halts with
 exit 2 instead of skipping. The default is a convention this action guesses at;
 a descriptor path is an assertion the fork made, and a typo in it must never
 read as "this fork has no acceptance suite".
 
-The module must build standalone (the upstream acceptance modules are
-parentless by design). The fork-owned `testing/<service>-test-azure` tree is
-selectable via the descriptor where that module stands alone.
+## Suite verdict
+
+`suite-verdict.py` decides whether one suite run passed. The deploy lane copies
+the suite directory out of the container after `docker run` returns and hands
+the script the exit code and that directory. It reads every `TEST-*.xml` under a
+`surefire-reports` or `failsafe-reports` directory, at any depth, so a
+multi-module suite counts its submodules. A pass needs a zero exit, at least one
+test that was not skipped, and no failures or errors. The console is never
+consulted: `-q` hides Maven's summary lines and `-Dmaven.test.failure.ignore`
+turns a failing suite into a zero exit.
+
+Each suite resolves its own dependency graph. A suite that is a Maven reactor
+(the upstream `testing/` tree, whose provider module depends on a sibling core
+module) is installed without tests first so the sibling resolves, then warmed
+like the others.
 
 ## Relationship to docker-build
 
@@ -65,14 +81,17 @@ Differences, both deliberate:
 
 ## Build context
 
-Unlike the service image — which copies only a prebuilt JAR — this build needs
+Unlike the service image, which copies only a prebuilt JAR, this build needs
 repository source: `.mvn/community-maven.settings.xml` (the suite pom resolves
-`${repo.releases.url}` through it) and the suite module itself. Forks inherit an
-upstream-owned root `.dockerignore` that excludes `.*`, `**/*.yml` and `**/*.md`,
-which would fail the `.mvn` COPY outright and silently strip yaml/markdown
-resources from the suite. `build/acceptance.Dockerfile.dockerignore` — which
-BuildKit prefers over the context-root file — is what keeps that context intact,
+`${repo.releases.url}` through it), the descriptor, and the suite modules.
+Forks inherit an upstream-owned root `.dockerignore` that excludes `.*`, which
+would strip `.mvn` and `.spi`; `build/acceptance.Dockerfile.dockerignore`,
+which BuildKit prefers over the context-root file, keeps that context intact
 without touching the root file the service image and upstream both rely on.
+
+The whole checkout enters the build context, but only the declared suites,
+`.mvn`, and `.spi` reach the final image: a first stage copies them out, so the
+service source never ships and scanners see only what the suites resolve.
 
 ## Local testing
 
@@ -85,8 +104,8 @@ directory, so running it from elsewhere always reports a skip.
 SERVICE_NAME=partition GITHUB_OUTPUT=/dev/stdout \
   .github/actions/acceptance-image/resolve-suite.sh
 
-# Full image build:
-docker build -f build/acceptance.Dockerfile --build-arg SUITE_DIR=partition-acceptance-test -t partition-acceptance:dev .
+# Full image build (space-separated suite paths, the first is the run-time default):
+docker build -f build/acceptance.Dockerfile --build-arg "SUITE_DIRS=partition-acceptance-test testing" -t partition-acceptance:dev .
 ```
 
 The regression harness lives at
