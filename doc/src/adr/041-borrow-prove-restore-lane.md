@@ -42,7 +42,7 @@ The positive-path caller is the environment's deploy identity, the same principa
 
 ### Not yet wired
 
-Two parts of the descriptor contract (ADR-040) are validated and reported by the resolver but not enforced by the lane. `keyvault:` bindings are not materialized: the lane passes no `--secrets` file, so a suite that declares one fails as env-not-ready ([#175](https://github.com/Azure/osdu-spi/issues/175)). `requires.loads`, `requires.groups`, and `dependencies` are not compared with the status facts before the borrow, because the stack does not yet publish seeded loads ([osdu-spi-stack#133](https://github.com/Azure/osdu-spi-stack/issues/133), [#176](https://github.com/Azure/osdu-spi/issues/176)). No shipped descriptor uses either yet. A third caller, a member without admin rights that suites declare as `NO_ACCESS_USER`, has no source until the stack provisions it ([osdu-spi-stack#208](https://github.com/Azure/osdu-spi-stack/issues/208)).
+Two parts of the descriptor contract (ADR-040) are validated and reported by the resolver but not enforced by the lane. `keyvault:` bindings are not materialized: the lane passes no `--secrets` file, so a suite that declares one fails as env-not-ready ([#175](https://github.com/Azure/osdu-spi/issues/175)). `requires.loads`, `requires.groups`, and `dependencies` are not compared with the status facts before the borrow, because the stack does not yet publish seeded loads ([osdu-spi-stack#133](https://github.com/Azure/osdu-spi-stack/issues/133), [#176](https://github.com/Azure/osdu-spi/issues/176)). No shipped descriptor uses either yet.
 
 ## Consequences
 

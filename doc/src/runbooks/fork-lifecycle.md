@@ -9,7 +9,7 @@ Each step ends with an expected result. Check it before you move on.
 - `gh` signed in as an admin of the GitHub organization that will hold the repository, so you can create it and read its variables.
 - `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` set as organization secrets, or ready to set on the repository as [Initialization](../workflows/initialization.md) describes.
 - The `spi` CLI, installed from a release of `Azure/osdu-spi-stack` and connected to the stack environment the repository will test against: run `spi connect --resource-group <rg> --cluster <cluster>`, then check that `spi status` reports the environment as deployable.
-- `az` signed in to the subscription that holds that environment, with rights to update federated credentials on both of its identities: the deploy identity and the no-access identity.
+- `az` signed in to the subscription that holds that environment, with rights to update federated credentials on its three identities: the deploy, member, and no-access identities.
 
 ## Create and initialize
 
@@ -75,7 +75,7 @@ Run the onboarding plan first. It changes nothing:
 spi onboard <service> --repo <org>/<service>
 ```
 
-The plan has three groups of rows: the repository values and its `spi-stack` environment, the federated credentials on the environment's deploy and no-access identities, and the trusted-repositories annotation on the cluster. For a new repository, every row reads missing. For a repository recreated under a name that was onboarded before, the credentials read drifted: the OIDC subject includes the repository id, and recreating the repository changed the id. In either case, apply the plan:
+The plan has three groups of rows: the repository values and its `spi-stack` environment, the federated credentials on the environment's deploy, member, and no-access identities, and the trusted-repositories annotation on the cluster. For a new repository, every row reads missing. For a repository recreated under a name that was onboarded before, the credentials read drifted: the OIDC subject includes the repository id, and recreating the repository changed the id. For a repository onboarded before its environment provisioned the member identity, only the member credential reads missing. In each case, apply the plan:
 
 ```bash
 spi onboard <service> --repo <org>/<service> --write

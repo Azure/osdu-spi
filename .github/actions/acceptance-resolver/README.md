@@ -84,7 +84,7 @@ naming the offending key — the resolver refuses to guess.
 | `user` | Nothing — the caller's environment must supply it (or a declared `default`) |
 | `token` | `RESOLVER_TOKEN`, the bearer the caller minted for this run: the deploy lane's per-run mint, or `spi token` on a laptop. No `default`: a default token is a secret in the repository |
 | `memberToken` | `RESOLVER_MEMBER_TOKEN`, the bearer minted for the stack's member identity, a plain user in `users` and each service's user group with no admin rights: the lane's per-run mint, or `spi token --member` on a laptop. Same rules as `token` |
-| `noAccessToken` | `RESOLVER_NO_ACCESS_TOKEN`, the bearer minted for the stack's no-access identity: the lane's second per-run mint, or `spi token --no-access` on a laptop. Same rules as `token` |
+| `noAccessToken` | `RESOLVER_NO_ACCESS_TOKEN`, the bearer minted for the stack's no-access identity: the lane's per-run mint, or `spi token --no-access` on a laptop. Same rules as `token` |
 
 The fact locations live in one table (`FACT_PATHS` / `PARTITION_FACT_KEYS`),
 so an envelope rename is a one-line change. A fact an environment does not
