@@ -1,6 +1,6 @@
 # Fork Lifecycle
 
-Create, initialize, test, and retire a service repository. This page covers the service repository tier described in [Fork Tiers](../architecture/fork_tiers.md): a repository created from this template inside the organization that owns the service. A customer fork follows [Customer Fork Adoption](../workflows/adoption.md) instead.
+Create, initialize, onboard, and test a service repository. This page covers the service repository tier described in [Fork Tiers](../architecture/fork_tiers.md): a repository created from this template inside the organization that owns the service. A customer fork follows [Customer Fork Adoption](../workflows/adoption.md) instead.
 
 Each step ends with an expected result. Check it before you move on.
 
@@ -20,8 +20,6 @@ gh repo create <org>/<service> --template Azure/osdu-spi --public
 ```
 
 **Expected result:** within a minute, the repository has an open issue titled "Repository Initialization Required".
-
-If the name belonged to a repository that was deleted, its container packages may still exist in GHCR, and the new repository's first Docker Push fails with a permission error. Delete them as [step 7](#7-delete-the-repository-and-its-packages) describes, then rerun the push.
 
 ### 2. Configure the upstream repository
 
@@ -107,9 +105,7 @@ Merge the pull request. The push to `main` runs the deploy lane again with the i
 - **Check for drift** by running `spi onboard <service> --repo <org>/<service>` without `--write`. Run it when the "Log in as deploy identity" step starts failing.
 - **Require approval before each borrow** by adding a required reviewer to the repository's `spi-stack` environment in its settings. The workflow needs no change.
 
-## Retire the repository
-
-Remove the repository from the environment before you delete it. Otherwise the environment keeps a credential for a repository id that no longer exists.
+## Remove from the environment
 
 ### 6. Remove the repository from the environment
 
@@ -120,26 +116,4 @@ spi onboard <service> --remove
 spi onboard <service> --remove --write
 ```
 
-**Expected result:** `spi onboard --list` no longer lists the repository for the service. The repository's own values and `spi-stack` environment stay in place until the repository is deleted.
-
-### 7. Delete the repository and its packages
-
-```bash
-gh repo delete <org>/<service>
-```
-
-Deleting the repository leaves its container packages in GHCR, no longer linked to any repository. A package in that state rejects pushes from a new repository's workflow token, so a repository created later under the same name fails its first Docker Push. List the organization's container packages and the repository each one is linked to:
-
-```bash
-gh api --paginate "orgs/<org>/packages?package_type=container" --jq '.[] | "\(.name) \(.repository.full_name // "unlinked")"'
-```
-
-Delete each unlinked package named `<service>`, `<service>-acceptance`, or `<service>-fork`. For example:
-
-```bash
-gh api --method DELETE "orgs/<org>/packages/container/<service>-acceptance"
-```
-
-GitHub keeps a deleted package restorable for thirty days.
-
-**Expected result:** the listing shows no unlinked package with the service's name.
+**Expected result:** `spi onboard --list` no longer lists the repository for the service. The repository's own values and `spi-stack` environment stay in place.
