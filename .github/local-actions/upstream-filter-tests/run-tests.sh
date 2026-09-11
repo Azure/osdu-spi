@@ -231,6 +231,21 @@ engine --mode generate --config "$CONFIG_EMPTY_ABSENT" --checkout "$H0C" --repor
 [ "$(report_field "$TMP/h0c.json" "r['ok']")" = "True" ] || die "empty expected_absent block did not parse as an empty list"
 ok "empty expected_absent block parses as [] and the run completes"
 
+note "halt: service key is not the upstream module prefix"
+HP="$TMP/hp"
+fresh_copy "$HP"
+CONFIG_PREFIX="$TMP/prefix.yml"
+sed 's|^service: demo$|service: demo-v2|' "$CONFIG" > "$CONFIG_PREFIX"
+expect_halt "wrong module prefix halts before provider/ is discarded" MODULE_PREFIX_MISMATCH "$TMP/hp.json" \
+  engine --mode generate --config "$CONFIG_PREFIX" --checkout "$HP" --report "$TMP/hp.json"
+[ -d "$HP/provider/demo-azure" ] || die "prefix halt must leave the checkout untouched"
+python3 - "$TMP/hp.json" <<'PY' || die "prefix halt must name the prefixes provider/ carries"
+import json, sys
+d = json.load(open(sys.argv[1]))["halts"][0]["detail"]
+assert "found: demo" in d, d
+PY
+ok "prefix halt names the prefixes provider/ carries"
+
 note "halt: unknown top-level entry"
 H1="$TMP/h1"
 fresh_copy "$H1"

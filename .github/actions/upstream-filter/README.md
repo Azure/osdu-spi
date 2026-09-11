@@ -133,6 +133,7 @@ per-tree source commits.
 | --- | --- |
 | `CONFIG_MISSING` | The config file does not exist. The sync fails closed; there is no fallback to the old merge path. |
 | `CONFIG_INVALID` | The config fails schema validation. |
+| `MODULE_PREFIX_MISMATCH` | `provider/<service>-azure` does not exist upstream. `service` is the module prefix, and the halt lists the prefixes `provider/` does carry. |
 | `UNKNOWN_TOP_LEVEL` | A top-level entry has no verdict. |
 | `UNKNOWN_TESTING_ENTRY` | An entry under `testing/` has no verdict. |
 | `UNKNOWN_PROFILE` | A root pom profile id has no verdict. |
