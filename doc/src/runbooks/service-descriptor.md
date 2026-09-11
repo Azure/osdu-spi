@@ -75,7 +75,7 @@ A binding maps an environment variable the suite reads to a source that supplies
 | `tenant` | The Entra tenant id | Suites that build authority URLs themselves |
 | `legalTag` | The primary data partition's seeded legal tag | Storage and legal suites |
 | `token` | The bearer token the caller supplies as `RESOLVER_TOKEN`: minted per run by the lane, or from `spi token` on a laptop | Access-token variables. No default allowed |
-| `noAccessToken` | The bearer for the stack's no-access identity, supplied as `RESOLVER_NO_ACCESS_TOKEN`: minted per run by the lane, or from `spi token --no-access` on a laptop | Negative-path callers such as `NO_ACCESS_USER_TOKEN`. No default allowed |
+| `noAccessToken` | The bearer for the stack's no-access identity, which holds no entitlements, supplied as `RESOLVER_NO_ACCESS_TOKEN`: minted per run by the lane, or from `spi token --no-access` on a laptop | A caller with no entitlements. Not `NO_ACCESS_USER_TOKEN`: suites declare that user in `required-roles.json` as a member of `users` and the service's user group, a caller the stack doesn't provision yet ([osdu-spi-stack#208](https://github.com/Azure/osdu-spi-stack/issues/208)). No default allowed |
 | `static` | The literal `value` | Fixed settings such as an environment label |
 | `template` | The `value` with `${OTHER}` references to the suite's other bindings, rendered last; never to another `template` or a `keyvault:` binding | A URL built from the gateway and a fixed path |
 | `user` | Nothing from the stack; the caller's shell supplies it, or the declared `default` | A setting only a developer changes |
@@ -110,7 +110,7 @@ A suite that runs its tests through Failsafe takes the same `systemPropertyVaria
 ## Create and validate a descriptor
 
 1. Find the variables each suite reads. Upstream suites read them with `System.getenv` or `System.getProperty`; search the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them. A variable read with `System.getProperty` also needs the mapping in [System properties](#system-properties).
-2. Bind each variable. Use `gateway` for the stack base URL, `partition` for the primary data partition name, `token` for access tokens, and `noAccessToken` for a caller the service should refuse; the [table](#bindings) covers the rest. If no source fits, the suite needs something the stack doesn't publish. Open an issue on the stack instead of adding a `user` binding with a default, because a default stays in the file after the reason for it is gone.
+2. Bind each variable. Use `gateway` for the stack base URL, `partition` for the primary data partition name, `token` for access tokens, and `noAccessToken` for a caller with no entitlements; the [table](#bindings) covers the rest. If no source fits, the suite needs something the stack doesn't publish. Open an issue on the stack instead of adding a `user` binding with a default, because a default stays in the file after the reason for it is gone.
 3. Set `timeoutMinutes` from a real run's duration, plus margin.
 4. Check the contract:
 

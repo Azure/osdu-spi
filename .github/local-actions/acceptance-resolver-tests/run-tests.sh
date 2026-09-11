@@ -536,6 +536,8 @@ expect_fail "run refuses without the no-access token" 3 "unresolved required bin
   env -u RESOLVER_NO_ACCESS_TOKEN RESOLVER_TOKEN="tok-minted" python3 "$ENGINE" --mode run --descriptor "$TMP/noaccess.yaml" --facts "$FACTS" --secrets "$SECRETS" --env-file "$TMP/none.env"
 [ "$(report_field "$TMP/fail-report.json" "r['missing'][0]['reason']")" = "source noAccessToken: set RESOLVER_NO_ACCESS_TOKEN to the no-access identity's bearer (spi token --no-access)" ] \
   || die "missing no-access token must say how to supply it"
+expect_fail "run refuses an empty no-access token" 3 "unresolved required bindings: NO_ACCESS_TOKEN" "ENV_NOT_READY" \
+  env RESOLVER_NO_ACCESS_TOKEN="" RESOLVER_TOKEN="tok-minted" python3 "$ENGINE" --mode run --descriptor "$TMP/noaccess.yaml" --facts "$FACTS" --secrets "$SECRETS" --env-file "$TMP/none.env"
 variant "$TMP/noaccess-default.yaml" "TESTER_TOKEN: { source: user }" 'NO_ACCESS_TOKEN: { source: noAccessToken, default: "x" }'
 expect_fail "a no-access token default is a secret in the repository" 2 "default is not valid for source noAccessToken" "DESCRIPTOR_INVALID" \
   engine --contract-only --descriptor "$TMP/noaccess-default.yaml"
