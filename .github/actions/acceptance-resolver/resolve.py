@@ -42,11 +42,16 @@ KEYVAULT_SOURCE_RE = re.compile(r"^keyvault:([A-Za-z0-9][A-Za-z0-9-]{0,126})$")
 FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag")
 SUITE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 VALUE_SOURCES = ("static", "template")
-CALLER_SOURCES = ("user", "token")
+CALLER_SOURCES = ("user", "token", "noAccessToken")
 SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES + ("keyvault:<name>",)
-# The bearer the caller minted for this run; the one input the resolver takes from
+# The bearers the caller minted for this run; the inputs the resolver takes from
 # its own reserved prefix rather than from a binding name.
 TOKEN_ENV = "RESOLVER_TOKEN"
+NO_ACCESS_TOKEN_ENV = "RESOLVER_NO_ACCESS_TOKEN"
+TOKEN_SOURCES = {
+    "token": (TOKEN_ENV, "the caller's bearer (spi token)"),
+    "noAccessToken": (NO_ACCESS_TOKEN_ENV, "the no-access identity's bearer (spi token --no-access)"),
+}
 
 # `partition` and `legalTag` read the primary entry of the partitions list
 # (legal tags are partition-scoped). openid is the issuer URL the stack
@@ -350,7 +355,7 @@ def _validate_binding(name, binding, where):
                    f"{where}.value is only valid for sources static and template")
 
     if "default" in binding:
-        if keyvault or source == "token":
+        if keyvault or source in TOKEN_SOURCES:
             # A default for a secret would put a secret value in the repository.
             raise Halt("DESCRIPTOR_INVALID",
                        f"{where}.default is not valid for source {source}")
@@ -666,11 +671,12 @@ def resolve(contract, facts, secrets, environ):
                 resolved[name] = binding["default"]
             else:
                 miss(name, "source user: the caller must set this variable")
-        elif source == "token":
-            if environ.get(TOKEN_ENV, ""):
-                resolved[name] = environ[TOKEN_ENV]
+        elif source in TOKEN_SOURCES:
+            env_name, who = TOKEN_SOURCES[source]
+            if environ.get(env_name, ""):
+                resolved[name] = environ[env_name]
             else:
-                miss(name, f"source token: set {TOKEN_ENV} to the caller's bearer (spi token)")
+                miss(name, f"source {source}: set {env_name} to {who}")
         else:
             base = fact_value(facts, source)
             if base:

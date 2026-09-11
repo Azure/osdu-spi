@@ -38,7 +38,7 @@ The lane installs the latest `spi` release to reach the environment, then reads 
 
 ### The test caller
 
-The positive-path caller is the environment's deploy identity, the same principal the lane logs in as, minted for the audience `spi info --json` publishes as `azure.token_audience`. The bearer reaches the resolver as `RESOLVER_TOKEN` and lands in every binding with `source: token`, so a suite may call the variable whatever it likes and a developer supplies the same input from `spi token`. The negative-path identity the stack provisions is not yet exercised by a suite.
+The positive-path caller is the environment's deploy identity, the same principal the lane logs in as, minted for the audience `spi info --json` publishes as `azure.token_audience`. The bearer reaches the resolver as `RESOLVER_TOKEN` and lands in every binding with `source: token`, so a suite may call the variable whatever it likes and a developer supplies the same input from `spi token`. The negative-path caller is the no-access identity the stack provisions and `spi onboard` federates alongside the deploy identity. The lane mints its bearer for the same audience by exchanging the run's OIDC token with Entra directly, so the deploy identity's session stays in place for Restore, and it reaches the resolver as `RESOLVER_NO_ACCESS_TOKEN` for bindings with `source: noAccessToken`; a developer supplies it from `spi token --no-access`. An environment that publishes no no-access identity leaves the variable unset, and only a suite that binds it reports env-not-ready.
 
 ### Not yet wired
 
