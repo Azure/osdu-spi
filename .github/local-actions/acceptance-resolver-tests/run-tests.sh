@@ -543,6 +543,23 @@ expect_fail "a no-access token default is a secret in the repository" 2 "default
   engine --contract-only --descriptor "$TMP/noaccess-default.yaml"
 ok "noAccessToken source"
 
+note "memberToken: the member bearer arrives as RESOLVER_MEMBER_TOKEN, never as a default"
+variant "$TMP/member.yaml" "TESTER_TOKEN: { source: user }" "MEMBER_TOKEN: { source: memberToken }"
+ENV_MB="$TMP/member.env"
+RESOLVER_MEMBER_TOKEN="tok-member" engine --mode run --descriptor "$TMP/member.yaml" --facts "$FACTS" --secrets "$SECRETS" \
+  --env-file "$ENV_MB" --report "$TMP/member.json" >/dev/null 2>&1 || die "memberToken must resolve from RESOLVER_MEMBER_TOKEN"
+[ "$(env_value "$ENV_MB" MEMBER_TOKEN)" = "tok-member" ] || die "memberToken value wrong"
+expect_fail "run refuses without the member token" 3 "unresolved required bindings: MEMBER_TOKEN" "ENV_NOT_READY" \
+  env -u RESOLVER_MEMBER_TOKEN RESOLVER_TOKEN="tok-minted" python3 "$ENGINE" --mode run --descriptor "$TMP/member.yaml" --facts "$FACTS" --secrets "$SECRETS" --env-file "$TMP/none.env"
+[ "$(report_field "$TMP/fail-report.json" "r['missing'][0]['reason']")" = "source memberToken: set RESOLVER_MEMBER_TOKEN to the member identity's bearer (spi token --member)" ] \
+  || die "missing member token must say how to supply it"
+expect_fail "run refuses an empty member token" 3 "unresolved required bindings: MEMBER_TOKEN" "ENV_NOT_READY" \
+  env RESOLVER_MEMBER_TOKEN="" RESOLVER_TOKEN="tok-minted" python3 "$ENGINE" --mode run --descriptor "$TMP/member.yaml" --facts "$FACTS" --secrets "$SECRETS" --env-file "$TMP/none.env"
+variant "$TMP/member-default.yaml" "TESTER_TOKEN: { source: user }" 'MEMBER_TOKEN: { source: memberToken, default: "x" }'
+expect_fail "a member token default is a secret in the repository" 2 "default is not valid for source memberToken" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/member-default.yaml"
+ok "memberToken source"
+
 note "infra: wrong facts apiVersion is a typed refusal"
 python3 -c "
 import json

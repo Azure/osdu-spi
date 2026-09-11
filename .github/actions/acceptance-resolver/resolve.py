@@ -42,14 +42,16 @@ KEYVAULT_SOURCE_RE = re.compile(r"^keyvault:([A-Za-z0-9][A-Za-z0-9-]{0,126})$")
 FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag")
 SUITE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 VALUE_SOURCES = ("static", "template")
-CALLER_SOURCES = ("user", "token", "noAccessToken")
+CALLER_SOURCES = ("user", "token", "memberToken", "noAccessToken")
 SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES + ("keyvault:<name>",)
 # The bearers the caller minted for this run; the inputs the resolver takes from
 # its own reserved prefix rather than from a binding name.
 TOKEN_ENV = "RESOLVER_TOKEN"
+MEMBER_TOKEN_ENV = "RESOLVER_MEMBER_TOKEN"
 NO_ACCESS_TOKEN_ENV = "RESOLVER_NO_ACCESS_TOKEN"
 TOKEN_SOURCES = {
     "token": (TOKEN_ENV, "the caller's bearer (spi token)"),
+    "memberToken": (MEMBER_TOKEN_ENV, "the member identity's bearer (spi token --member)"),
     "noAccessToken": (NO_ACCESS_TOKEN_ENV, "the no-access identity's bearer (spi token --no-access)"),
 }
 

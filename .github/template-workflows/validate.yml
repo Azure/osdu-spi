@@ -434,6 +434,8 @@ jobs:
 
       - name: "Set up uv"
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          enable-cache: false
 
       - name: "Install spi"
         # The latest release first, to reach the environment; the exact release it runs follows.
@@ -508,6 +510,8 @@ jobs:
           audience=$(jq -r '.azure.token_audience | select(type == "string")' facts.json)
           echo "$audience" | grep -Eq '^[A-Za-z0-9:/._-]+$' || { echo "::error::token_audience is missing or malformed in spi info output"; exit 1; }
           echo "audience=$audience" >> "$GITHUB_OUTPUT"
+          member=$(jq -r '.deploy_identity.member_client_id | select(type == "string")' facts.json)
+          echo "member_client_id=$member" >> "$GITHUB_OUTPUT"
           no_access=$(jq -r '.deploy_identity.no_access_client_id | select(type == "string")' facts.json)
           echo "no_access_client_id=$no_access" >> "$GITHUB_OUTPUT"
 
@@ -550,13 +554,14 @@ jobs:
           done
 
       - name: "Mint test callers"
-        # The deploy identity's own bearer, for the audience the facts publish, and the
-        # no-access identity's bearer for the same audience. The second exchange goes
-        # straight to Entra with the run's OIDC token, so the deploy identity's az session
-        # stays in place for Restore. The v1 endpoint is deliberate: the services read
-        # appid, which v2 tokens omit.
+        # The deploy identity's own bearer, for the audience the facts publish, then the
+        # member and no-access identities' bearers for the same audience. Those exchanges
+        # go straight to Entra with the run's OIDC token, so the deploy identity's az
+        # session stays in place for Restore. The v1 endpoint is deliberate: the services
+        # read appid, which v2 tokens omit.
         env:
           AUDIENCE: ${{ steps.gate.outputs.audience }}
+          MEMBER_CLIENT_ID: ${{ steps.gate.outputs.member_client_id }}
           NO_ACCESS_CLIENT_ID: ${{ steps.gate.outputs.no_access_client_id }}
           TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
@@ -564,21 +569,27 @@ jobs:
           TOKEN=$(az account get-access-token --resource "$AUDIENCE" --query accessToken -o tsv)
           echo "::add-mask::$TOKEN"
           echo "RESOLVER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-          if [ -z "$NO_ACCESS_CLIENT_ID" ]; then
-            echo "::notice::the environment publishes no no-access identity; noAccessToken bindings will not resolve"
-            exit 0
-          fi
-          ASSERTION=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
-          NO_ACCESS_TOKEN=$(curl -sSf -X POST "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" \
-            --data-urlencode "grant_type=client_credentials" \
-            --data-urlencode "client_id=$NO_ACCESS_CLIENT_ID" \
-            --data-urlencode "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
-            --data-urlencode "client_assertion=$ASSERTION" \
-            --data-urlencode "resource=$AUDIENCE" | jq -r '.access_token | select(type == "string")')
-          [ -n "$NO_ACCESS_TOKEN" ] || { echo "::error::no-access identity $NO_ACCESS_CLIENT_ID did not mint a token; is its federated credential onboarded?"; exit 1; }
-          echo "::add-mask::$NO_ACCESS_TOKEN"
-          echo "RESOLVER_NO_ACCESS_TOKEN=$NO_ACCESS_TOKEN" >> "$GITHUB_ENV"
+          assertion=""
+          mint() {  # <label> <client id> <resolver variable> <source name>
+            if [ -z "$2" ]; then
+              echo "::notice::the environment publishes no $1 identity; $4 bindings will not resolve"
+              return 0
+            fi
+            [ -n "$assertion" ] || assertion=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
+            local token
+            token=$(curl -sSf -X POST "https://login.microsoftonline.com/$TENANT_ID/oauth2/token" \
+              --data-urlencode "grant_type=client_credentials" \
+              --data-urlencode "client_id=$2" \
+              --data-urlencode "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
+              --data-urlencode "client_assertion=$assertion" \
+              --data-urlencode "resource=$AUDIENCE" | jq -r '.access_token | select(type == "string")')
+            [ -n "$token" ] || { echo "::error::$1 identity $2 did not mint a token; is its federated credential onboarded?"; exit 1; }
+            echo "::add-mask::$token"
+            echo "$3=$token" >> "$GITHUB_ENV"
+          }
+          mint member "$MEMBER_CLIENT_ID" RESOLVER_MEMBER_TOKEN memberToken
+          mint no-access "$NO_ACCESS_CLIENT_ID" RESOLVER_NO_ACCESS_TOKEN noAccessToken
 
       - name: "Log in to GHCR"
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
@@ -589,8 +600,8 @@ jobs:
 
       - name: "Prove"
         # One docker run per declared suite, bound by the resolver from the descriptor, the
-        # facts, and the minted tokens, which reach the bindings with source: token and
-        # source: noAccessToken.
+        # facts, and the minted tokens, which reach the bindings with source: token,
+        # source: memberToken, and source: noAccessToken.
         id: prove
         run: |
           set -euo pipefail
