@@ -55,7 +55,7 @@ Two parts of the descriptor contract (ADR-040) are validated and reported by the
 
 ### Negative
 
-- Every same-repository pull request borrows the shared environment. The per-service concurrency group queues them, so a busy fork waits; the gate's refusals and the suite timeouts keep the wait explainable.
+- Every same-repository pull request borrows the shared environment. The per-service concurrency group queues them, so a busy fork waits; the gate's refusals and the suite timeouts keep the wait explainable. Lanes for different services are not serialized, so a lane that finds the environment borrowed by another service polls deployability for up to ten minutes before failing with the status reason.
 - Renaming the required check changes every fork's ruleset, which `settings-apply` reconciles on its cadence. In between, the old name still reports on `main` because the build job now carries it; a skipped build counts as passing there, and a failed build fails the old check as before.
 
 ### Neutral
