@@ -507,11 +507,26 @@ jobs:
           echo "no_access_client_id=$no_access" >> "$GITHUB_OUTPUT"
 
       - name: "Borrow"
+        # The pin write refuses when the environment is not deployable, and another service's
+        # lane can borrow between the gate and this step. A refusal while status reads not
+        # deployable is that race, and is retried; a refusal while deployable is an error.
         run: |
-          spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
-            --ephemeral --run-id "$GITHUB_RUN_ID" \
-            --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
-            --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          set -uo pipefail
+          deadline=$((SECONDS + 10 * 60))
+          until spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
+              --ephemeral --run-id "$GITHUB_RUN_ID" \
+              --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
+              --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; do
+            spi status --json > status.json || true
+            if jq -e '.deployable == true' status.json > /dev/null 2>&1; then
+              echo "::error::pin refused while the environment is deployable"; exit 1
+            fi
+            if [ $SECONDS -ge $deadline ]; then
+              echo "::error::environment not deployable after 10 minutes: $(jq -r '.reason.message // "unknown"' status.json 2>/dev/null)"; exit 1
+            fi
+            echo "::notice::environment borrowed by another lane; retrying the pin"
+            sleep 20
+          done
 
       - name: "Verify"
         run: |
