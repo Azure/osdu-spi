@@ -55,7 +55,7 @@ tests:
 
 ## Bindings
 
-A binding names the variable the suite reads and the symbol it takes its value from. Values that come from the environment, the caller, or a vault are never in the file; only `static`, `template`, and a `user` binding's `default` carry a value. The sources:
+A binding names the variable the suite reads and the symbol it takes its value from. Values that come from the environment, the caller, or a vault are never in the file. The only values the file carries are a `static` or `template` binding's `value` and a fallback `default`, which `user` and the environment's sources (`gateway`, `partition`, `openid`, `tenant`, `legalTag`) accept. The sources:
 
 | Source | Value | Use it for |
 |---|---|---|
@@ -66,7 +66,7 @@ A binding names the variable the suite reads and the symbol it takes its value f
 | `legalTag` | The primary partition's seeded legal tag | Storage and legal suites |
 | `token` | The bearer the caller minted: the lane's per-run mint, or `spi token` on a laptop | Every access-token variable. No default is allowed |
 | `static` | The literal `value` | Fixed settings such as an environment label |
-| `template` | The `value` with `${OTHER}` references to other bindings, rendered last | A URL built from the gateway and a fixed path |
+| `template` | The `value` with `${OTHER}` references to the suite's other bindings, rendered last; never to another `template` or a `keyvault:` binding | A URL built from the gateway and a fixed path |
 | `user` | Nothing; the caller's shell supplies it, or the declared `default` | A knob only a developer sets |
 | `keyvault:<name>` | That secret from the stack's vault | Not yet delivered by the lane; prefer `token` |
 
@@ -76,7 +76,7 @@ An explicit variable in the caller's environment always wins over the file. That
 
 ## Write it
 
-1. Find the variables. Upstream suites read them through `System.getenv` or `System.getProperty`; grep the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them. A value the suite reads as a system property does not arrive from the environment on its own; pass it through in `mavenArguments` as `-DNAME=${env.NAME}` or map it in the suite's `pom.xml`.
+1. Find the variables. Upstream suites read them through `System.getenv` or `System.getProperty`; grep the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them. Bindings arrive as environment variables, and `mavenArguments` reach Maven verbatim with nothing expanded, so a value the suite reads only as a system property needs a `systemPropertyVariables` entry of `${env.NAME}` in the suite's `pom.xml`. The upstream acceptance module belongs to upstream, so a mapping it lacks goes there.
 2. Bind each one. A URL is `gateway`, an id is `partition`, a token is `token`. If none of the sources fits, the suite wants something the stack does not publish; open an issue on the stack rather than a `user` binding with a default, because a default outlives the reason it was added.
 3. Set the timeout from a real run, plus margin.
 4. Check the contract:
@@ -93,24 +93,33 @@ An explicit variable in the caller's environment always wins over the file. That
     ```bash
     spi info --json > facts.json
     export RESOLVER_TOKEN=$(spi token)
-    python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
-      --descriptor .spi/service.yaml --report suites.json > /dev/null
-    for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
-      python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
-        --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env" || break
-    done
+    (
+      set -euo pipefail
+      python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
+        --descriptor .spi/service.yaml --report suites.json > /dev/null
+      for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
+        python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
+          --descriptor .spi/service.yaml --facts facts.json \
+          --env-file "$suite.env" --report "$suite-report.json"
+      done
+    )
     ```
 
-    This is the loop the lane runs: the suite names come from the contract report, never from a list kept elsewhere.
+    This is the loop the lane runs: the suite names come from the contract report, never from a list kept elsewhere. The subshell stops at the first resolver failure and returns its exit code without closing your terminal.
 
     Run mode is what the lane uses: it refuses with exit 3 and names every binding it could not answer. Bind mode warns instead, for iterating against a personal stack.
 
-6. Run the suite as the lane will, through the image:
+6. Run each suite as the lane will, through the image:
 
     ```bash
-    docker run --env-file acceptance.env ghcr.io/<org>/<service>-acceptance:sha-<short-sha>
-    docker run --env-file integration.env -e SUITE_DIR=testing ghcr.io/<org>/<service>-acceptance:sha-<short-sha> -pl <service>-test-azure -am test
+    image="ghcr.io/<org>/<service>-acceptance:sha-<short-sha>"
+    for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
+      docker run --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
+        "$image" $(jq -r '.contract.maven_arguments[]' "$suite-report.json")
+    done
     ```
+
+    Each suite runs from its declared path with its declared Maven arguments, read from the report step 5 wrote. The arguments stay unquoted so each lands as its own token; the contract refuses an argument with whitespace in it.
 
     The tag is `sha-` followed by the twelve-character commit hash Docker Push printed; the digest from the same job works too.
 
