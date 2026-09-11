@@ -156,10 +156,10 @@ runs:
       run: |
         # Never echoes the token.
         if [ "$PUSH" = "true" ]; then
-          HEADING="🐳 Docker Push"
+          HEADING="Docker Push"
           MSG="Image pushed: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`"
         else
-          HEADING="🐳 Docker Build"
+          HEADING="Docker Build"
           MSG="Dockerfile validated; no GHCR push (validate-only job)"
         fi
         echo "Repository: $IMAGE_REPOSITORY"

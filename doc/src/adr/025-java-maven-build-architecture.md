@@ -22,8 +22,7 @@ Java/Maven is the build architecture:
 ```
 .github/actions/
 ├── java-build/           # Core build logic
-├── java-build-status/    # Status reporting with coverage
-└── pr-status/            # PR status updates
+└── java-build-status/    # Status reporting with coverage
 ```
 
 `java-build` takes two optional inputs: `generate_coverage` (default `false`) and `maven_profile`. `build.yml` calls it with no inputs. `validate.yml` passes coverage on for PR events and supplies the `core,azure` profile that restricts the build to the provider-neutral and Azure modules ([ADR-035](035-azure-only-maven-profile.md)). When no profile is given, no `-P` is passed.

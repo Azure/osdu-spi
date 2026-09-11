@@ -62,7 +62,7 @@ The system is tied to GitHub and subject to Actions usage limits, timeouts, and 
 - CodeQL scans code and workflows (`codeql.yml`)
 
 ### Composite Actions
-Reusable actions live in `.github/actions/`, for example `pr-status` (PR status reporting), `java-build` (Maven build), and `java-build-status` (build status with coverage). See ADR-013.
+Reusable actions live in `.github/actions/`, for example `java-build` (Maven build), and `java-build-status` (build status with coverage). See ADR-013.
 
 ### Error Handling
 - Failed workflows create issues labeled `human-required` (ADR-020)

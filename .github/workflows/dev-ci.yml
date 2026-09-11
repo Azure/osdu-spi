@@ -176,6 +176,14 @@ jobs:
           assert_contains "$GATE_RUN" '[ "$REF" != "fork_upstream" ] || reason=' \
             "The gate must refuse fork_upstream"
 
+          # The ruleset requires the summary by its job name; the two must not drift apart.
+          SUMMARY_NAME=$(yq -r '.jobs."validation-summary".name' "$VALIDATE")
+          if ! jq --exit-status --arg name "$SUMMARY_NAME" '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | index($name)' \
+              .github/rulesets/default-branch.json > /dev/null; then
+            echo "::error file=.github/rulesets/default-branch.json::must require the validation-summary job by its current name ($SUMMARY_NAME)"
+            exit 1
+          fi
+
           # Dependabot owns one build plus one image validation, under its own check name.
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.maven_profile | contains("core,azure")' "$DEPENDABOT" \
             "Dependabot must produce the Azure JAR used by Docker"
