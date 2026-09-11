@@ -461,7 +461,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version=$(spi status --json | jq -r '.environment.stackVersion // empty')
+          # Exit 2 means not deployable, which the next step decides; the version is still in the output.
+          spi status --json > status.json || true
+          jq -e 'type == "object"' status.json > /dev/null 2>&1 \
+            || { echo "::error::spi status --json produced no JSON"; cat status.json; exit 1; }
+          version=$(jq -r '.environment.stackVersion // empty' status.json)
           case "$version" in
             v[0-9]*)
               if [ "$(spi --version)" != "spi ${version#v}" ]; then
@@ -474,12 +478,32 @@ jobs:
           spi --version
 
       - name: "Confirm environment deployable"
+        # Lanes for different services share one environment and only serialize per service,
+        # so another service's borrow shows up here as not deployable. Ten minutes covers a
+        # borrow plus its restore.
         id: gate
         run: |
-          set -euo pipefail
-          spi status --json | tee status.json
-          jq -e '.deployable == true' status.json > /dev/null || {
-            echo "::error::environment is not deployable: $(jq -r '.reason.message // "unknown"' status.json)"; exit 1; }
+          set -uo pipefail
+          started=$SECONDS
+          deadline=$((started + 10 * 60))
+          waited=false
+          until spi status --json > status.json; jq -e '.deployable == true' status.json > /dev/null 2>&1; do
+            if jq -e 'type == "object"' status.json > /dev/null 2>&1; then
+              reason=$(jq -r '.reason.message // "unknown"' status.json)
+            else
+              reason="spi status --json produced no JSON"
+            fi
+            if [ $SECONDS -ge $deadline ]; then
+              echo "::error::environment is not deployable after 10 minutes: $reason"
+              echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            $waited || echo "::notice::waiting for the environment: $reason"
+            waited=true
+            sleep 20
+          done
+          ! $waited || echo "Deploy and Test: waited $((SECONDS - started))s for the environment" >> "$GITHUB_STEP_SUMMARY"
+          set -e
           spi info --json > facts.json
           audience=$(jq -r '.azure.token_audience | select(type == "string")' facts.json)
           echo "$audience" | grep -Eq '^[A-Za-z0-9:/._-]+$' || { echo "::error::token_audience is missing or malformed in spi info output"; exit 1; }
@@ -488,11 +512,31 @@ jobs:
           echo "no_access_client_id=$no_access" >> "$GITHUB_OUTPUT"
 
       - name: "Borrow"
+        # The pin write refuses when the environment is not deployable, and another service's
+        # lane can borrow between the gate and this step. A refusal while status reads not
+        # deployable is that race, and is retried; a refusal while deployable is an error.
         run: |
-          spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
-            --ephemeral --run-id "$GITHUB_RUN_ID" \
-            --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
-            --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          set -uo pipefail
+          deadline=$((SECONDS + 10 * 60))
+          until spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
+              --ephemeral --run-id "$GITHUB_RUN_ID" \
+              --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
+              --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; do
+            spi status --json > status.json || true
+            jq -e 'type == "object"' status.json > /dev/null 2>&1 \
+              || { echo "::error::pin refused and spi status --json produced no JSON"; cat status.json; exit 1; }
+            if jq -e '.deployable == true' status.json > /dev/null 2>&1; then
+              echo "::error::pin refused while the environment is deployable"; exit 1
+            fi
+            reason=$(jq -r '.reason.message // "unknown"' status.json)
+            if [ $SECONDS -ge $deadline ]; then
+              echo "::error::environment is not deployable after 10 minutes: $reason"
+              echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            echo "::notice::pin refused, environment not deployable ($reason); retrying"
+            sleep 20
+          done
 
       - name: "Verify"
         run: |
@@ -559,8 +603,16 @@ jobs:
           for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
             echo "::group::suite $suite"
             report="$suite-report.json"
-            python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
-              --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env" --report "$report"
+            if ! python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
+                --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env" --report "$report"; then
+              # The suite never started; the resolver's report says why, in the summary too.
+              verdict=$(jq -r '.error | "not run, \(.code): \(.detail)"' "$report" 2>/dev/null || echo "not run, resolver failed")
+              echo "::error::suite $suite $verdict"; failed="$failed $suite"
+              echo "❌ suite $suite: $verdict" >> "$GITHUB_STEP_SUMMARY"
+              verdicts="$verdicts❌ suite $suite: $verdict"$'\n'
+              echo "::endgroup::"
+              continue
+            fi
             suite_dir=$(jq -r .contract.test_dir "$report")
             timeout_min=$(jq -r .contract.timeout_minutes "$report")
             mapfile -t mvn_args < <(jq -r '.contract.maven_arguments[]' "$report")

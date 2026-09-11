@@ -136,7 +136,7 @@ The integration-branch ruleset does not currently require status checks.
 | "Repository not initialized" | Missing required setup files | Complete repository initialization first |
 | "Branch status validation failed" | Branch protection or merge issues | Ensure branch is up to date with target |
 | "Deploy and Test skipped" | The gate declined; the notice names why | Onboard the fork with `spi onboard`, add `.spi/service.yaml`, or open the PR from a branch in this repository |
-| "environment is not deployable" | The stack is in maintenance or holds another pin | Wait for `spi status` to report deployable; the gate rechecks on the next run |
+| "environment is not deployable after 10 minutes" | The stack stayed in maintenance, or another service's lane held it, for longer than the lane waits | Check `spi status` for the reason; rerun once it reports deployable |
 
 ## Configuration
 
