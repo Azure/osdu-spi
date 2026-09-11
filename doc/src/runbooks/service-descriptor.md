@@ -17,12 +17,12 @@ This page covers writing a descriptor, checking it, and running its suites. The 
 ```yaml
 schemaVersion: 3
 service:
-  name: partition
+  name: <service>
   archetype: java-maven-azure
 tests:
   acceptance:
     type: maven
-    path: partition-acceptance-test
+    path: <service>-acceptance-test
     mavenArguments: [test]
     timeoutMinutes: 15
     bindings:
@@ -32,14 +32,16 @@ tests:
   integration:
     type: maven
     path: testing
-    mavenArguments: [-pl, partition-test-azure, -am, test]
+    mavenArguments: [-pl, <service>-test-azure, -am, test]
     timeoutMinutes: 20
     bindings:
       ENVIRONMENT: { source: static, value: dev }
-      PARTITION_BASE_URL: { source: gateway, suffix: / }
+      SERVICE_BASE_URL: { source: gateway, suffix: / }
       MY_TENANT: { source: partition }
       INTEGRATION_TESTER_ACCESS_TOKEN: { source: token }
 ```
+
+`<service>` stands for the service's name; the suite paths, module names, and variable names come from the suites in the repository, not from the descriptor. The sources are the part that's fixed.
 
 `service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. It must equal the slug the workflows build and pin under, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise. `archetype` is always `java-maven-azure`.
 
