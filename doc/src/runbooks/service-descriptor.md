@@ -75,7 +75,8 @@ A binding maps an environment variable the suite reads to a source that supplies
 | `tenant` | The Entra tenant id | Suites that build authority URLs themselves |
 | `legalTag` | The primary data partition's seeded legal tag | Storage and legal suites |
 | `token` | The bearer token the caller supplies as `RESOLVER_TOKEN`: minted per run by the lane, or from `spi token` on a laptop | Access-token variables. No default allowed |
-| `noAccessToken` | The bearer for the stack's no-access identity, which holds no entitlements, supplied as `RESOLVER_NO_ACCESS_TOKEN`: minted per run by the lane, or from `spi token --no-access` on a laptop | A caller with no entitlements. Not `NO_ACCESS_USER_TOKEN`: suites declare that user in `required-roles.json` as a member of `users` and the service's user group, a caller the stack doesn't provision yet ([osdu-spi-stack#208](https://github.com/Azure/osdu-spi-stack/issues/208)). No default allowed |
+| `memberToken` | The bearer for the stack's member identity, a plain user seeded into `users` and each service's user group with no admin rights, supplied as `RESOLVER_MEMBER_TOKEN`: minted per run by the lane, or from `spi token --member` on a laptop | A caller with user-level entitlements only, such as `NO_ACCESS_USER_TOKEN` for the `NO_ACCESS_USER` in a suite's `required-roles.json`. No default allowed |
+| `noAccessToken` | The bearer for the stack's no-access identity, which holds no entitlements, supplied as `RESOLVER_NO_ACCESS_TOKEN`: minted per run by the lane, or from `spi token --no-access` on a laptop | A caller with no entitlements at all, one the service should refuse outright. No default allowed |
 | `static` | The literal `value` | Fixed settings such as an environment label |
 | `template` | The `value` with `${OTHER}` references to the suite's other bindings, rendered last; never to another `template` or a `keyvault:` binding | A URL built from the gateway and a fixed path |
 | `user` | Nothing from the stack; the caller's shell supplies it, or the declared `default` | A setting only a developer changes |
@@ -85,7 +86,7 @@ A binding maps an environment variable the suite reads to a source that supplies
 
 - Values from the stack, the caller, or a vault never appear in the file.
 - `static` and `template` bindings carry a `value`.
-- `user` and the five sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`) accept a `default`, used when nothing else supplies a value. `token`, `noAccessToken`, `keyvault:<name>`, `static`, and `template` don't.
+- `user` and the five sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`) accept a `default`, used when nothing else supplies a value. `token`, `memberToken`, `noAccessToken`, `keyvault:<name>`, `static`, and `template` don't.
 
 A nonempty value in the caller's environment takes precedence over the descriptor; an empty value counts as unset. That's how a developer points a suite at a service running on their laptop without editing the descriptor.
 
@@ -110,7 +111,7 @@ A suite that runs its tests through Failsafe takes the same `systemPropertyVaria
 ## Create and validate a descriptor
 
 1. Find the variables each suite reads. Upstream suites read them with `System.getenv` or `System.getProperty`; search the suite's `src/test` for both. The Azure module's README under `testing/` usually lists them. A variable read with `System.getProperty` also needs the mapping in [System properties](#system-properties).
-2. Bind each variable. Use `gateway` for the stack base URL, `partition` for the primary data partition name, `token` for access tokens, and `noAccessToken` for a caller with no entitlements; the [table](#bindings) covers the rest. If no source fits, the suite needs something the stack doesn't publish. Open an issue on the stack instead of adding a `user` binding with a default, because a default stays in the file after the reason for it is gone.
+2. Bind each variable. Use `gateway` for the stack base URL, `partition` for the primary data partition name, `token` for access tokens, `memberToken` for a caller with user-level entitlements only, and `noAccessToken` for a caller with none; the [table](#bindings) covers the rest. If no source fits, the suite needs something the stack doesn't publish. Open an issue on the stack instead of adding a `user` binding with a default, because a default stays in the file after the reason for it is gone.
 3. Set `timeoutMinutes` from a real run's duration, plus margin.
 4. Check the contract:
 
@@ -126,6 +127,7 @@ A suite that runs its tests through Failsafe takes the same `systemPropertyVaria
     ```bash
     spi info --json > facts.json
     export RESOLVER_TOKEN=$(spi token)
+    export RESOLVER_MEMBER_TOKEN=$(spi token --member)         # only if a suite binds memberToken
     export RESOLVER_NO_ACCESS_TOKEN=$(spi token --no-access)   # only if a suite binds noAccessToken
     (
       set -euo pipefail
