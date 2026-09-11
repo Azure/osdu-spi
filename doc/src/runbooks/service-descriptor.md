@@ -84,7 +84,7 @@ A binding maps an environment variable the suite reads to a source that supplies
 - `static` and `template` bindings carry a `value`.
 - `user` and the five sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`) accept a `default`, used when nothing else supplies a value. `token`, `keyvault:<name>`, `static`, and `template` don't.
 
-A variable set in the caller's environment always wins over the file. That's how a developer points a suite at a service running on their laptop without editing the descriptor.
+A nonempty value in the caller's environment takes precedence over the descriptor; an empty value counts as unset. That's how a developer points a suite at a service running on their laptop without editing the descriptor.
 
 ### System properties
 
@@ -141,7 +141,11 @@ A suite that runs its tests through Failsafe takes the same `systemPropertyVaria
 
     An env file can contain a token. Pass it to `docker run --env-file` and never `source` it, which would run the token as shell.
 
-6. Commit the descriptor and open a pull request. A pull request that changes only the descriptor skips the build, because Check Paths treats `.spi/` as configuration. The acceptance image is built by the first build that includes the descriptor: a change that triggers a build, pushed to the same pull request or a later one. In that build, the Docker Build job's "Acceptance Image" step fails if a declared path doesn't exist. Once the repository is onboarded, the Deploy and Test job runs each suite, and the Validation Summary comment reports one result line per suite.
+6. Commit the descriptor and open a pull request.
+
+    A pull request that changes only the descriptor skips the build, because Check Paths treats `.spi/` as configuration. The acceptance image is built by the first build that includes the descriptor: a change that triggers a build, pushed to the same pull request or a later one.
+
+    **Expected result:** in that build, the Docker Build job's "Acceptance Image" step passes, which confirms every declared path exists. Once the repository is onboarded, the Deploy and Test job runs each suite, and the Validation Summary comment reports one result line per suite.
 
 ## Run suites locally
 
@@ -153,13 +157,14 @@ Run the suites through the acceptance image, the same way the lane does. You nee
 ```bash
 image="ghcr.io/<org>/<service>-acceptance:sha-<short-sha>"
 for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
-  mapfile -t maven_args < <(jq -r '.contract.maven_arguments[]' "$suite-report.json")
+  maven_args=()
+  while IFS= read -r arg; do maven_args+=("$arg"); done < <(jq -r '.contract.maven_arguments[]' "$suite-report.json")
   docker run --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
     "$image" "${maven_args[@]}"
 done
 ```
 
-Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches Maven as one token instead of being expanded by the shell.
+Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches Maven as one token instead of being expanded by the shell. The loop runs in Bash 3.2 and zsh alike.
 
 ## Common mistakes
 
