@@ -153,12 +153,13 @@ Run the suites through the acceptance image, the same way the lane does. You nee
 ```bash
 image="ghcr.io/<org>/<service>-acceptance:sha-<short-sha>"
 for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
+  mapfile -t maven_args < <(jq -r '.contract.maven_arguments[]' "$suite-report.json")
   docker run --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
-    "$image" $(jq -r '.contract.maven_arguments[]' "$suite-report.json")
+    "$image" "${maven_args[@]}"
 done
 ```
 
-Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments stay unquoted so each becomes its own token; the contract rejects any argument that contains whitespace.
+Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches Maven as one token instead of being expanded by the shell.
 
 ## Common mistakes
 
