@@ -86,7 +86,7 @@ tests:                                  # named suites of one shape; acceptance 
 
 Every suite may also carry `keyVaultBindings` (env name to Key Vault secret name), `requires` (`loads`, `groups`), and `dependencies`; the partition suites need none of them.
 
-Ports the prototype's ADR-043 contract (reserved-name blocklist, argv-token Maven args, no identity/cluster selection) and subgroup-core's closed-vocabulary posture: an unknown source kind halts loudly. Resolution precedence: explicit env → facts → declared default; templates render last, so the same contract runs in CI, against a personal stack, or fully offline. `token` and `noAccessToken` are the caller inputs with fixed names, `RESOLVER_TOKEN` and `RESOLVER_NO_ACCESS_TOKEN`, so the lane and a developer supply the bearers the same way whatever a suite calls them.
+Ports the prototype's ADR-043 contract (reserved-name blocklist, argv-token Maven args, no identity/cluster selection) and subgroup-core's closed-vocabulary posture: an unknown source kind halts loudly. Resolution precedence: explicit env → facts → declared default; templates render last, so the same contract runs in CI, against a personal stack, or fully offline. `token`, `memberToken`, and `noAccessToken` are the caller inputs with fixed names, `RESOLVER_TOKEN`, `RESOLVER_MEMBER_TOKEN`, and `RESOLVER_NO_ACCESS_TOKEN`, so the lane and a developer supply the bearers the same way whatever a suite calls them.
 
 ### What the repository holds, in full
 
@@ -109,6 +109,7 @@ gate    → spi status --json          deployable? seeded per requires? dependen
 borrow  → spi service pin --image ghcr…@sha256:… --ephemeral --run-id $GITHUB_RUN_ID
 verify  → spi service verify         poll until the live pod imageID == our digest
 mint    → az account get-access-token --resource <azure.token_audience>   → RESOLVER_TOKEN
+        → OIDC exchange as deploy_identity.member_client_id                → RESOLVER_MEMBER_TOKEN
         → OIDC exchange as deploy_identity.no_access_client_id             → RESOLVER_NO_ACCESS_TOKEN
 bind    → resolver --suite <name>: descriptor × facts × tokens × Key Vault → <name>.env
 prove   → docker run --env-file <name>.env -e SUITE_DIR=<path> <svc>-acceptance@<digest>   per suite
@@ -142,7 +143,7 @@ Adopts stack ADR-032 wholesale (designed there, not yet built):
 
 - **One deploy identity per environment**, a user-assigned managed identity in the environment's resource group, with one federated credential per trusted fork whose subject is the one GitHub signs for `repo:<org>/<fork>:environment:spi-stack`. The GitHub environment is used for identity protection, not config storage, and admits every branch: write access to the fork is the boundary, and a pull request from another repository never receives an OIDC token.
 - **Least-privilege Azure roles**: AKS Cluster User + Key Vault Secrets User. **Namespace-scoped Kubernetes Roles**: lock-object patch restricted by `resourceNames` to `osdu-image-lock`; read-only over deployments/pods/logs; no create, no delete, no secrets verbs.
-- **Test callers, secretless**: the positive-path token is minted per run as the deploy identity for the audience the facts publish as `azure.token_audience`; the Azure-provider services admit any app-only token from the tenant, so no entitlements seeding is needed for the suites built so far. A developer mints the same token with `spi token`. A token for the stack's *no-access* identity, a caller with no entitlements, is minted the same way and reaches bindings with `source: noAccessToken` as `RESOLVER_NO_ACCESS_TOKEN`. No long-lived secrets anywhere.
+- **Test callers, secretless**: the positive-path token is minted per run as the deploy identity for the audience the facts publish as `azure.token_audience`; the Azure-provider services admit any app-only token from the tenant, so no entitlements seeding is needed for the suites built so far. A developer mints the same token with `spi token`. Tokens for the stack's *member* identity, a plain user with no admin rights, and its *no-access* identity, a caller with no entitlements, are minted the same way and reach bindings with `source: memberToken` and `source: noAccessToken` as `RESOLVER_MEMBER_TOKEN` and `RESOLVER_NO_ACCESS_TOKEN`. No long-lived secrets anywhere.
 - **Onboarding** = `spi onboard <service> --repo <org>/<fork>`: the federated credential on both identities, the open `spi-stack` environment, the five repository values, and the fork's entry in the cluster's trusted-repository projection. Nothing arms afterwards; the lane runs on the next trusted event.
 
 **Customer mirrors**: the identical machinery arrives by mirror sync. A customer runs their own stack (same CLI, same facts contract), sets their own pointer + identity triplet at adoption time (an `Adopt Fork` extension), and pins their own GHCR images. External-fork PR heads never reach the credentialed lane; the existing ADR-036 gate already guarantees it.
@@ -157,8 +158,9 @@ The developer loop uses the same three contracts with no CI in the path:
 # once: stand up or connect to your own stack
 spi connect -g my-rg -c my-cluster && spi status
 
-# the callers: the environment's deploy identity and its no-access identity, minted through the cluster
+# the callers: the environment's deploy, member, and no-access identities, minted through the cluster
 export RESOLVER_TOKEN=$(spi token)
+export RESOLVER_MEMBER_TOKEN=$(spi token --member)
 export RESOLVER_NO_ACCESS_TOKEN=$(spi token --no-access)
 
 # resolve answers: descriptor × facts × vault → .env  (bind warns; run refuses: two audiences)
