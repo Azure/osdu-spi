@@ -4,7 +4,27 @@
 
 > After CI builds a service image, **borrow** the service's slot in a running SPI stack, **prove** the image with the acceptance suite, and **restore** the slot. Every environment answer is **discovered at run time**, never pushed into a repository.
 >
-> Status: Built · designed 2026-08-31, lane shipped 2026-09-10 (ADR-040, ADR-041) · Applies to the filter tier and the customer mirror tier · History in [the "deploy & test capability" tracking issue](https://github.com/Azure/osdu-spi/issues/158). Where this document and the two records differ, the records govern.
+> Status: Core lane built; remaining design items are tracked below · designed 2026-08-31, lane shipped 2026-09-10 (ADR-040, ADR-041) · Applies to the filter tier and the customer mirror tier · History in [the "deploy & test capability" tracking issue](https://github.com/Azure/osdu-spi/issues/158). Where this document and the two records differ, the records govern.
+
+## Implemented lane and remaining work
+
+[ADR-041](../adr/041-borrow-prove-restore-lane.md) and the
+[validation workflow](https://github.com/Azure/osdu-spi/blob/main/.github/template-workflows/validate.yml)
+define the shipped lane. The investigations, principles, seeding model, and
+rollout plan below also describe intended capabilities; they are not a checklist
+of implemented gates.
+
+- Eligible same-repository PRs and pushes both borrow, test, and restore. Passing
+  a push run does not leave its image deployed as the environment's canonical.
+- The lane resolves descriptor bindings from facts and minted caller tokens.
+  Key Vault materialization is not wired ([#175](https://github.com/Azure/osdu-spi/issues/175)).
+- Descriptor `requires.loads`, `requires.groups`, and `dependencies` are not
+  enforced before borrowing ([#176](https://github.com/Azure/osdu-spi/issues/176));
+  named loads remain stack work ([stack #133](https://github.com/Azure/osdu-spi-stack/issues/133)).
+- Live-image verification runs after the pin. A second verification immediately
+  before each suite is not implemented. The undeclared-environment-read tripwire
+  is also pending ([#156](https://github.com/Azure/osdu-spi/issues/156)).
+
 
 ## §1 Problem and constraints
 
@@ -105,22 +125,22 @@ One credentialed job, `deploy-test`, chained on `docker-push` in `validate.yml` 
 ```
 gate    → deploy-gate                 trusted event? onboarded? descriptor? image pushed?
 install → the spi release the environment runs (environment.stackVersion from spi status)
-gate    → spi status --json          deployable? seeded per requires? dependencies unpinned?
+gate    → spi status --json          deployable? (descriptor requirements are not yet enforced)
 borrow  → spi service pin --image ghcr…@sha256:… --ephemeral --run-id $GITHUB_RUN_ID
 verify  → spi service verify         poll until the live pod imageID == our digest
 mint    → az account get-access-token --resource <azure.token_audience>   → RESOLVER_TOKEN
         → OIDC exchange as deploy_identity.member_client_id                → RESOLVER_MEMBER_TOKEN
         → OIDC exchange as deploy_identity.no_access_client_id             → RESOLVER_NO_ACCESS_TOKEN
-bind    → resolver --suite <name>: descriptor × facts × tokens × Key Vault → <name>.env
+bind    → resolver --suite <name>: descriptor × facts × tokens → <name>.env
 prove   → docker run --env-file <name>.env -e SUITE_DIR=<path> <svc>-acceptance@<digest>   per suite
 restore → spi service reset --if-run $GITHUB_RUN_ID           (if: always)
 verdict → validation-summary: one table; fails on any failed or cancelled build, push, or deploy job
 ```
 
 - **Deploy is a lock write, not a kubectl mutation.** `spi service pin` updates the `osdu-image-lock` ConfigMap under compare-and-set; Flux re-renders the HelmRelease. GitOps stays alive the whole time: no suspended-Flux CI mode, no weekly first-deploy failure, no loss of self-healing (stack ADR-031: "a lock write is the whole deploy"). The pin returns at the lock write (the fork identity holds no Flux write; the lock's watch label triggers reconciliation), so the lane polls `spi service verify` until the digest is live or the borrow budget expires. A typed `lock_mismatch` from verify means the pin was replaced mid-borrow.
-- **Restore is ownership-checked.** `reset --if-run` restores the recorded canonical only while the live pin still belongs to this run, so a crashed run can't be "restored" over a newer sibling. Push events to protected branches may pin without restore; the environment's refresh converges the canonical.
+- **Restore is ownership-checked.** `reset --if-run` restores the recorded canonical only while the live pin still belongs to this run, so a crashed run can't be "restored" over a newer sibling. The Restore step runs after eligible PR and push tests, including failures, once CLI installation succeeded. A failed runner can still strand a pin; restore is attempted, not guaranteed. Canonical advancement is separate from testing a push image.
 - **Not-onboarded is a visible skip.** When the pointer variables are absent, the gate reports "repository is not onboarded to a stack" and the lane does not run; the summary check stays green. The same ruleset serves every fork, onboarded or not.
-- **The gate replaces the sticky boolean.** `spi status` is consulted every run: the stack's maintenance flag is fail-closed after a red rebuild, so PRs get "environment in maintenance" in seconds instead of marching into a dead cluster.
+- **The gate replaces the sticky boolean.** `spi status` is consulted every run. The lane polls deployability every 20 seconds for up to ten minutes, reporting the status reason if the environment remains blocked, including maintenance. Borrow retries a pin refusal while status is not deployable on the same bounded schedule.
 - **Verdicts carry attribution** (cimpl-test's taxonomy): env-not-ready, infra, and test-failure are distinct outcomes; a suite that collects zero tests is never a pass; an interrupted run is never a pass.
 
 ## §6 Answers that must be created: the seeding tiers
@@ -135,11 +155,11 @@ Some answers can't be discovered because nothing creates them: the two gaps foun
 
 Boundary rule (cimpl-stack ADR-025, adopted verbatim): *persistent state → a declared load; per-run identity → an ephemeral fixture.*
 
-**The new piece: declared data dependencies.** The descriptor's `requires` block names loads and groups; the lane's *gate* checks them against published load facts and refuses with a typed reason (`environment not seeded: reference-data`) instead of the industry-standard failure mode, an acceptance test returning `totalCount: 0` and a human reading a runbook. For the eight core services, Tier 1 alone covers most suites; `requires.loads` is expected mainly for search and indexer, which keeps rebuilds and CI cheap.
+**Planned: declared data dependencies.** The descriptor's `requires` block names loads and groups; the planned lane gate checks them against published load facts and refuses with a typed reason (`environment not seeded: reference-data`) instead of the industry-standard failure mode, an acceptance test returning `totalCount: 0` and a human reading a runbook. For the eight core services, Tier 1 alone covers most suites; `requires.loads` is expected mainly for search and indexer, which keeps rebuilds and CI cheap.
 
 ## §7 Identity
 
-Adopts stack ADR-032 wholesale (designed there, not yet built):
+The stack implements the deploy identity and onboarding trust from ADR-032:
 
 - **One deploy identity per environment**, a user-assigned managed identity in the environment's resource group, with one federated credential per trusted fork whose subject is the one GitHub signs for `repo:<org>/<fork>:environment:spi-stack`. The GitHub environment is used for identity protection, not config storage, and admits every branch: write access to the fork is the boundary, and a pull request from another repository never receives an OIDC token.
 - **Least-privilege Azure roles**: AKS Cluster User + Key Vault Secrets User. **Namespace-scoped Kubernetes Roles**: lock-object patch restricted by `resourceNames` to `osdu-image-lock`; read-only over deployments/pods/logs; no create, no delete, no secrets verbs.
