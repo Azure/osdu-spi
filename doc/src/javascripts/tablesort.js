@@ -1,57 +1,10 @@
 /* OSDU SPI Fork Management Interactive Features */
 
-// Initialize Mermaid
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof mermaid !== 'undefined') {
-        mermaid.initialize({
-            startOnLoad: true,
-            theme: 'default',
-            themeVariables: {
-                primaryColor: '#1976d2',
-                primaryTextColor: '#fff',
-                primaryBorderColor: '#1565c0',
-                lineColor: '#757575'
-            }
-        });
-    }
-});
-
 document$.subscribe(function() {
     // Table sorting functionality
     var tables = document.querySelectorAll("article table:not([class])")
     tables.forEach(function(table) {
         new Tablesort(table)
-    })
-
-    // Add copy buttons to code blocks
-    var codeBlocks = document.querySelectorAll('pre > code')
-    codeBlocks.forEach(function(codeBlock) {
-        var pre = codeBlock.parentNode
-        if (!pre.querySelector('.copy-button')) {
-            var button = document.createElement('button')
-            button.className = 'copy-button'
-            button.innerHTML = '📋'
-            button.title = 'Copy to clipboard'
-            button.onclick = function() {
-                navigator.clipboard.writeText(codeBlock.textContent).then(function() {
-                    button.innerHTML = '✅'
-                    setTimeout(function() {
-                        button.innerHTML = '📋'
-                    }, 2000)
-                })
-            }
-            pre.style.position = 'relative'
-            button.style.position = 'absolute'
-            button.style.top = '8px'
-            button.style.right = '8px'
-            button.style.background = 'rgba(255, 255, 255, 0.8)'
-            button.style.border = 'none'
-            button.style.borderRadius = '4px'
-            button.style.padding = '4px 8px'
-            button.style.cursor = 'pointer'
-            button.style.fontSize = '12px'
-            pre.appendChild(button)
-        }
     })
 
     // ADR status indicator enhancements
