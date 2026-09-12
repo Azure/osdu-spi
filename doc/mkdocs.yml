@@ -86,7 +86,6 @@ plugins:
       minify_html: true
 
 extra_javascript:
-  - https://unpkg.com/mermaid@10.9.0/dist/mermaid.min.js
   - https://unpkg.com/tablesort@5.3.0/dist/tablesort.min.js
   - javascripts/tablesort.js
 extra_css:
