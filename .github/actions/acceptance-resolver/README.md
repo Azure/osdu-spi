@@ -78,6 +78,7 @@ naming the offending key — the resolver refuses to guess.
 | `openid` | `azure.openid_issuer` — the OIDC v2.0 issuer URL, published explicitly by the stack, never derived from the tenant id here |
 | `tenant` | `azure.tenant_id` |
 | `legalTag` | The primary entry's `legal_tag` in `partitions[]` (legal tags are partition-scoped) |
+| `domain` | `entitlements_domain` — the entitlements domain the stack deployed |
 | `keyvault:<name>` | The value of that secret from the caller's secrets file; the vault itself is named by `azure.keyvault` in facts |
 | `static` | The declared `value`, verbatim |
 | `template` | The declared `value` with `${NAME}` references to other bindings, rendered after everything else resolves; may only reference non-template, non-secret bindings |

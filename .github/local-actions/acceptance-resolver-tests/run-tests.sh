@@ -80,6 +80,8 @@ TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" --facts "$F
 [ "$(env_value "$ENV1" DEMO_TENANT)" = "opendes" ] || die "partition must be the primary entry"
 [ "$(env_value "$ENV1" LEGAL_TAG)" = "opendes-public-usa-dataset-1" ] \
   || die "legalTag must read the primary partition's legal_tag"
+[ "$(env_value "$ENV1" ENTITLEMENTS_DOMAIN)" = "dataservices.energy" ] \
+  || die "domain must read entitlements_domain"
 [ "$(env_value "$ENV1" TEST_OPENID_PROVIDER_URL)" = "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0" ] \
   || die "openid must read azure.openid_issuer"
 [ "$(env_value "$ENV1" CLIENT_TENANT)" = "11111111-2222-3333-4444-555555555555" ] \
@@ -92,7 +94,7 @@ TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" --facts "$F
 [ "$(env_value "$ENV1" CLIENT_SECRET)" = "s3cret-value" ] || die "keyvault: source lost"
 [ "$(env_value "$ENV1" SP_PASSWORD)" = "p4ssword-value" ] || die "keyVaultBindings lost"
 [ "$(report_field "$TMP/happy.json" "len(r['missing'])")" = "0" ] || die "happy path reports missing"
-ok "all eleven bindings resolved"
+ok "all twelve bindings resolved"
 
 note "run: happy path succeeds and reports the contract"
 touch "$TMP/run.env" && chmod 644 "$TMP/run.env"
@@ -138,9 +140,11 @@ TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$DESCRIPTOR" --facts "$F
 [ "$RC" -eq 0 ] || die "bind must exit 0 on missing facts"
 grep -q "TEST_OPENID_PROVIDER_URL" "$TMP/today-err.txt" || die "bind must warn about the openid binding"
 grep -q "LEGAL_TAG" "$TMP/today-err.txt" || die "bind must warn about the legalTag binding"
+grep -q "ENTITLEMENTS_DOMAIN" "$TMP/today-err.txt" || die "bind must warn about the domain binding"
 grep -q "^DEMO_TENANT=" "$ENV4" || die "resolvable bindings must still be written"
 grep -q "^TEST_OPENID_PROVIDER_URL=" "$ENV4" && die "unresolved binding must be omitted, not empty"
-[ "$(report_field "$TMP/today.json" "len(r['missing'])")" = "2" ] || die "expected exactly 2 missing"
+grep -q "^ENTITLEMENTS_DOMAIN=" "$ENV4" && die "empty domain fact must be omitted, not written empty"
+[ "$(report_field "$TMP/today.json" "len(r['missing'])")" = "3" ] || die "expected exactly 3 missing"
 ok "bind warns, writes, reports"
 
 note "missing facts (today's envelope): run refuses with a typed reason"
@@ -151,8 +155,25 @@ TESTER_TOKEN="tok-123" engine --mode run --descriptor "$DESCRIPTOR" --facts "$FA
 [ "$RC" -eq 3 ] || die "run must exit 3 on missing facts, got $RC"
 [ ! -e "$TMP/refused.env" ] || die "refusal must remove a stale env file, not leave it for the caller"
 grep -q "LEGAL_TAG" "$TMP/refused-err.txt" || die "refusal must name the unresolved binding"
+grep -q "ENTITLEMENTS_DOMAIN" "$TMP/refused-err.txt" || die "refusal must name the empty domain binding"
 [ "$(report_field "$TMP/refused.json" "r['error']['category']")" = "env-not-ready" ] || die "wrong error category"
 ok "typed env-not-ready refusal"
+
+note "domain: a declared default is accepted when entitlements_domain is empty"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['entitlements_domain'] = ''
+json.dump(facts, open('$TMP/facts-domain-empty.json', 'w'))
+"
+variant "$TMP/domain-default.yaml" "{ source: domain }" \
+  "{ source: domain, default: default.energy }"
+TESTER_TOKEN="tok-123" engine --mode run --descriptor "$TMP/domain-default.yaml" \
+  --facts "$TMP/facts-domain-empty.json" --env-file "$TMP/domain-default.env" \
+  --secrets "$SECRETS" >/dev/null 2>&1 || die "domain default must satisfy run mode"
+[ "$(env_value "$TMP/domain-default.env" ENTITLEMENTS_DOMAIN)" = "default.energy" ] \
+  || die "domain default was not used"
+ok "domain accepts a default"
 
 note "present-but-empty fact values are missing facts, never empty env vars"
 python3 -c "
