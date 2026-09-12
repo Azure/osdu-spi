@@ -2,6 +2,7 @@
   "apiVersion": "spi.osdu.dev/v1",
   "ingress_mode": "fqdn",
   "base_url": "https://osdu.spi.example.com/",
+  "entitlements_domain": "dataservices.energy",
   "endpoints": {
     "demo": "/api/demo/v1"
   },
