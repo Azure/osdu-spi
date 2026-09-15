@@ -13,6 +13,7 @@ tests:
       DEMO_TENANT: { source: partition }
       TEST_OPENID_PROVIDER_URL: { source: openid }
       LEGAL_TAG: { source: legalTag }
+      ENTITLEMENTS_DOMAIN: { source: domain }
       CLIENT_TENANT: { source: tenant }
       TESTER_TOKEN: { source: user }
       RETRY_COUNT: { source: user, default: "3" }

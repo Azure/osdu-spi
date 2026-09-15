@@ -74,6 +74,7 @@ A binding maps an environment variable the suite reads to a source that supplies
 | `openid` | The OIDC issuer the stack publishes | Suites that discover the token endpoint |
 | `tenant` | The Entra tenant id | Suites that build authority URLs themselves |
 | `legalTag` | The primary data partition's seeded legal tag | Storage and legal suites |
+| `domain` | The entitlements domain the stack deployed (`entitlements_domain`) | Entitlements suites |
 | `token` | The bearer token the caller supplies as `RESOLVER_TOKEN`: minted per run by the lane, or from `spi token` on a laptop | Access-token variables. No default allowed |
 | `memberToken` | The bearer for the stack's member identity, a plain user seeded into `users` and each service's user group with no admin rights, supplied as `RESOLVER_MEMBER_TOKEN`: minted per run by the lane, or from `spi token --member` on a laptop | A caller with user-level entitlements only, such as `NO_ACCESS_USER_TOKEN` for the `NO_ACCESS_USER` in a suite's `required-roles.json`. No default allowed |
 | `noAccessToken` | The bearer for the stack's no-access identity, which holds no entitlements, supplied as `RESOLVER_NO_ACCESS_TOKEN`: minted per run by the lane, or from `spi token --no-access` on a laptop | A caller with no entitlements at all, one the service should refuse outright. No default allowed |
@@ -86,7 +87,7 @@ A binding maps an environment variable the suite reads to a source that supplies
 
 - Values from the stack, the caller, or a vault never appear in the file.
 - `static` and `template` bindings carry a `value`.
-- `user` and the five sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`) accept a `default`, used when nothing else supplies a value. `token`, `memberToken`, `noAccessToken`, `keyvault:<name>`, `static`, and `template` don't.
+- `user` and the six sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`, `domain`) accept a `default`, used when nothing else supplies a value. `token`, `memberToken`, `noAccessToken`, `keyvault:<name>`, `static`, and `template` don't.
 
 A nonempty value in the caller's environment takes precedence over the descriptor; an empty value counts as unset. That's how a developer points a suite at a service running on their laptop without editing the descriptor.
 

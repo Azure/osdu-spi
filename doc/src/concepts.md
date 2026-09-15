@@ -7,28 +7,33 @@ A cloud provider running the Open Subsurface Data Universe (OSDU) has to keep tw
 ```mermaid
 graph TB
     subgraph Community["OSDU Community Repository - Upstream"]
-        A1[API] --- B1[Core Code] --- C1[SPI Interface] --- D1[Community Implementation]
+        Shared["API, Core Code and SPI Interfaces"]
+        Seed["Azure Provider and Test Source<br/>Last upstream revision containing them"]
     end
-    
-    Community -->|Synced Fork| Fork
-    
-    subgraph Fork["Azure SPI Repository"]
-        A2[API] --- B2[Core Code] --- C2[SPI Interface] --- D2[Azure Implementation]
+
+    Shared -->|Filtered sync| Generated["fork_upstream<br/>Shared code and Azure module references<br/>No Azure source"]
+
+    subgraph Fork["Azure Service Fork - fork_integration and main"]
+        Core["API and Core Code"] --- Interface["SPI Interfaces"] --- Azure["Fork-owned Azure Provider and Tests"]
     end
-    
+
+    Generated -->|Cascade shared changes| Core
+    Seed -.->|Seed once at initialization| Azure
+
     style Community fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
     style Fork fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style C1 fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style C2 fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style D1 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style D2 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Generated fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    style Interface fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style Azure fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
 ```
 
-The **SPI Interface** (orange) is the boundary. Everything to its left stays synchronized with upstream; only the implementation layer on the right contains Azure-specific code.
+The **SPI Interface** (orange) is the code boundary: shared service logic calls an interface implemented by the Azure provider. Source ownership follows a separate boundary. Sync regenerates `fork_upstream` from shared upstream code and injects references to the Azure modules, but excludes the provider implementations themselves.
 
-:material-open-source-initiative: **Open Source Components** include OSDU core interfaces, community-validated business logic, standard data models, and reference implementations for testing.
+Upstream plans to remove its Azure implementations. Initialization therefore seeds `provider/<svc>-azure` and `testing/<svc>-test-azure` once, from the newest upstream revision that still contains them. Those trees are then maintained in the service fork on `fork_integration` and `main`. Cascade combines shared changes with that fork-owned source and updates its Maven version wiring. Late upstream fixes to Azure source need an explicit port. See [ADR-038: Upstream Filter Transform and One-Time Azure Seeding](adr/038-upstream-filter-transform.md).
 
-:material-microsoft-azure: **Azure-Specific Components** are the Azure SPI implementations, Azure service integrations, and Microsoft-specific configuration and deployment.
+:material-open-source-initiative: **Upstream-Owned Components** include OSDU core interfaces, community-validated business logic, standard data models, and shared tests.
+
+:material-microsoft-azure: **Fork-Owned Components** include the Azure provider and Azure test source, plus the fork's engineering configuration and build machinery.
 
 ## The Fork Management Problem
 
@@ -74,12 +79,12 @@ The system isolates each stage of integration in its own branch. Changes flow th
 ```mermaid
 graph TD
     A[OSDU Community Repository - Upstream]
-    A -->|Fork| B
+    A -->|Filtered sync| B
     
     subgraph Azure["Azure SPI Repository"]
-        B[fork_upstream<br/>Filtered]
-        B --> C[fork_integration<br/>Conflict Resolution]
-        C --> D[main<br/>Azure SPI Ready]
+        B[fork_upstream<br/>Shared code; no Azure source]
+        B --> C[fork_integration<br/>Shared code + fork-owned Azure source]
+        C --> D[main<br/>Shared code + fork-owned Azure source]
     end
     
     style A fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
@@ -96,7 +101,7 @@ graph TD
 :material-sync: **Upstream Synchronization**
 
 - Daily pull of the upstream tip
-- Filtered to the shared code the fork actually consumes
+- Generated from shared upstream code, with Azure module references but no Azure source
 - One PR per upstream state, with the commit list in the body
   </div>
 

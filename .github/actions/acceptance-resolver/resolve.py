@@ -39,7 +39,7 @@ PATH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$")
 TEMPLATE_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]{0,127})\}")
 KEYVAULT_SOURCE_RE = re.compile(r"^keyvault:([A-Za-z0-9][A-Za-z0-9-]{0,126})$")
 
-FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag")
+FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag", "domain")
 SUITE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 VALUE_SOURCES = ("static", "template")
 CALLER_SOURCES = ("user", "token", "memberToken", "noAccessToken")
@@ -57,12 +57,14 @@ TOKEN_SOURCES = {
 
 # `partition` and `legalTag` read the primary entry of the partitions list
 # (legal tags are partition-scoped). openid is the issuer URL the stack
-# publishes, never derived from tenant_id here. A fact the stack does not
+# publishes, never derived from tenant_id here. domain is the entitlements
+# domain the stack publishes as entitlements_domain. A fact the stack does not
 # publish yet resolves as env-not-ready.
 FACT_PATHS = {
     "gateway": ("base_url",),
     "openid": ("azure", "openid_issuer"),
     "tenant": ("azure", "tenant_id"),
+    "domain": ("entitlements_domain",),
 }
 PARTITION_FACT_KEYS = {"partition": "name", "legalTag": "legal_tag"}
 VAULT_NAME_PATH = ("azure", "keyvault")
