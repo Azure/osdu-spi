@@ -59,6 +59,34 @@ if [[ -d ".github/fork-resources/ISSUE_TEMPLATE" ]]; then
   git add ".github/ISSUE_TEMPLATE/"
 fi
 
+# Fork-owned once planted, like the filter config: a file already on main wins.
+if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" ]]; then
+  # A single default person would be unable to approve their own PRs, so there is no default.
+  OWNERS="$(gh variable get CODEOWNERS 2>/dev/null || true)"
+  # The fork's own Azure module names the prefix to protect; the filter's service key is the
+  # fallback when that tree is absent or ambiguous.
+  CODEOWNERS_SERVICE=""
+  azure_dirs=(provider/*-azure/)
+  if [[ ${#azure_dirs[@]} -eq 1 && -d "${azure_dirs[0]}" ]]; then
+    CODEOWNERS_SERVICE="${azure_dirs[0]#provider/}"; CODEOWNERS_SERVICE="${CODEOWNERS_SERVICE%-azure/}"
+  fi
+  if [[ ! "$CODEOWNERS_SERVICE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
+  fi
+  if [[ -z "$CODEOWNERS_SERVICE" ]]; then
+    echo "::warning::CODEOWNERS not planted: no provider/<service>-azure module and no valid service key in .github/upstream-filter.yml"
+  elif [[ -z "$OWNERS" ]]; then
+    echo "::warning::CODEOWNERS not planted: set the CODEOWNERS repository variable to a team with write access and the next template sync plants it"
+  elif [[ "$OWNERS" != @* ]]; then
+    echo "::warning::CODEOWNERS not planted: owners must be @user or @org/team handles, got '$OWNERS'"
+  else
+    echo "Installing CODEOWNERS for $CODEOWNERS_SERVICE owned by $OWNERS..."
+    OWNERS_ESCAPED=${OWNERS//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
+    sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" ".github/fork-resources/CODEOWNERS" > ".github/CODEOWNERS"
+    git add ".github/CODEOWNERS"
+  fi
+fi
+
 if [[ -d ".github/fork-resources" ]]; then
   echo "Removing fork-resources directory after copying..."
   rm -rf ".github/fork-resources"

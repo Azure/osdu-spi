@@ -23,7 +23,13 @@ gh repo create <org>/<service> --template Azure/osdu-spi --public
 
 ### 2. Configure the upstream repository
 
-Reply to the initialization issue with the upstream repository: a full URL for GitLab, or `owner/name` for GitHub. Leave off `.git`; initialization adds it.
+First set the reviewers for the fork. The default-branch ruleset requires a code-owner review, and one person cannot approve their own pull requests, so name a team (or two or more people) with write access:
+
+```bash
+gh variable set CODEOWNERS --repo <org>/<service> --body "@<org>/<team>"
+```
+
+Then reply to the initialization issue with the upstream repository: a full URL for GitLab, or `owner/name` for GitHub. Leave off `.git`; initialization adds it.
 
 ```
 https://community.opengroup.org/osdu/platform/system/<service>
@@ -31,7 +37,7 @@ https://community.opengroup.org/osdu/platform/system/<service>
 
 The reply starts the `Initialize Complete` workflow, which takes four to six minutes. It creates the filtered `fork_upstream` branch, adds the Azure provider and test code to `fork_integration`, deploys the fork workflows, applies the rulesets, and closes the issue.
 
-**Expected result:** the issue is closed, the repository has the `main`, `fork_upstream`, and `fork_integration` branches, `UPSTREAM_REPO_URL` names the upstream, and `INITIALIZATION_COMPLETE` is `true`.
+**Expected result:** the issue is closed, the repository has the `main`, `fork_upstream`, and `fork_integration` branches, `UPSTREAM_REPO_URL` names the upstream, `INITIALIZATION_COMPLETE` is `true`, and `.github/CODEOWNERS` names the `CODEOWNERS` value as the owner of every path. If the variable was not set, the file is absent and the Settings Apply run opens a human-required issue; set the variable and the next template sync plants it. The file is fork-owned after planting.
 
 ```bash
 gh api repos/<org>/<service>/branches --jq '.[].name'
