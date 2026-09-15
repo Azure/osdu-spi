@@ -47,7 +47,8 @@ if [[ "$present" == "false" ]]; then
   fi
 else
   # A file with no rule passes GitHub's validation yet protects no path.
-  if ! base64 -d <<< "$contents" | grep -qE '^[[:space:]]*[^#[:space:]]'; then
+  decoded="$(base64 -d <<< "$contents")"
+  if ! grep -qE '^[[:space:]]*[^#[:space:]]' <<< "$decoded"; then
     problems+=("\`.github/CODEOWNERS\` has no ownership rule, only blank or comment lines, so the code-owner review rule applies to no path. Add a rule such as \`* @org/team\`.")
   fi
   # GitHub validates the default branch's file; each error names the line and the unknown owner.

@@ -28,6 +28,11 @@ permissions:
   issues: write
   packages: write
 
+# The tracking-issue scripts list then create; overlapping runs would both see none.
+concurrency:
+  group: settings-apply-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   settings-apply:
     name: "⚙️ Apply Repository Settings"
