@@ -467,7 +467,7 @@ jobs:
           fi
 
           if [ -f ".github/CODEOWNERS" ]; then
-            CODEOWNERS_STATUS="**Code Owners:** \`.github/CODEOWNERS\` planted from the \`CODEOWNERS\` variable"
+            CODEOWNERS_STATUS="**Code Owners:** \`.github/CODEOWNERS\` is in place and fork-owned"
           else
             CODEOWNERS_STATUS="⚠️ **Code Owners:** not planted. The default-branch ruleset requires a code-owner review; set the \`CODEOWNERS\` variable to a team with write access and the next template sync plants the file"
           fi

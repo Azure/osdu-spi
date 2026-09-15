@@ -66,6 +66,7 @@ jobs:
       - name: "Check CODEOWNERS"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}      # reads the file and its validation; manages tracking issue
+          SYNC_MODE: ${{ vars.SYNC_MODE }}
           DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
         run: bash .github/scripts/settings-apply/check-codeowners.sh "${{ github.repository }}" $DRY
 

@@ -12,6 +12,7 @@
 #
 # Environment:
 #   GH_TOKEN      contents:read plus issues:write
+#   SYNC_MODE     "mirror" on a customer-tier fork, which has no template sync to plant the file
 
 set -euo pipefail
 
@@ -29,8 +30,21 @@ export GH_TOKEN="${GH_TOKEN:-}"
 ISSUE_TITLE="⚙️ CODEOWNERS: missing or unresolvable owners"
 
 problems=()
-if ! gh api "repos/${REPO}/contents/.github/CODEOWNERS" --jq .sha >/dev/null 2>&1; then
-  problems+=("\`.github/CODEOWNERS\` is not on the default branch. Set the \`CODEOWNERS\` repository variable to a team with write access (for example \`@org/team\`); the next template sync plants the file.")
+if contents="$(gh api "repos/${REPO}/contents/.github/CODEOWNERS" --jq .sha 2>&1)"; then
+  present=true
+elif grep -q 'HTTP 404' <<< "$contents"; then
+  present=false
+else
+  echo "::error::Could not read .github/CODEOWNERS: $contents"
+  exit 1
+fi
+
+if [[ "$present" == "false" ]]; then
+  if [[ "${SYNC_MODE:-}" == "mirror" ]]; then
+    problems+=("\`.github/CODEOWNERS\` is not on the default branch. A mirror fork has no template sync to plant it: commit the file naming your reviewers (a team with write access, for example \`@org/team\`), or wait for the next mirror sync if the parent has since added one.")
+  else
+    problems+=("\`.github/CODEOWNERS\` is not on the default branch. Set the \`CODEOWNERS\` repository variable to a team with write access (for example \`@org/team\`); the next template sync plants the file.")
+  fi
 else
   # GitHub validates the default branch's file; each error names the line and the unknown owner.
   if ! validation="$(gh api "repos/${REPO}/codeowners/errors" 2>&1)"; then
