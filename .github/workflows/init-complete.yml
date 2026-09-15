@@ -455,13 +455,13 @@ jobs:
           fi
 
           if [ "$SECURITY_SUCCESS" = "true" ]; then
-            SECURITY_STATUS="**Security Features:** Secret scanning, dependency updates, and GitHub Copilot automatic code review enabled"
+            SECURITY_STATUS="**Security Features:** Secret scanning and dependency updates enabled"
           else
             SECURITY_STATUS="⚠️ **Security Features:** Requires manual setup"
           fi
 
           if [ "$RULESET_SUCCESS" = "true" ]; then
-            RULESET_STATUS="**Repository Rulesets:** Default Branch Protection (main) and Integration Branch Protection (fork_upstream, fork_integration) rulesets active"
+            RULESET_STATUS="**Repository Rulesets:** Default Branch Protection (main), Integration Branch Protection (fork_upstream, fork_integration), and GitHub Copilot Code Review rulesets active"
           else
             RULESET_STATUS="⚠️ **Repository Rulesets:** Requires manual setup"
           fi

@@ -82,6 +82,7 @@ apply_ruleset() {
 
 apply_ruleset ".github/rulesets/default-branch.json"
 apply_ruleset ".github/rulesets/integration-branch.json"
+apply_ruleset ".github/rulesets/copilot-code-review.json"
 
 [[ -n "${GITHUB_ENV:-}" ]] && echo "RULESET_SUCCESS=$RULESET_SUCCESS" >> "$GITHUB_ENV"
 echo "Ruleset reconciliation complete: $RULESET_SUCCESS"

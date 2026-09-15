@@ -193,6 +193,25 @@ jobs:
             exit 1
           fi
 
+          # settings-apply owns every checked-in ruleset, and Copilot review must stay a separate rule.
+          for ruleset in .github/rulesets/*.json; do
+            assert_contains "$(cat .github/scripts/settings-apply/setup-rulesets.sh)" "apply_ruleset \"$ruleset\"" \
+              "setup-rulesets.sh must reconcile $ruleset"
+          done
+          if ! jq --exit-status '
+              .name == "GitHub Copilot Code Review"
+              and .target == "branch"
+              and .conditions.ref_name.include == ["~DEFAULT_BRANCH"]
+              and .bypass_actors == []
+              and (.rules | length) == 1
+              and .rules[0].type == "copilot_code_review"
+              and .rules[0].parameters.review_on_push == true
+              and .rules[0].parameters.review_draft_pull_requests == false
+            ' .github/rulesets/copilot-code-review.json > /dev/null; then
+            echo "::error file=.github/rulesets/copilot-code-review.json::must request Copilot review as its own default-branch ruleset"
+            exit 1
+          fi
+
           # Dependabot owns one build plus one image validation, under its own check name.
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.maven_profile | contains("core,azure")' "$DEPENDABOT" \
             "Dependabot must produce the Azure JAR used by Docker"
