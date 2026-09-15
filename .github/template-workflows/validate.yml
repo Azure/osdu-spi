@@ -167,11 +167,11 @@ jobs:
             exit 0
           fi
 
-          # .mvn/ is never config-only: the build copies its settings file into Maven settings.
+          # .mvn/ and .spi/ are never config-only: they control the build and acceptance contract.
           SHOULD_RUN=false
           while IFS= read -r file; do
-            case "$file" in .mvn/*) SHOULD_RUN=true; break ;; esac
-            if echo "$file" | grep -qE '^(\.github/|devops/|docs/|\..*|.*\.md)$'; then
+            case "$file" in .mvn/*|.spi/*) SHOULD_RUN=true; break ;; esac
+            if echo "$file" | grep -qE '^(\.github/|devops/|docs/|\.)|\.md$'; then
               continue
             fi
             SHOULD_RUN=true

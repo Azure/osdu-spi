@@ -133,6 +133,12 @@ jobs:
           assert_yq '.on.pull_request_target | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request_target owns sync PRs and must stay unfiltered"
 
+          CHECK_PATHS=$(yq -r '.jobs."check-paths".steps[] | select(.id == "filter") | .run' "$VALIDATE")
+          assert_contains "$CHECK_PATHS" 'case "$file" in .mvn/*|.spi/*)' \
+            ".mvn and .spi changes must always run full validation"
+          assert_contains "$CHECK_PATHS" "grep -qE '^(\.github/|devops/|docs/|\.)|\.md$'" \
+            "Config-only directory prefixes and Markdown suffixes must be filtered"
+
           # One lane per PR: check-initialization routes, and validation-summary repeats
           # the test because always() bypasses it.
           SYNC_HEAD="github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'sync/')"
