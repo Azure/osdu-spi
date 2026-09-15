@@ -21,6 +21,8 @@ Your fork management repository is now ready! Here is what was set up:
 
 {RULESET_STATUS}
 
+{CODEOWNERS_STATUS}
+
 {MANUAL_STEPS}
 
 ## Next Steps

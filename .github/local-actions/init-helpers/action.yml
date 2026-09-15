@@ -17,10 +17,6 @@ inputs:
   repo_full_name:
     description: 'Repository full name (owner/repo) for API calls (for setup-branch-protection, setup-security)'
     required: false
-  init_actor:
-    description: 'User who replied to the init issue; default CODEOWNERS owner'
-    required: false
-    default: ''
 
 runs:
   using: "composite"
@@ -50,4 +46,3 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GH_TOKEN: ${{ inputs.github_token }}
-        INIT_ACTOR: ${{ inputs.init_actor }}

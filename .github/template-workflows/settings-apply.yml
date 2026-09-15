@@ -3,6 +3,7 @@ name: Settings Apply
 # Reconciles per-fork repository settings that init.yml can only set once:
 #   - branch-protection rulesets (idempotent create/update, per-fork required-check filter)
 #   - deploy-onboarding readiness (opens/updates/closes a human-required issue)
+#   - CODEOWNERS presence and owner resolution (same issue pattern)
 #   - GHCR package visibility (public, per ADR-033)
 # Runs on a schedule, on demand, and whenever the synced ruleset/helper sources change.
 
@@ -61,6 +62,12 @@ jobs:
           HAVE_SPI_STACK_RESOURCE_GROUP: ${{ vars.SPI_STACK_RESOURCE_GROUP != '' }}
           HAVE_SPI_STACK_CLUSTER: ${{ vars.SPI_STACK_CLUSTER != '' }}
         run: bash .github/scripts/settings-apply/check-required-variables.sh "${{ github.repository }}" $DRY
+
+      - name: "Check CODEOWNERS"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}      # reads the file and its validation; manages tracking issue
+          DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+        run: bash .github/scripts/settings-apply/check-codeowners.sh "${{ github.repository }}" $DRY
 
       - name: "Verify GHCR visibility"
         env:

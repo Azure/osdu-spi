@@ -30,7 +30,7 @@ Suite of scripts for one-time repository initialization during fork setup.
 - Requires `GH_TOKEN` with admin permissions
 
 **deploy-fork-resources** - Deploys fork-specific templates
-- Copies `.github/fork-resources/*` to final locations; plants `.github/CODEOWNERS` once, owners from the `CODEOWNERS` variable or `INIT_ACTOR`, service from the filter config
+- Copies `.github/fork-resources/*` to final locations; plants `.github/CODEOWNERS` once when the `CODEOWNERS` variable is set, service from the filter config
 - Removes fork-resources directory after deployment
 
 ## Testing

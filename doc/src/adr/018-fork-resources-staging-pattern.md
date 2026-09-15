@@ -54,7 +54,7 @@ Fork Repository (after deployment):
 2. **Specialized logic**: each resource type can have its own deployment step
 3. **Cleanup required**: deployment must remove `fork-resources/` after processing
 4. **Sync integration**: changes to `fork-resources` flow through the normal template sync
-5. **Service substitution**: a resource may carry a `<service>` placeholder, replaced at deployment with the service slug derived from `UPSTREAM_REPO_URL` (the URL basename). `dependabot.yml` and `upstream-filter.yml` use this today. `CODEOWNERS` reads the `service` key of the planted filter config instead, since the module prefix can differ from the slug, and takes `<owners>` from the `CODEOWNERS` repository variable, defaulting at initialization to the user who replied to the init issue.
+5. **Service substitution**: a resource may carry a `<service>` placeholder, replaced at deployment with the service slug derived from `UPSTREAM_REPO_URL` (the URL basename). `dependabot.yml` and `upstream-filter.yml` use this today. `CODEOWNERS` reads the `service` key of the planted filter config instead, since the module prefix can differ from the slug, and takes `<owners>` from the `CODEOWNERS` repository variable. There is no default: a single person as sole owner could not approve their own pull requests, so an unset variable leaves the file unplanted and `settings-apply.yml` reports it.
 6. **Fork-owned after planting**: `upstream-filter.yml` and `CODEOWNERS` deploy create-if-missing only. Once planted they belong to the fork, and template sync never overwrites them.
 
 ## Alternatives Considered

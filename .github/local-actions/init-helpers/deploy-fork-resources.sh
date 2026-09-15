@@ -6,7 +6,6 @@
 # Environment:
 #   UPSTREAM_REPO_URL - derives the service slug for <service> substitution
 #                       (falls back to the repository variable via gh when unset)
-#   INIT_ACTOR        - default <owners> for CODEOWNERS when the CODEOWNERS variable is unset
 
 set -euo pipefail
 
@@ -62,15 +61,15 @@ fi
 
 # Fork-owned once planted, like the filter config: a file already on main wins.
 if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" ]]; then
+  # A single default person would be unable to approve their own PRs, so there is no default.
   OWNERS="$(gh variable get CODEOWNERS 2>/dev/null || true)"
-  OWNERS="${OWNERS:-${INIT_ACTOR:+@$INIT_ACTOR}}"
   # The filter config's service key names the module prefix, which can differ from the URL slug.
   CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
   CODEOWNERS_SERVICE="${CODEOWNERS_SERVICE:-${SERVICE_SLUG:-}}"
   if [[ -z "$CODEOWNERS_SERVICE" ]]; then
     echo "::warning::CODEOWNERS not planted: no service name from .github/upstream-filter.yml or UPSTREAM_REPO_URL"
   elif [[ -z "$OWNERS" ]]; then
-    echo "::warning::CODEOWNERS not planted: no CODEOWNERS variable and no initializing user; set the variable and the next template sync plants it"
+    echo "::warning::CODEOWNERS not planted: set the CODEOWNERS repository variable to a team with write access and the next template sync plants it"
   elif [[ "$OWNERS" != @* ]]; then
     echo "::warning::CODEOWNERS not planted: owners must be @user or @org/team handles, got '$OWNERS'"
   else
