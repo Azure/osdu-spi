@@ -162,6 +162,17 @@ jobs:
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.generate_coverage | contains("pull_request_target")' "$VALIDATE" \
             "The sync pull_request_target build must generate coverage"
 
+          # A check bound to verify in a service pom must gate the pull request, not only main,
+          # so both goal paths of the action run the lifecycle through verify.
+          JAVA_BUILD=".github/actions/java-build/action.yml"
+          BUILD_RUN=$(yq -r '.runs.steps[] | select(.id == "build") | .run' "$JAVA_BUILD")
+          assert_contains "$BUILD_RUN" 'mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.11:report' \
+            "The coverage path must run through verify and still produce the JaCoCo report"
+          assert_contains "$BUILD_RUN" 'mvn $MAVEN_CLI_OPTS clean install' \
+            "The non-coverage path must run clean install, which includes verify"
+          assert_contains "$BUILD_RUN" '*/target/site/jacoco/*' \
+            "The coverage summary must still read the JaCoCo report from target/site/jacoco"
+
           # A PR-head checkout in the read-only docker-build job is a CodeQL cache-poisoning finding (#164).
           DOCKER_IF=$(yq -r '.jobs."docker-build".if | sub("\s+"; " ")' "$VALIDATE")
           assert_contains "$DOCKER_IF" "github.event_name != 'pull_request_target'" \

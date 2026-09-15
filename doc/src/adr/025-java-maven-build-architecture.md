@@ -27,6 +27,8 @@ Java/Maven is the build architecture:
 
 `java-build` takes two optional inputs: `generate_coverage` (default `false`) and `maven_profile`. `build.yml` calls it with no inputs. `validate.yml` passes coverage on for PR events and supplies the `core,azure` profile that restricts the build to the provider-neutral and Azure modules ([ADR-035](035-azure-only-maven-profile.md)). When no profile is given, no `-P` is passed.
 
+Both goal paths run the lifecycle through `verify`: `clean verify` with coverage and `clean install` without, since `install` includes `verify`. A check a service pom binds to `verify`, such as an enforcer rule or Failsafe, must gate the pull request and not only the push to `main`, and `verify` still produces the JARs `docker-build` downloads.
+
 ### Coverage
 
 JaCoCo is invoked as `org.jacoco:jacoco-maven-plugin:0.8.11:report` from the action and the HTML report is uploaded as an artifact and summarised in the job log. No coverage threshold is enforced; the report is informational.
