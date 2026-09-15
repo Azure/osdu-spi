@@ -40,7 +40,7 @@ The team must follow Conventional Commits, which validate.yml enforces on PR tit
 `release.yml` runs `googleapis/release-please-action` (pinned to a v4 release). Configuration lives in `.release-please-config.json`: `release-type: simple`, tags with a `v` prefix, minor bumps before 1.0, and changelog sections for each commit type including an `⬆️ Upstream Changes` section for the `upstream` type.
 
 ### Upstream-Correlated Tags
-The `tag-with-upstream` job in `release.yml` runs after a release is created. It fetches the upstream repository's tags, resolves the upstream version, and pushes a second tag of the form `<release-tag>-upstream-<upstream-version>`.
+The `tag-with-upstream` job in `release.yml` runs after a release is created. It fetches the upstream repository's tags, resolves the upstream default branch (`main`, then `master`), and pushes a second tag of the form `<release-tag>-upstream-<upstream-version>`. The upstream version is the nearest tag reachable from that branch's tip or, when no tag is reachable, the short upstream commit SHA — the same expression `sync.yml` uses, so the correlation tag matches the meta commit.
 
 ### Commit Message Validation
 `validate.yml` checks PR titles for Conventional Commits format using `amannn/action-semantic-pull-request`. Upstream sync PRs and release PRs are exempt.

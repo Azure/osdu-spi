@@ -102,7 +102,7 @@ Located in `.release-please-config.json`:
 ### Version Tracking
 Each release maintains correlation with upstream versions through:
 - **Release notes** - Document corresponding upstream version
-- **Correlation tags** - Add `<release-tag>-upstream-<upstream-tag>`
+- **Correlation tags** - Add `<release-tag>-upstream-<upstream-version>`, where the upstream version is the nearest tag reachable from the upstream default branch (`main` or `master`) or, when no tag is reachable, the short upstream commit SHA
 - **Container tags** - Add `ghcr.io/<owner>/<service>:<version>` to the existing release-commit image
 
 ### Example Correlation
