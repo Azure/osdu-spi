@@ -89,7 +89,20 @@ jobs:
         run: |
           git remote add upstream "$UPSTREAM_REPO_URL"
           git fetch upstream --tags --force
-          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 upstream/main 2>/dev/null || echo "v0.0.0")
+
+          if git rev-parse --verify upstream/main >/dev/null 2>&1; then
+            DEFAULT_BRANCH="main"
+          elif git rev-parse --verify upstream/master >/dev/null 2>&1; then
+            DEFAULT_BRANCH="master"
+          else
+            echo "::error::Could not find main or master branch in upstream"
+            exit 1
+          fi
+
+          # Matches sync.yml: prefer the nearest reachable upstream tag, otherwise
+          # the short upstream SHA, so the correlation tag agrees with the meta commit.
+          UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
+          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
           echo "UPSTREAM_VERSION=$UPSTREAM_VERSION" >> $GITHUB_ENV
           
       - name: "Update Release Tags"
