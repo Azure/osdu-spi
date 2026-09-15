@@ -114,8 +114,8 @@ jobs:
           # check falls back to a secret listing the App token cannot read and reports it missing.
           SETTINGS=".github/template-workflows/settings-apply.yml"
           CHECK=".github/scripts/settings-apply/check-required-variables.sh"
-          for name in $(grep -oE '\b(have "[A-Z_]+"|for v in [A-Z_ ]+;)' "$CHECK" | grep -oE '[A-Z][A-Z_]+' | sort -u); do
-            assert_yq ".jobs.settings-apply.steps[] | select(.name == \"Check required variables\") | .env.HAVE_${name} != null" "$SETTINGS" \
+          for name in $(sed -n 's/^REQUIRED_[A-Z]*=(\(.*\))$/\1/p' "$CHECK"); do
+            assert_yq ".jobs.\"settings-apply\".steps[] | select(.name == \"Check required variables\") | .env.HAVE_${name} != null" "$SETTINGS" \
               "check-required-variables.sh requires $name but settings-apply.yml passes no HAVE_${name} flag"
           done
 

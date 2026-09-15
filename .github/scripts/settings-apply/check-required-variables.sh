@@ -33,18 +33,32 @@ export GH_TOKEN="${GH_TOKEN:-}"
 
 ISSUE_TITLE="⚙️ Deploy onboarding: required CI configuration missing"
 
-secret_names="$(gh api --paginate "repos/${REPO}/actions/secrets" --jq '.secrets[].name' 2>/dev/null \
-  || { echo "secret listing unavailable; relying on HAVE_* flags" >&2; echo ""; })"
-variable_names="$(gh api --paginate "repos/${REPO}/actions/variables" --jq '.variables[].name' 2>/dev/null || echo "")"
+REQUIRED_SECRETS=(AZURE_CLIENT_ID)
+REQUIRED_VARS=(AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID SPI_STACK_RESOURCE_GROUP SPI_STACK_CLUSTER)
+
+flagged() { local flag="HAVE_$1"; [[ -n "${!flag:-}" ]]; }
+
+# Only a run without flags (local, or an older workflow) needs the name listings.
+secret_names=""; variable_names=""
+for n in "${REQUIRED_SECRETS[@]}" "${REQUIRED_VARS[@]}"; do
+  if ! flagged "$n"; then
+    secret_names="$(gh api --paginate "repos/${REPO}/actions/secrets" --jq '.secrets[].name' 2>/dev/null \
+      || { echo "secret listing unavailable; relying on HAVE_* flags" >&2; echo ""; })"
+    variable_names="$(gh api --paginate "repos/${REPO}/actions/variables" --jq '.variables[].name' 2>/dev/null || echo "")"
+    break
+  fi
+done
 
 missing=()
 have() {
   local flag="HAVE_$1"
-  if [[ -n "${!flag:-}" ]]; then [[ "${!flag}" == "true" ]]; else grep -qx "$1" <<< "$2"; fi
+  if flagged "$1"; then [[ "${!flag}" == "true" ]]; else grep -qx "$1" <<< "$2"; fi
 }
 
-have "AZURE_CLIENT_ID" "$secret_names" || missing+=("secret \`AZURE_CLIENT_ID\`, set by \`spi onboard\`")
-for v in AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID SPI_STACK_RESOURCE_GROUP SPI_STACK_CLUSTER; do
+for s in "${REQUIRED_SECRETS[@]}"; do
+  have "$s" "$secret_names" || missing+=("secret \`$s\`, set by \`spi onboard\`")
+done
+for v in "${REQUIRED_VARS[@]}"; do
   have "$v" "$variable_names" || missing+=("variable \`$v\`, set by \`spi onboard\`")
 done
 
