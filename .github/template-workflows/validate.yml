@@ -444,7 +444,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          sudo az aks install-cli
+          sudo az aks install-cli --gh-token "$GH_TOKEN"
           tag=$(gh release view --repo "$STACK_REPO" --json tagName --jq .tagName)
           gh release download "$tag" --repo "$STACK_REPO" --pattern "spi-${tag#v}-py3-none-any.whl" --dir "$RUNNER_TEMP/spi" --clobber
           uv tool install "$RUNNER_TEMP/spi/spi-${tag#v}-py3-none-any.whl"

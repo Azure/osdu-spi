@@ -178,6 +178,8 @@ jobs:
             "deploy-test must run in the spi-stack environment the deploy identity trusts"
           assert_yq '.jobs."deploy-test".concurrency."cancel-in-progress" == false' "$VALIDATE" \
             "A cancelled borrow could skip Restore; queue instead"
+          assert_yq '.jobs."deploy-test".steps[] | select(.name == "Install spi") | .run | contains("az aks install-cli --gh-token \"$GH_TOKEN\"")' "$VALIDATE" \
+            "Install spi must authenticate kubelogin release requests"
           assert_yq '.jobs."deploy-gate".if == "always()"' "$VALIDATE" \
             "deploy-gate must always report why the lane did or did not run"
           # The gate carries the ADR-036 clause itself, never by skip-propagation from docker-push.
