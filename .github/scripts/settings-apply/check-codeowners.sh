@@ -30,7 +30,7 @@ export GH_TOKEN="${GH_TOKEN:-}"
 ISSUE_TITLE="⚙️ CODEOWNERS: missing or unresolvable owners"
 
 problems=()
-if contents="$(gh api "repos/${REPO}/contents/.github/CODEOWNERS" --jq .sha 2>&1)"; then
+if contents="$(gh api "repos/${REPO}/contents/.github/CODEOWNERS" --jq .content 2>&1)"; then
   present=true
 elif grep -q 'HTTP 404' <<< "$contents"; then
   present=false
@@ -46,6 +46,10 @@ if [[ "$present" == "false" ]]; then
     problems+=("\`.github/CODEOWNERS\` is not on the default branch. Set the \`CODEOWNERS\` repository variable to a team with write access (for example \`@org/team\`); the next template sync plants the file.")
   fi
 else
+  # A file with no rule passes GitHub's validation yet protects no path.
+  if ! base64 -d <<< "$contents" | grep -qE '^[[:space:]]*[^#[:space:]]'; then
+    problems+=("\`.github/CODEOWNERS\` has no ownership rule, only blank or comment lines, so the code-owner review rule applies to no path. Add a rule such as \`* @org/team\`.")
+  fi
   # GitHub validates the default branch's file; each error names the line and the unknown owner.
   if ! validation="$(gh api "repos/${REPO}/codeowners/errors" 2>&1)"; then
     echo "::error::Could not validate CODEOWNERS: $validation"
@@ -58,7 +62,10 @@ else
   fi
 fi
 
-existing_issue="$(gh issue list --repo "$REPO" --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")"
+if ! existing_issue="$(gh issue list --repo "$REPO" --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number // empty' 2>&1)"; then
+  echo "::error::Could not look up the tracking issue: $existing_issue"
+  exit 1
+fi
 
 if [[ ${#problems[@]} -eq 0 ]]; then
   echo "✅ CODEOWNERS present and every owner resolves."
