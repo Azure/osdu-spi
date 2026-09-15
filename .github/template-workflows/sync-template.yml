@@ -369,7 +369,6 @@ jobs:
           # Plant the filter config only when missing, and outside the changed-guard: the
           # file is fork-owned once planted, so a sync must never overwrite it, but a fork
           # without one should receive it whatever changed this cycle.
-          FILTER_PLANTED=false
           if [ ! -f ".github/upstream-filter.yml" ] && git show refs/remotes/template/main:".github/fork-resources/upstream-filter.yml" >/dev/null 2>&1; then
             if [ -n "$UPSTREAM_URL" ]; then
               SERVICE_SLUG=$(basename "${UPSTREAM_URL%.git}")
@@ -378,7 +377,6 @@ jobs:
               git show refs/remotes/template/main:".github/fork-resources/upstream-filter.yml" | \
                 sed "s|<service>|$SERVICE_ESCAPED|g" > ".github/upstream-filter.yml"
               git add ".github/upstream-filter.yml"
-              FILTER_PLANTED=true
             else
               echo "::warning::UPSTREAM_REPO_URL is not set; skipping upstream filter config planting"
             fi
@@ -386,18 +384,23 @@ jobs:
 
           # Same rule for CODEOWNERS: owners come from the CODEOWNERS variable, with no default
           # anywhere (ADR-018), and a plantable file is itself an update in check-updates above.
+          # The fork's own Azure module names the prefix to protect; the filter's service key is
+          # the fallback, since a filter this run planted from the URL slug is not authoritative.
           if [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
-            CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)
+            CODEOWNERS_SERVICE=""
+            azure_dirs=(provider/*-azure/)
+            if [ ${#azure_dirs[@]} -eq 1 ] && [ -d "${azure_dirs[0]}" ]; then
+              CODEOWNERS_SERVICE="${azure_dirs[0]#provider/}"; CODEOWNERS_SERVICE="${CODEOWNERS_SERVICE%-azure/}"
+            fi
+            if ! printf '%s' "$CODEOWNERS_SERVICE" | grep -qE '^[a-z0-9][a-z0-9-]*$'; then
+              CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)
+            fi
             if [ -z "$CODEOWNERS_VAR" ]; then
               echo "::notice::No .github/CODEOWNERS and no CODEOWNERS variable; set the variable to have the next sync plant it"
             elif [ "${CODEOWNERS_VAR#@}" = "$CODEOWNERS_VAR" ]; then
               echo "::warning::CODEOWNERS not planted: owners must be @user or @org/team handles"
             elif [ -z "$CODEOWNERS_SERVICE" ]; then
-              echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no valid service key"
-            elif [ "$FILTER_PLANTED" = "true" ]; then
-              # The slug-derived filter is not authoritative for the module prefix (init reads it
-              # from the upstream provider/ tree); the run after this PR merges plants CODEOWNERS.
-              echo "::notice::CODEOWNERS not planted this run: the filter config was just planted from the URL slug; the next sync plants it from the merged filter"
+              echo "::warning::CODEOWNERS not planted: no provider/<service>-azure module and no valid service key in .github/upstream-filter.yml"
             else
               echo "Planting CODEOWNERS for $CODEOWNERS_SERVICE owned by $CODEOWNERS_VAR"
               OWNERS_ESCAPED=${CODEOWNERS_VAR//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}

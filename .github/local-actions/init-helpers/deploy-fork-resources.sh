@@ -63,10 +63,18 @@ fi
 if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" ]]; then
   # A single default person would be unable to approve their own PRs, so there is no default.
   OWNERS="$(gh variable get CODEOWNERS 2>/dev/null || true)"
-  # The filter config's service key names the module prefix, which can differ from the URL slug.
-  CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
+  # The fork's own Azure module names the prefix to protect; the filter's service key is the
+  # fallback when that tree is absent or ambiguous.
+  CODEOWNERS_SERVICE=""
+  azure_dirs=(provider/*-azure/)
+  if [[ ${#azure_dirs[@]} -eq 1 && -d "${azure_dirs[0]}" ]]; then
+    CODEOWNERS_SERVICE="${azure_dirs[0]#provider/}"; CODEOWNERS_SERVICE="${CODEOWNERS_SERVICE%-azure/}"
+  fi
+  if [[ ! "$CODEOWNERS_SERVICE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
+  fi
   if [[ -z "$CODEOWNERS_SERVICE" ]]; then
-    echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no valid service key"
+    echo "::warning::CODEOWNERS not planted: no provider/<service>-azure module and no valid service key in .github/upstream-filter.yml"
   elif [[ -z "$OWNERS" ]]; then
     echo "::warning::CODEOWNERS not planted: set the CODEOWNERS repository variable to a team with write access and the next template sync plants it"
   elif [[ "$OWNERS" != @* ]]; then

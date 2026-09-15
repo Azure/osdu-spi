@@ -73,7 +73,7 @@ if [[ ${#problems[@]} -eq 0 ]]; then
     if [[ "$DRY_RUN" == "true" ]]; then
       echo "DRY-RUN would close issue #$existing_issue"
     else
-      gh issue close "$existing_issue" --repo "$REPO" --comment "CODEOWNERS is present and every owner resolves. Closing." || true
+      gh issue close "$existing_issue" --repo "$REPO" --comment "CODEOWNERS is present and every owner resolves. Closing."
     fi
   fi
   exit 0
