@@ -121,7 +121,7 @@ The integration-branch ruleset does not currently require status checks.
 - **Sync PRs**: Build `core` only and skip image validation
 - **Release and automation PRs**: Skip semantic PR-title validation
 - **Dependabot PRs**: Build with coverage and validate the image through `dependabot-validation.yml`
-- **Docs/config-only PRs**: Changes limited to `.github/**`, `devops/**`, `docs/**`, other dotfiles, or Markdown skip Java and container work while summary checks still report; `.mvn/**` and `.spi/**` always run full validation
+- **Docs/config-only PRs**: Changes limited to `.github/**`, `devops/**`, `docs/**`, other dotfiles, or Markdown skip Java and container work while summary checks still report. `.mvn/**` and `.spi/**` are never config-only, so a change there always passes the path filter and the build runs; the branch and deploy-gate rules above still apply
 - **Pull requests from other repositories**: Build and validate only; the deploy lane skips because such a run carries no deploy identity
 
 ## Troubleshooting
