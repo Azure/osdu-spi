@@ -12,7 +12,9 @@ document$.subscribe(function() {
                 lineColor: '#757575'
             }
         })
-        mermaid.run({ querySelector: '.mermaid:not([data-processed="true"])' })
+        mermaid.run({ querySelector: '.mermaid:not([data-processed="true"])' }).catch(function(error) {
+            console.error('Unable to render Mermaid diagrams:', error)
+        })
     }
 
     // Table sorting functionality
