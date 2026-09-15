@@ -39,6 +39,7 @@ Three branches cost more than one: the team has to learn the flow, and the branc
 Protection is applied as rulesets by `settings-apply.yml` from `.github/rulesets/`:
 - `default-branch.json` protects `main`: PR required with one approving review, required status checks (`CodeQL`, `Validation Summary`), no deletion, no force push.
 - `integration-branch.json` protects `fork_upstream` and `fork_integration` from deletion only. Automation and humans push to them directly.
+- `copilot-code-review.json` requests GitHub Copilot code review for default-branch PRs when the organization supports it.
 
 ### Branch Preservation
 All three branches must be permanently preserved and never deleted. `fork_upstream` is needed for future syncs and `fork_integration` for future integrations.

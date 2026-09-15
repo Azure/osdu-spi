@@ -271,7 +271,7 @@ fi
 
 ### Migration Path for Existing Forks
 
-Rulesets are no longer edited by hand. `.github/rulesets/default-branch.json` and `integration-branch.json` are synced to every fork, and `settings-apply.yml` reconciles the live rulesets against them on a schedule and on dispatch, so a fork created with the `code_scanning` rule loses it on the next reconciliation. Template sync delivers the updated CodeQL workflow at the same time.
+Rulesets are no longer edited by hand. `.github/rulesets/default-branch.json`, `integration-branch.json`, and `copilot-code-review.json` are synced to every fork, and `settings-apply.yml` reconciles the live rulesets against them on a schedule and on dispatch, so a fork created with the `code_scanning` rule loses it on the next reconciliation. Template sync delivers the updated CodeQL workflow at the same time.
 
 ## Related Decisions
 
