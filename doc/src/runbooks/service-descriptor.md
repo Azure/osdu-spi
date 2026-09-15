@@ -150,7 +150,7 @@ A suite that runs its tests through Failsafe takes the same `systemPropertyVaria
 
 6. Commit the descriptor and open a pull request.
 
-    A pull request that changes only the descriptor skips the build, because Check Paths treats `.spi/` as configuration. The acceptance image is built by the first build that includes the descriptor: a change that triggers a build, pushed to the same pull request or a later one.
+    A pull request that changes only the descriptor runs the full build, because Check Paths treats `.spi/` as build-relevant. The acceptance image is built on that pull request.
 
     **Expected result:** in that build, the Docker Build job's "Acceptance Image" step passes, which confirms every declared path exists. Once the repository is onboarded, the Deploy and Test job runs each suite, and the Validation Summary comment reports one result line per suite.
 
