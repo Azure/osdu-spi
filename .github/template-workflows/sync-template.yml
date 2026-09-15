@@ -387,13 +387,13 @@ jobs:
           # Same rule for CODEOWNERS: owners come from the CODEOWNERS variable, with no default
           # anywhere (ADR-018), and a plantable file is itself an update in check-updates above.
           if [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
-            CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)
+            CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)
             if [ -z "$CODEOWNERS_VAR" ]; then
               echo "::notice::No .github/CODEOWNERS and no CODEOWNERS variable; set the variable to have the next sync plant it"
             elif [ "${CODEOWNERS_VAR#@}" = "$CODEOWNERS_VAR" ]; then
               echo "::warning::CODEOWNERS not planted: owners must be @user or @org/team handles"
             elif [ -z "$CODEOWNERS_SERVICE" ]; then
-              echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no service key"
+              echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no valid service key"
             elif [ "$FILTER_PLANTED" = "true" ]; then
               # The slug-derived filter is not authoritative for the module prefix (init reads it
               # from the upstream provider/ tree); the run after this PR merges plants CODEOWNERS.

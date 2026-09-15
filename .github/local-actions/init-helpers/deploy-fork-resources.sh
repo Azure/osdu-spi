@@ -64,9 +64,9 @@ if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" 
   # A single default person would be unable to approve their own PRs, so there is no default.
   OWNERS="$(gh variable get CODEOWNERS 2>/dev/null || true)"
   # The filter config's service key names the module prefix, which can differ from the URL slug.
-  CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
+  CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
   if [[ -z "$CODEOWNERS_SERVICE" ]]; then
-    echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no service key"
+    echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no valid service key"
   elif [[ -z "$OWNERS" ]]; then
     echo "::warning::CODEOWNERS not planted: set the CODEOWNERS repository variable to a team with write access and the next template sync plants it"
   elif [[ "$OWNERS" != @* ]]; then
