@@ -555,20 +555,20 @@ jobs:
 
       - name: "Mint test callers"
         # The deploy identity's own bearer, for the audience the facts publish, then the
-        # member and no-access identities' bearers for the same audience. Those exchanges
-        # go straight to Entra with the run's OIDC token, so the deploy identity's az
-        # session stays in place for Restore. The v1 endpoint is deliberate: the services
-        # read appid, which v2 tokens omit.
+        # member and no-access identities' bearers for the same audience. All three
+        # exchanges request a fresh OIDC token from the run and go straight to Entra, so
+        # nothing depends on the five-minute assertion azure/login cached (a lane that
+        # waits on the shared stack outlives it), and the deploy identity's az session
+        # stays in place for Restore. The v1 endpoint is deliberate: the services read
+        # appid, which v2 tokens omit.
         env:
           AUDIENCE: ${{ steps.gate.outputs.audience }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           MEMBER_CLIENT_ID: ${{ steps.gate.outputs.member_client_id }}
           NO_ACCESS_CLIENT_ID: ${{ steps.gate.outputs.no_access_client_id }}
           TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           set -euo pipefail
-          TOKEN=$(az account get-access-token --resource "$AUDIENCE" --query accessToken -o tsv)
-          echo "::add-mask::$TOKEN"
-          echo "RESOLVER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
           assertion=""
           mint() {  # <label> <client id> <resolver variable> <source name>
             if [ -z "$2" ]; then
@@ -588,6 +588,9 @@ jobs:
             echo "::add-mask::$token"
             echo "$3=$token" >> "$GITHUB_ENV"
           }
+          # The deploy identity is not optional: without it no suite has a run bearer.
+          [ -n "$AZURE_CLIENT_ID" ] || { echo "::error::AZURE_CLIENT_ID is empty; the deploy identity cannot mint the run bearer"; exit 1; }
+          mint deploy "$AZURE_CLIENT_ID" RESOLVER_TOKEN token
           mint member "$MEMBER_CLIENT_ID" RESOLVER_MEMBER_TOKEN memberToken
           mint no-access "$NO_ACCESS_CLIENT_ID" RESOLVER_NO_ACCESS_TOKEN noAccessToken
 

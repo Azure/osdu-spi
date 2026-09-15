@@ -180,6 +180,13 @@ jobs:
             "A cancelled borrow could skip Restore; queue instead"
           assert_yq '.jobs."deploy-test".steps[] | select(.name == "Install spi") | .run | contains("az aks install-cli --gh-token \"$GH_TOKEN\"")' "$VALIDATE" \
             "Install spi must authenticate kubelogin release requests"
+          MINT_RUN=$(yq -r '.jobs."deploy-test".steps[] | select(.name == "Mint test callers") | .run' "$VALIDATE")
+          if printf '%s' "$MINT_RUN" | grep -q 'az account get-access-token'; then
+            echo "::error file=$VALIDATE::Mint test callers must not re-exchange the cached OIDC assertion with az account get-access-token"
+            exit 1
+          fi
+          assert_contains "$MINT_RUN" 'mint deploy "$AZURE_CLIENT_ID" RESOLVER_TOKEN' \
+            "The deploy identity's bearer must come from a fresh OIDC exchange"
           assert_yq '.jobs."deploy-gate".if == "always()"' "$VALIDATE" \
             "deploy-gate must always report why the lane did or did not run"
           # The gate carries the ADR-036 clause itself, never by skip-propagation from docker-push.

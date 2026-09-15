@@ -128,7 +128,7 @@ install → the spi release the environment runs (environment.stackVersion from 
 gate    → spi status --json          deployable? (descriptor requirements are not yet enforced)
 borrow  → spi service pin --image ghcr…@sha256:… --ephemeral --run-id $GITHUB_RUN_ID
 verify  → spi service verify         poll until the live pod imageID == our digest
-mint    → az account get-access-token --resource <azure.token_audience>   → RESOLVER_TOKEN
+mint    → OIDC exchange as the deploy identity (AZURE_CLIENT_ID)         → RESOLVER_TOKEN
         → OIDC exchange as deploy_identity.member_client_id                → RESOLVER_MEMBER_TOKEN
         → OIDC exchange as deploy_identity.no_access_client_id             → RESOLVER_NO_ACCESS_TOKEN
 bind    → resolver --suite <name>: descriptor × facts × tokens → <name>.env
