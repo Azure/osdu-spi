@@ -31,7 +31,7 @@ https://community.opengroup.org/osdu/platform/system/<service>
 
 The reply starts the `Initialize Complete` workflow, which takes four to six minutes. It creates the filtered `fork_upstream` branch, adds the Azure provider and test code to `fork_integration`, deploys the fork workflows, applies the rulesets, and closes the issue.
 
-**Expected result:** the issue is closed, the repository has the `main`, `fork_upstream`, and `fork_integration` branches, `UPSTREAM_REPO_URL` names the upstream, and `INITIALIZATION_COMPLETE` is `true`.
+**Expected result:** the issue is closed, the repository has the `main`, `fork_upstream`, and `fork_integration` branches, `UPSTREAM_REPO_URL` names the upstream, `INITIALIZATION_COMPLETE` is `true`, and `.github/CODEOWNERS` names you as the owner of every path. To name a team instead, set the `CODEOWNERS` repository variable (for example `@Azure/azure-global-energy`, which needs write access on the repository) before replying, or edit the file afterwards; it is fork-owned.
 
 ```bash
 gh api repos/<org>/<service>/branches --jq '.[].name'

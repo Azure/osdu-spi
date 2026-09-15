@@ -365,6 +365,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}  # App token: pushing workflow files needs the workflows permission
           UPSTREAM_REPO_URL: ${{ vars.UPSTREAM_REPO_URL }}  # May be empty when set earlier this run; the script falls back to gh variable get
+          INIT_ACTOR: ${{ github.event.comment.user.login }}
         run: |
           # Workflows must be copied before deploy-fork-resources deletes template-workflows.
           echo "Deploying production workflows from template..."

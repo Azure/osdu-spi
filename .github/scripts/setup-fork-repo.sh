@@ -22,6 +22,7 @@ set -euo pipefail
 #     --upstream <upstream-url> \
 #     --vault-name <vault> \
 #     [--template-repo <url>] \
+#     [--codeowners <handles>] \
 #     [--dry-run]
 #
 # Example:
@@ -35,6 +36,7 @@ REPO=""
 UPSTREAM=""
 VAULT_NAME="${AZURE_VAULT_NAME:-}"
 TEMPLATE_REPO="https://github.com/Azure/osdu-spi.git"
+CODEOWNERS=""
 FIREWALL_DOMAINS="community.opengroup.org,repo1.maven.org,central.maven.org,repo.maven.apache.org,plugins.gradle.org"
 DRY_RUN=false
 
@@ -50,6 +52,7 @@ Required:
 
 Options:
   --template-repo <url>       Template repository URL (default: https://github.com/Azure/osdu-spi.git)
+  --codeowners <handles>      Owners for the planted CODEOWNERS, e.g. "@Azure/azure-global-energy" (default: the initializing user)
   --dry-run                   Show what would be done without making changes
   -h, --help                  Show this help message
 
@@ -74,6 +77,7 @@ while [[ $# -gt 0 ]]; do
     --upstream)       require_arg "$1" "${2-}"; UPSTREAM="${2-}"; shift 2 ;;
     --vault-name)     require_arg "$1" "${2-}"; VAULT_NAME="${2-}"; shift 2 ;;
     --template-repo)  require_arg "$1" "${2-}"; TEMPLATE_REPO="${2-}"; shift 2 ;;
+    --codeowners)     require_arg "$1" "${2-}"; CODEOWNERS="${2-}"; shift 2 ;;
     --dry-run)        DRY_RUN=true; shift ;;
     -h|--help)        usage 0 ;;
     *)                echo "Unknown option: $1"; usage ;;
@@ -168,6 +172,7 @@ set_variable "COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS" "$FIREWALL_DOMAINS"
 set_variable "INITIALIZATION_COMPLETE" "true"
 set_variable "TEMPLATE_REPO_URL" "$TEMPLATE_REPO"
 set_variable "UPSTREAM_REPO_URL" "$UPSTREAM"
+[[ -z "$CODEOWNERS" ]] || set_variable "CODEOWNERS" "$CODEOWNERS"
 
 echo ""
 

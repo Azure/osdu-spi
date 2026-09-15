@@ -11,7 +11,7 @@ Some template resources need deployment handling beyond copying a file to the sa
 1. **Issue templates**: should exist in forks but not be overwritten by every template sync
 2. **Copilot configuration**: instructions and firewall settings deployed to `.github/`, with a repository variable set from the firewall file
 3. **Prompt files**: copied into `.github/prompts/`
-4. **Service-specific configuration**: `dependabot.yml` and `upstream-filter.yml` carry a `<service>` placeholder substituted at deployment
+4. **Service-specific configuration**: `dependabot.yml`, `upstream-filter.yml`, and `CODEOWNERS` carry a `<service>` placeholder substituted at deployment
 
 The existing sync mechanisms (ADR-011, ADR-012) handle direct sync (same path in template and fork) and workflow templates (`template-workflows/` to `.github/workflows/`). They do not cover multi-target deployment, conditional processing, substitution, or staging directories that must not exist in forks.
 
@@ -25,6 +25,7 @@ Establish `.github/fork-resources/` as a staging area for template resources tha
 Template Repository:
 ├── .github/
 │   ├── fork-resources/              # Staging area (template only)
+│   │   ├── CODEOWNERS               # → substituted to .github/CODEOWNERS
 │   │   ├── ISSUE_TEMPLATE/          # → copied to .github/ISSUE_TEMPLATE/
 │   │   ├── copilot-instructions.md  # → copied to .github/copilot-instructions.md
 │   │   ├── copilot-firewall-config.json # → copied to .github/ + repository variable
@@ -53,8 +54,8 @@ Fork Repository (after deployment):
 2. **Specialized logic**: each resource type can have its own deployment step
 3. **Cleanup required**: deployment must remove `fork-resources/` after processing
 4. **Sync integration**: changes to `fork-resources` flow through the normal template sync
-5. **Service substitution**: a resource may carry a `<service>` placeholder, replaced at deployment with the service slug derived from `UPSTREAM_REPO_URL` (the URL basename). `dependabot.yml` and `upstream-filter.yml` use this today.
-6. **Fork-owned after planting**: `upstream-filter.yml` deploys create-if-missing only. Once planted it belongs to the fork, and template sync never overwrites it.
+5. **Service substitution**: a resource may carry a `<service>` placeholder, replaced at deployment with the service slug derived from `UPSTREAM_REPO_URL` (the URL basename). `dependabot.yml` and `upstream-filter.yml` use this today. `CODEOWNERS` reads the `service` key of the planted filter config instead, since the module prefix can differ from the slug, and takes `<owners>` from the `CODEOWNERS` repository variable, defaulting at initialization to the user who replied to the init issue.
+6. **Fork-owned after planting**: `upstream-filter.yml` and `CODEOWNERS` deploy create-if-missing only. Once planted they belong to the fork, and template sync never overwrites them.
 
 ## Alternatives Considered
 

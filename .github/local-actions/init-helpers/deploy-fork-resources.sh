@@ -6,6 +6,7 @@
 # Environment:
 #   UPSTREAM_REPO_URL - derives the service slug for <service> substitution
 #                       (falls back to the repository variable via gh when unset)
+#   INIT_ACTOR        - default <owners> for CODEOWNERS when the CODEOWNERS variable is unset
 
 set -euo pipefail
 
@@ -57,6 +58,22 @@ if [[ -d ".github/fork-resources/ISSUE_TEMPLATE" ]]; then
   mkdir -p ".github/ISSUE_TEMPLATE"
   cp -r ".github/fork-resources/ISSUE_TEMPLATE/"* ".github/ISSUE_TEMPLATE/"
   git add ".github/ISSUE_TEMPLATE/"
+fi
+
+# Fork-owned once planted, like the filter config: a file already on main wins.
+if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" ]]; then
+  OWNERS="$(gh variable get CODEOWNERS 2>/dev/null || true)"
+  OWNERS="${OWNERS:-${INIT_ACTOR:+@$INIT_ACTOR}}"
+  # The filter config's service key names the module prefix, which can differ from the URL slug.
+  CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1)"
+  if [[ -z "$OWNERS" ]] || [[ -z "$CODEOWNERS_SERVICE" ]]; then
+    echo "WARNING: skipping CODEOWNERS (owners='${OWNERS}' service='${CODEOWNERS_SERVICE}'); set the CODEOWNERS variable and re-run template sync to plant it"
+  else
+    echo "Installing CODEOWNERS for $CODEOWNERS_SERVICE owned by $OWNERS..."
+    OWNERS_ESCAPED=${OWNERS//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
+    sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" ".github/fork-resources/CODEOWNERS" > ".github/CODEOWNERS"
+    git add ".github/CODEOWNERS"
+  fi
 fi
 
 if [[ -d ".github/fork-resources" ]]; then
