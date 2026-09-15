@@ -33,7 +33,11 @@ if ! gh api "repos/${REPO}/contents/.github/CODEOWNERS" --jq .sha >/dev/null 2>&
   problems+=("\`.github/CODEOWNERS\` is not on the default branch. Set the \`CODEOWNERS\` repository variable to a team with write access (for example \`@org/team\`); the next template sync plants the file.")
 else
   # GitHub validates the default branch's file; each error names the line and the unknown owner.
-  errors="$(gh api "repos/${REPO}/codeowners/errors" --jq '.errors[] | "line \(.line): \(.message | split("\n")[0])"' 2>/dev/null || true)"
+  if ! validation="$(gh api "repos/${REPO}/codeowners/errors" 2>&1)"; then
+    echo "::error::Could not validate CODEOWNERS: $validation"
+    exit 1
+  fi
+  errors="$(jq -r '.errors[] | "line \(.line): \(.message | split("\n")[0])"' <<< "$validation")"
   if [[ -n "$errors" ]]; then
     while IFS= read -r e; do problems+=("$e"); done <<< "$errors"
     problems+=("An owner GitHub cannot resolve, or one without write access, is ignored and the code-owner review rule does not apply to that path.")

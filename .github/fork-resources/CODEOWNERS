@@ -16,3 +16,4 @@
 /testing/<service>-test-azure/  <owners>
 /.spi/                          <owners>
 /.github/upstream-filter.yml    <owners>
+/.github/CODEOWNERS             <owners>

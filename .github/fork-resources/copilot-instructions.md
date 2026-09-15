@@ -18,8 +18,8 @@ Three parties own different parts of this tree. `.github/CODEOWNERS` maps the pa
 | Area | Owner | What to do with a change |
 |---|---|---|
 | Shared service code (everything not listed below) | Upstream OSDU | Do not edit here. Contribute the change upstream, or port a specific upstream fix and say so in the PR (ADR-038). The next sync will conflict with anything else. |
-| `provider/*-azure/`, `testing/*-test-azure/`, `.spi/`, `.github/upstream-filter.yml` | This fork | Normal feature work. |
-| `.github/`, `build/`, `.release-please-config.json` | The template (`Azure/osdu-spi`) | Do not edit here. Template sync overwrites these files; change the template instead. |
+| `provider/*-azure/`, `testing/*-test-azure/`, `.spi/`, `.github/upstream-filter.yml`, `.github/CODEOWNERS` | This fork | Normal feature work. |
+| `.github/` (except the two fork-owned files above), `build/`, `.release-please-config.json` | The template (`Azure/osdu-spi`) | Do not edit here. Template sync overwrites these files; change the template instead. |
 
 ---
 

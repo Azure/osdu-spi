@@ -21,6 +21,7 @@ set -euo pipefail
 #     --repo <owner/repo> \
 #     --upstream <upstream-url> \
 #     --vault-name <vault> \
+#     [--codeowners <@org/team>] \
 #     [--template-repo <url>] \
 #     [--dry-run]
 #
@@ -35,6 +36,7 @@ REPO=""
 UPSTREAM=""
 VAULT_NAME="${AZURE_VAULT_NAME:-}"
 TEMPLATE_REPO="https://github.com/Azure/osdu-spi.git"
+CODEOWNERS=""
 FIREWALL_DOMAINS="community.opengroup.org,repo1.maven.org,central.maven.org,repo.maven.apache.org,plugins.gradle.org"
 DRY_RUN=false
 
@@ -49,6 +51,9 @@ Required:
   --vault-name <name>         Azure Key Vault name (or set AZURE_VAULT_NAME env var)
 
 Options:
+  --codeowners <handle>       Reviewers for .github/CODEOWNERS, as @org/team or @user; the next
+                              template sync plants the file (no default: one person cannot
+                              approve their own pull requests)
   --template-repo <url>       Template repository URL (default: https://github.com/Azure/osdu-spi.git)
   --dry-run                   Show what would be done without making changes
   -h, --help                  Show this help message
@@ -73,6 +78,7 @@ while [[ $# -gt 0 ]]; do
     --repo)           require_arg "$1" "${2-}"; REPO="${2-}"; shift 2 ;;
     --upstream)       require_arg "$1" "${2-}"; UPSTREAM="${2-}"; shift 2 ;;
     --vault-name)     require_arg "$1" "${2-}"; VAULT_NAME="${2-}"; shift 2 ;;
+    --codeowners)     require_arg "$1" "${2-}"; CODEOWNERS="${2-}"; shift 2 ;;
     --template-repo)  require_arg "$1" "${2-}"; TEMPLATE_REPO="${2-}"; shift 2 ;;
     --dry-run)        DRY_RUN=true; shift ;;
     -h|--help)        usage 0 ;;
@@ -87,6 +93,11 @@ fi
 
 if [[ -z "$VAULT_NAME" ]]; then
   echo "ERROR: --vault-name is required (or set AZURE_VAULT_NAME environment variable)."
+  usage
+fi
+
+if [[ -n "$CODEOWNERS" && "$CODEOWNERS" != @* ]]; then
+  echo "ERROR: --codeowners must be an @user or @org/team handle, got '$CODEOWNERS'."
   usage
 fi
 
@@ -168,6 +179,11 @@ set_variable "COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS" "$FIREWALL_DOMAINS"
 set_variable "INITIALIZATION_COMPLETE" "true"
 set_variable "TEMPLATE_REPO_URL" "$TEMPLATE_REPO"
 set_variable "UPSTREAM_REPO_URL" "$UPSTREAM"
+if [[ -n "$CODEOWNERS" ]]; then
+  set_variable "CODEOWNERS" "$CODEOWNERS"
+else
+  echo "    CODEOWNERS not set; pass --codeowners or Settings Apply opens a human-required issue"
+fi
 
 echo ""
 
@@ -221,6 +237,7 @@ if [ "$DRY_RUN" = true ]; then
   echo "  - INITIALIZATION_COMPLETE"
   echo "  - TEMPLATE_REPO_URL"
   echo "  - UPSTREAM_REPO_URL"
+  [[ -n "$CODEOWNERS" ]] && echo "  - CODEOWNERS"
   echo ""
   echo "Secrets that would be configured:"
   echo "  - RELEASE_APP_ID"
@@ -238,6 +255,7 @@ else
   echo "  - INITIALIZATION_COMPLETE"
   echo "  - TEMPLATE_REPO_URL"
   echo "  - UPSTREAM_REPO_URL"
+  [[ -n "$CODEOWNERS" ]] && echo "  - CODEOWNERS"
   echo ""
   echo "Secrets configured:"
   echo "  - RELEASE_APP_ID"

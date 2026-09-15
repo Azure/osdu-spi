@@ -65,9 +65,8 @@ if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" 
   OWNERS="$(gh variable get CODEOWNERS 2>/dev/null || true)"
   # The filter config's service key names the module prefix, which can differ from the URL slug.
   CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
-  CODEOWNERS_SERVICE="${CODEOWNERS_SERVICE:-${SERVICE_SLUG:-}}"
   if [[ -z "$CODEOWNERS_SERVICE" ]]; then
-    echo "::warning::CODEOWNERS not planted: no service name from .github/upstream-filter.yml or UPSTREAM_REPO_URL"
+    echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no service key"
   elif [[ -z "$OWNERS" ]]; then
     echo "::warning::CODEOWNERS not planted: set the CODEOWNERS repository variable to a team with write access and the next template sync plants it"
   elif [[ "$OWNERS" != @* ]]; then

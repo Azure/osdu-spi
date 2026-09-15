@@ -47,9 +47,20 @@ jobs:
 
       - name: Check for template updates
         id: check-updates
+        env:
+          CODEOWNERS_VAR: ${{ vars.CODEOWNERS }}
         run: |
           TEMPLATE_COMMIT=$(git rev-parse refs/remotes/template/main)
           echo "Template latest commit: $TEMPLATE_COMMIT"
+
+          # A fork that set its CODEOWNERS variable after the last sync still needs the file
+          # planted, so a missing, plantable CODEOWNERS counts as an update by itself.
+          PLANT_CODEOWNERS=false
+          if [ ! -f ".github/CODEOWNERS" ] && [ -n "$CODEOWNERS_VAR" ] && [ "${CODEOWNERS_VAR#@}" != "$CODEOWNERS_VAR" ] \
+             && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
+            PLANT_CODEOWNERS=true
+            echo "CODEOWNERS is missing and the variable is set; planting it counts as an update"
+          fi
           
           LAST_SYNC_FILE=".github/.template-sync-commit"
           if [ -f "$LAST_SYNC_FILE" ]; then
@@ -88,7 +99,7 @@ jobs:
             exit 1
           fi
           
-          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ]; then
+          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ] && [ "$PLANT_CODEOWNERS" = "false" ]; then
             echo "No template updates found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
             exit 0
@@ -133,12 +144,11 @@ jobs:
             fi
           done
           
-          if [ -z "$GITHUB_CHANGES" ]; then
+          if [ -z "$GITHUB_CHANGES" ] && [ "$PLANT_CODEOWNERS" = "false" ]; then
             echo "No syncable file changes found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
           else
-            echo "Found syncable changes:"
-            echo "$GITHUB_CHANGES"
+            [ -n "$GITHUB_CHANGES" ] && echo "Found syncable changes:" && echo "$GITHUB_CHANGES"
             echo "has_updates=true" >> $GITHUB_OUTPUT
             echo "template_commit=$TEMPLATE_COMMIT" >> $GITHUB_OUTPUT
             echo "last_sync_commit=$LAST_SYNC_COMMIT" >> $GITHUB_OUTPUT
@@ -372,8 +382,8 @@ jobs:
             fi
           fi
 
-          # Same rule for CODEOWNERS. A scheduled run has no person to default to, so the
-          # CODEOWNERS variable is the only source here; init defaults to the initializing user.
+          # Same rule for CODEOWNERS: owners come from the CODEOWNERS variable, with no default
+          # anywhere (ADR-018), and a plantable file is itself an update in check-updates above.
           if [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
             CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)
             if [ -z "$CODEOWNERS_VAR" ]; then
