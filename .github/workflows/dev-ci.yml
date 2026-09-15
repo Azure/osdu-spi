@@ -110,6 +110,15 @@ jobs:
             exit 1
           }
 
+          # Every value the onboarding check requires must arrive as a HAVE_<NAME> flag, or the
+          # check falls back to a secret listing the App token cannot read and reports it missing.
+          SETTINGS=".github/template-workflows/settings-apply.yml"
+          CHECK=".github/scripts/settings-apply/check-required-variables.sh"
+          for name in $(sed -n 's/^REQUIRED_[A-Z]*=(\(.*\))$/\1/p' "$CHECK"); do
+            assert_yq ".jobs.\"settings-apply\".steps[] | select(.name == \"Check required variables\") | .env.HAVE_${name} != null" "$SETTINGS" \
+              "check-required-variables.sh requires $name but settings-apply.yml passes no HAVE_${name} flag"
+          done
+
           # build.yml is push-only; PR events belong to the validation workflows.
           assert_yq '.on.pull_request == null' "$BUILD" \
             "Build workflow must not duplicate protected-branch PR validation"
@@ -123,6 +132,12 @@ jobs:
             "pull_request must stay unfiltered so the required summary always reports"
           assert_yq '.on.pull_request_target | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request_target owns sync PRs and must stay unfiltered"
+
+          CHECK_PATHS=$(yq -r '.jobs."check-paths".steps[] | select(.id == "filter") | .run' "$VALIDATE")
+          assert_contains "$CHECK_PATHS" 'case "$file" in .mvn/*|.spi/*)' \
+            ".mvn and .spi changes must always run full validation"
+          assert_contains "$CHECK_PATHS" "grep -qE '^(\.github/|devops/|docs/|\.)|\.md$'" \
+            "Config-only directory prefixes and Markdown suffixes must be filtered"
 
           # One lane per PR: check-initialization routes, and validation-summary repeats
           # the test because always() bypasses it.
@@ -163,6 +178,8 @@ jobs:
             "deploy-test must run in the spi-stack environment the deploy identity trusts"
           assert_yq '.jobs."deploy-test".concurrency."cancel-in-progress" == false' "$VALIDATE" \
             "A cancelled borrow could skip Restore; queue instead"
+          assert_yq '.jobs."deploy-test".steps[] | select(.name == "Install spi") | .run | contains("az aks install-cli --gh-token \"$GH_TOKEN\"")' "$VALIDATE" \
+            "Install spi must authenticate kubelogin release requests"
           assert_yq '.jobs."deploy-gate".if == "always()"' "$VALIDATE" \
             "deploy-gate must always report why the lane did or did not run"
           # The gate carries the ADR-036 clause itself, never by skip-propagation from docker-push.
@@ -181,6 +198,25 @@ jobs:
           if ! jq --exit-status --arg name "$SUMMARY_NAME" '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | index($name)' \
               .github/rulesets/default-branch.json > /dev/null; then
             echo "::error file=.github/rulesets/default-branch.json::must require the validation-summary job by its current name ($SUMMARY_NAME)"
+            exit 1
+          fi
+
+          # settings-apply owns every checked-in ruleset, and Copilot review must stay a separate rule.
+          for ruleset in .github/rulesets/*.json; do
+            assert_contains "$(cat .github/scripts/settings-apply/setup-rulesets.sh)" "apply_ruleset \"$ruleset\"" \
+              "setup-rulesets.sh must reconcile $ruleset"
+          done
+          if ! jq --exit-status '
+              .name == "GitHub Copilot Code Review"
+              and .target == "branch"
+              and .conditions.ref_name.include == ["~DEFAULT_BRANCH"]
+              and .bypass_actors == []
+              and (.rules | length) == 1
+              and .rules[0].type == "copilot_code_review"
+              and .rules[0].parameters.review_on_push == true
+              and .rules[0].parameters.review_draft_pull_requests == false
+            ' .github/rulesets/copilot-code-review.json > /dev/null; then
+            echo "::error file=.github/rulesets/copilot-code-review.json::must request Copilot review as its own default-branch ruleset"
             exit 1
           fi
 

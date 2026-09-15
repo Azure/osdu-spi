@@ -55,7 +55,7 @@ apply_ruleset() {
   local name payload existing_id resp
   name="$(jq -r '.name' "$config_file")"
   payload="$(cat "$config_file")"
-  existing_id="$(gh api "repos/${REPO_FULL_NAME}/rulesets" --jq ".[] | select(.name == \"$name\") | .id" 2>/dev/null | head -n1 || echo "")"
+  existing_id="$(gh api --paginate "repos/${REPO_FULL_NAME}/rulesets" --jq ".[] | select(.name == \"$name\") | .id" 2>/dev/null | head -n1 || echo "")"
 
   if [[ "$DRY_RUN" == "true" ]]; then
     if [[ -n "$existing_id" ]]; then echo "DRY-RUN would UPDATE '$name' (id $existing_id)"; else echo "DRY-RUN would CREATE '$name'"; fi
@@ -82,6 +82,7 @@ apply_ruleset() {
 
 apply_ruleset ".github/rulesets/default-branch.json"
 apply_ruleset ".github/rulesets/integration-branch.json"
+apply_ruleset ".github/rulesets/copilot-code-review.json"
 
 [[ -n "${GITHUB_ENV:-}" ]] && echo "RULESET_SUCCESS=$RULESET_SUCCESS" >> "$GITHUB_ENV"
 echo "Ruleset reconciliation complete: $RULESET_SUCCESS"

@@ -3,6 +3,7 @@ name: Settings Apply
 # Reconciles per-fork repository settings that init.yml can only set once:
 #   - branch-protection rulesets (idempotent create/update, per-fork required-check filter)
 #   - deploy-onboarding readiness (opens/updates/closes a human-required issue)
+#   - CODEOWNERS presence and owner resolution (same issue pattern)
 #   - GHCR package visibility (public, per ADR-033)
 # Runs on a schedule, on demand, and whenever the synced ruleset/helper sources change.
 
@@ -26,6 +27,11 @@ permissions:
   contents: read
   issues: write
   packages: write
+
+# The tracking-issue scripts list then create; overlapping runs would both see none.
+concurrency:
+  group: settings-apply-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   settings-apply:
@@ -52,9 +58,22 @@ jobs:
 
       - name: "Check required variables"
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}      # reads secret/variable names; manages tracking issue
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}      # manages tracking issue; name-listing fallback
           DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+          # Workflow context resolves these directly; the App installation may not carry Secrets: read.
+          HAVE_AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID != '' }}
+          HAVE_AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID != '' }}
+          HAVE_AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID != '' }}
+          HAVE_SPI_STACK_RESOURCE_GROUP: ${{ vars.SPI_STACK_RESOURCE_GROUP != '' }}
+          HAVE_SPI_STACK_CLUSTER: ${{ vars.SPI_STACK_CLUSTER != '' }}
         run: bash .github/scripts/settings-apply/check-required-variables.sh "${{ github.repository }}" $DRY
+
+      - name: "Check CODEOWNERS"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}      # reads the file and its validation; manages tracking issue
+          SYNC_MODE: ${{ vars.SYNC_MODE }}
+          DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+        run: bash .github/scripts/settings-apply/check-codeowners.sh "${{ github.repository }}" $DRY
 
       - name: "Verify GHCR visibility"
         env:

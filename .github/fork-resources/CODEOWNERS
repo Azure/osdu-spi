@@ -1,0 +1,19 @@
+# Planted at initialization with <owners> and <service> substituted; fork-owned from then on.
+# The Default Branch Protection ruleset requires a code-owner review on main. Every area lists
+# the same owners until a fork splits them; the sections document the ownership seam
+# (upstream, template, fork) so a split is a one-value edit. Last match wins.
+
+# Upstream-owned shared code. A change here is a port (ADR-038); the owner's review is the check.
+*                               <owners>
+
+# Engineering system, synced from the template.
+/.github/                       <owners>
+/build/                         <owners>
+/.release-please-config.json    <owners>
+
+# Fork-owned Azure source, descriptor, and filter config.
+/provider/<service>-azure/      <owners>
+/testing/<service>-test-azure/  <owners>
+/.spi/                          <owners>
+/.github/upstream-filter.yml    <owners>
+/.github/CODEOWNERS             <owners>

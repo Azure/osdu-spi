@@ -51,7 +51,7 @@ On success the setup issue is closed and the repository is ready for its first s
    ```
 
 3. **Verify repository variables** - Initialization sets `UPSTREAM_REPO_URL` and `INITIALIZATION_COMPLETE`
-4. **Verify branch protection** - Ensure the repository rulesets are active
+4. **Verify branch protection** - Ensure the Default Branch Protection, Integration Branch Protection, and GitHub Copilot Code Review rulesets are active
 5. **Test initial sync** - Run upstream sync manually to verify setup
 
 ### Handle Setup Failures

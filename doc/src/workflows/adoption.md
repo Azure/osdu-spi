@@ -16,7 +16,6 @@ The workflows authenticate their write operations through a GitHub App, never th
 | Pull requests | Read and write | Sync, cascade, and release PRs; auto-merge |
 | Administration | Read and write | Rulesets, repository settings |
 | Variables | Read and write | Repository variables (a separate permission; Administration does not cover it) |
-| Secrets | Read-only | The settings cadence reads secret names for deploy-readiness checks |
 | Workflows | Read and write | Workflow file updates arriving through sync |
 | Issues | Read and write | Tracking and failure issues, labels |
 
@@ -80,7 +79,7 @@ What it does, in order:
 
 ## Gotchas
 
-- **CODEOWNERS**: the fork inherits the parent's `CODEOWNERS` with handles from the parent organization. Replace it with your own reviewers or delete it; unresolvable handles fail the file's validation.
+- **CODEOWNERS**: the fork inherits the parent's `.github/CODEOWNERS` with handles from the parent organization. Replace the handles with your own reviewers, or commit the file yourself if the parent has none (a mirror fork has no template sync to plant it, and the Settings Apply run opens an issue until it exists); GitHub ignores a line naming a handle without access, and the default-branch ruleset requires a code-owner review. Your edit is a standing difference: when the parent also changes its file, the cascade merge conflicts there and opens a conflict issue, and you keep your handles when resolving it.
 - **Release conflicts**: your release automation and the parent's both write `CHANGELOG.md` and `.release-please-manifest.json`. When both sides have released since your last sync, the cascade can hit a shallow conflict in those files. Resolution recipe: keep both changelog entries, keep your own manifest value. This is the accepted trade-off of ADR-039.
 - **Standing differences**: any change you keep on `main` that is not upstream shows up as your side of every future cascade merge until it is contributed upstream or reverted. Prefer contributing back (the loop exists for exactly that).
 - **Container images**: builds publish to your own namespace, `ghcr.io/<your-org>`, automatically. No registry configuration is needed for the default GHCR flow.
