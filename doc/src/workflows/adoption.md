@@ -79,7 +79,7 @@ What it does, in order:
 
 ## Gotchas
 
-- **CODEOWNERS**: the fork inherits the parent's `.github/CODEOWNERS` with handles from the parent organization. Replace the handles with your own reviewers; unresolvable handles make GitHub ignore the line, and the default-branch ruleset requires a code-owner review. The file is fork-owned, so the mirror only touches it when the parent changes it.
+- **CODEOWNERS**: the fork inherits the parent's `.github/CODEOWNERS` with handles from the parent organization. Replace the handles with your own reviewers; GitHub ignores a line naming a handle without access, and the default-branch ruleset requires a code-owner review. Your edit is a standing difference: when the parent changes its file, the next cascade merge takes the parent's side and you re-apply yours.
 - **Release conflicts**: your release automation and the parent's both write `CHANGELOG.md` and `.release-please-manifest.json`. When both sides have released since your last sync, the cascade can hit a shallow conflict in those files. Resolution recipe: keep both changelog entries, keep your own manifest value. This is the accepted trade-off of ADR-039.
 - **Standing differences**: any change you keep on `main` that is not upstream shows up as your side of every future cascade merge until it is contributed upstream or reverted. Prefer contributing back (the loop exists for exactly that).
 - **Container images**: builds publish to your own namespace, `ghcr.io/<your-org>`, automatically. No registry configuration is needed for the default GHCR flow.

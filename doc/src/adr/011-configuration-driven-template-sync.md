@@ -27,7 +27,7 @@ Implement configuration-driven template synchronization using `.github/sync-conf
 - `sync_rules.files`: individual files synced (release-please config, `labels.json`, `branch-protection.json`, `security-on.json`, `security-patterns.txt`)
 - `sync_rules.workflows.template_workflows`: fork workflows stored under `.github/template-workflows/` and copied to `.github/workflows/` at initialization (ADR-015); `template_only` and `development_only` list the template's own workflows that never reach forks
 - `sync_rules.tracking_files`: `.github/.template-sync-commit`, the last synced template commit, auto-created when missing
-- `exclusions`: paths never synced (`.github/copilot-instructions.md`, `.github/local-actions`, `.spi`, `CODEOWNERS`, `.github/CODEOWNERS`)
+- `exclusions`: paths never synced (`.github/copilot-instructions.md`, `.github/local-actions`, `.spi`, `CODEOWNERS`)
 - `cleanup_rules`: directories, files, and workflows removed during initialization, each with a `reason`
 
 The file itself is authoritative; this ADR does not restate its contents.

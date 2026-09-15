@@ -212,6 +212,9 @@ jobs:
 
       - name: Sync template files
         if: steps.check-updates.outputs.has_updates == 'true'
+        env:
+          UPSTREAM_URL: ${{ vars.UPSTREAM_REPO_URL }}
+          CODEOWNERS_VAR: ${{ vars.CODEOWNERS }}
         run: |
           TEMPLATE_COMMIT="${{ steps.check-updates.outputs.template_commit }}"
           LAST_SYNC_COMMIT="${{ steps.check-updates.outputs.last_sync_commit }}"
@@ -357,7 +360,6 @@ jobs:
           # file is fork-owned once planted, so a sync must never overwrite it, but a fork
           # without one should receive it whatever changed this cycle.
           if [ ! -f ".github/upstream-filter.yml" ] && git show refs/remotes/template/main:".github/fork-resources/upstream-filter.yml" >/dev/null 2>&1; then
-            UPSTREAM_URL="${{ vars.UPSTREAM_REPO_URL }}"
             if [ -n "$UPSTREAM_URL" ]; then
               SERVICE_SLUG=$(basename "${UPSTREAM_URL%.git}")
               SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
@@ -373,16 +375,19 @@ jobs:
           # Same rule for CODEOWNERS. A scheduled run has no person to default to, so the
           # CODEOWNERS variable is the only source here; init defaults to the initializing user.
           if [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
-            OWNERS="${{ vars.CODEOWNERS }}"
-            CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1)
-            if [ -n "$OWNERS" ] && [ -n "$CODEOWNERS_SERVICE" ]; then
-              echo "Planting CODEOWNERS for $CODEOWNERS_SERVICE owned by $OWNERS"
-              OWNERS_ESCAPED=${OWNERS//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
+            CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)
+            if [ -z "$CODEOWNERS_VAR" ]; then
+              echo "::notice::No .github/CODEOWNERS and no CODEOWNERS variable; set the variable to have the next sync plant it"
+            elif [ "${CODEOWNERS_VAR#@}" = "$CODEOWNERS_VAR" ]; then
+              echo "::warning::CODEOWNERS not planted: owners must be @user or @org/team handles"
+            elif [ -z "$CODEOWNERS_SERVICE" ]; then
+              echo "::warning::CODEOWNERS not planted: .github/upstream-filter.yml has no service key"
+            else
+              echo "Planting CODEOWNERS for $CODEOWNERS_SERVICE owned by $CODEOWNERS_VAR"
+              OWNERS_ESCAPED=${CODEOWNERS_VAR//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
               git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" | \
                 sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" > ".github/CODEOWNERS"
               git add ".github/CODEOWNERS"
-            else
-              echo "::notice::No .github/CODEOWNERS and no CODEOWNERS variable; set the variable to have the next sync plant it"
             fi
           fi
 
