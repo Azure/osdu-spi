@@ -16,7 +16,6 @@ The workflows authenticate their write operations through a GitHub App, never th
 | Pull requests | Read and write | Sync, cascade, and release PRs; auto-merge |
 | Administration | Read and write | Rulesets, repository settings |
 | Variables | Read and write | Repository variables (a separate permission; Administration does not cover it) |
-| Secrets | Read-only | The settings cadence reads secret names for deploy-readiness checks |
 | Workflows | Read and write | Workflow file updates arriving through sync |
 | Issues | Read and write | Tracking and failure issues, labels |
 
