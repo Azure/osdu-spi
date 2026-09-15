@@ -1,6 +1,11 @@
 name: 'Java Build'
 description: 'Reusable Java build action that handles build, test, and artifact upload'
 
+# Both goal paths run the Maven lifecycle through `verify` (`install` includes it):
+# a check a service pom binds to `verify` — an enforcer rule, Failsafe — must gate the
+# pull request, not only the push to main. `verify` also produces the JARs docker-build
+# downloads on pull request events.
+
 inputs:
   generate_coverage:
     description: 'Whether to generate coverage report'
@@ -87,8 +92,7 @@ runs:
         fi
 
         if [[ "$GENERATE_COVERAGE" == "true" ]]; then
-          # package, not test: docker-build downloads the JARs on PR events too.
-          mvn $MAVEN_CLI_OPTS clean package org.jacoco:jacoco-maven-plugin:0.8.11:report
+          mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.11:report
           
           echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "## Summary" >> $GITHUB_STEP_SUMMARY
