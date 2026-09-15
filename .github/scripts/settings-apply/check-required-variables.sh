@@ -13,7 +13,10 @@
 #   --dry-run     Print the assessment without touching the issue
 #
 # Environment:
-#   GH_TOKEN      repo admin (secret and variable names) plus issues:write
+#   GH_TOKEN      issues:write, plus repo admin for the name-listing fallback
+#   HAVE_<NAME>   "true"/"false" from workflow context, authoritative when set. The name
+#                 listing below is only for local runs: the App installation may not
+#                 carry Secrets: read, and org-level values never appear in it.
 
 set -euo pipefail
 
@@ -30,16 +33,19 @@ export GH_TOKEN="${GH_TOKEN:-}"
 
 ISSUE_TITLE="⚙️ Deploy onboarding: required CI configuration missing"
 
-secret_names="$(gh api --paginate "repos/${REPO}/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")"
+secret_names="$(gh api --paginate "repos/${REPO}/actions/secrets" --jq '.secrets[].name' 2>/dev/null \
+  || { echo "secret listing unavailable; relying on HAVE_* flags" >&2; echo ""; })"
 variable_names="$(gh api --paginate "repos/${REPO}/actions/variables" --jq '.variables[].name' 2>/dev/null || echo "")"
 
 missing=()
-have_secret() { grep -qx "$1" <<< "$secret_names"; }
-have_var()    { grep -qx "$1" <<< "$variable_names"; }
+have() {
+  local flag="HAVE_$1"
+  if [[ -n "${!flag:-}" ]]; then [[ "${!flag}" == "true" ]]; else grep -qx "$1" <<< "$2"; fi
+}
 
-have_secret "AZURE_CLIENT_ID" || missing+=("secret \`AZURE_CLIENT_ID\`, set by \`spi onboard\`")
+have "AZURE_CLIENT_ID" "$secret_names" || missing+=("secret \`AZURE_CLIENT_ID\`, set by \`spi onboard\`")
 for v in AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID SPI_STACK_RESOURCE_GROUP SPI_STACK_CLUSTER; do
-  have_var "$v" || missing+=("variable \`$v\`, set by \`spi onboard\`")
+  have "$v" "$variable_names" || missing+=("variable \`$v\`, set by \`spi onboard\`")
 done
 
 existing_issue="$(gh issue list --repo "$REPO" --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number // empty' 2>/dev/null || echo "")"
