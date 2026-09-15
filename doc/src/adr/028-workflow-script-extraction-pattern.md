@@ -89,7 +89,7 @@ End-to-end flows in `cascade.yml`, `validate.yml`, and `sync-template.yml` remai
 
 ## Consequences
 
-Workflows call actions which call scripts, so a reader follows one more hop; the README in each action directory is the map. Extraction is uneven by design: init helpers and state management are extracted, orchestration is not, and the boundary for medium-complexity blocks is a judgement call against the matrix above. `issue-state-manager` under `.github/actions/` was extracted under this pattern but currently has no workflow caller.
+Workflows call actions which call scripts, so a reader follows one more hop; the README in each action directory is the map. Extraction is uneven by design: init helpers and state management are extracted, orchestration is not, and the boundary for medium-complexity blocks is a judgement call against the matrix above.
 
 ## Related ADRs
 
