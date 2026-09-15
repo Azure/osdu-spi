@@ -1,6 +1,20 @@
 /* OSDU SPI Fork Management Interactive Features */
 
 document$.subscribe(function() {
+    if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#1976d2',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#1565c0',
+                lineColor: '#757575'
+            }
+        })
+        mermaid.run({ querySelector: '.mermaid' })
+    }
+
     // Table sorting functionality
     var tables = document.querySelectorAll("article table:not([class])")
     tables.forEach(function(table) {
