@@ -466,6 +466,12 @@ jobs:
             RULESET_STATUS="⚠️ **Repository Rulesets:** Requires manual setup"
           fi
 
+          if [ -f ".github/CODEOWNERS" ]; then
+            CODEOWNERS_STATUS="**Code Owners:** \`.github/CODEOWNERS\` is in place and fork-owned"
+          else
+            CODEOWNERS_STATUS="⚠️ **Code Owners:** not planted. The default-branch ruleset requires a code-owner review; set the \`CODEOWNERS\` variable to a team with write access and the next template sync plants the file"
+          fi
+
           MANUAL_STEPS=""
           if [ "$VARIABLES_SUCCESS" != "true" ] || [ "$SECURITY_SUCCESS" != "true" ] || [ "$RULESET_SUCCESS" != "true" ]; then
             MANUAL_STEPS="## Manual Configuration Required
@@ -481,6 +487,7 @@ jobs:
           MESSAGE="${MESSAGE//\{VARIABLE_STATUS\}/$VARIABLE_STATUS}"
           MESSAGE="${MESSAGE//\{SECURITY_STATUS\}/$SECURITY_STATUS}"
           MESSAGE="${MESSAGE//\{RULESET_STATUS\}/$RULESET_STATUS}"
+          MESSAGE="${MESSAGE//\{CODEOWNERS_STATUS\}/$CODEOWNERS_STATUS}"
           MESSAGE="${MESSAGE//\{MANUAL_STEPS\}/$MANUAL_STEPS}"
           MESSAGE="${MESSAGE//\{UPSTREAM_REPO\}/${{ needs.validate_and_setup.outputs.upstream_repo }}}"
 

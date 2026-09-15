@@ -230,6 +230,6 @@ jobs:
             echo ""
             echo "OSDU Maven dependencies use public read access; no Maven registry secrets are required."
             echo ""
-            echo "1. Replace or delete the inherited \`CODEOWNERS\` file."
+            echo "1. Replace the handles in the inherited \`.github/CODEOWNERS\` with your own reviewers, or create the file if the parent has none; the Settings Apply run reports which."
             echo "2. Dispatch the \`Sync Upstream\` workflow to pull the first mirror sync."
           } >> "$GITHUB_STEP_SUMMARY"
