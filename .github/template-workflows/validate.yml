@@ -431,8 +431,8 @@ jobs:
           [ -n "$reason" ] || [ -f .spi/service.yaml ] || reason="no .spi/service.yaml declares the suites"
           [ -n "$reason" ] || [ "$PUSH_RESULT" = "success" ] || reason="no image was pushed (docker-push: $PUSH_RESULT)"
           [ -n "$reason" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="descriptor declares no test suite"
-          # The stack knows the descriptor's service.name; the repository name is the image name
-          # and differs from it in organizations that prefix repositories (osdu-spi-<service>).
+          # The stack knows the descriptor's service.name. The image name (SERVICE_NAME, or the
+          # repository name when unset) differs from it where repositories are prefixed (osdu-spi-<service>).
           service=""
           if [ -z "$reason" ]; then
             if python3 .github/actions/acceptance-resolver/resolve.py --contract-only \

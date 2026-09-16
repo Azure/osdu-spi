@@ -204,8 +204,8 @@ jobs:
           assert_yq '.jobs."deploy-test".if == "needs.deploy-gate.outputs.run == '"'"'true'"'"'"' "$VALIDATE" \
             "deploy-test must run only when the gate decided to borrow"
 
-          # The stack service is the descriptor's service.name (#221); the repository name is
-          # the image name and differs from it under the osdu-spi-<service> convention.
+          # The stack service is the descriptor's service.name (#221); the image name (SERVICE_NAME,
+          # or the repository name when unset) differs from it under the osdu-spi-<service> convention.
           assert_yq '.jobs."deploy-gate".outputs.service != null' "$VALIDATE" \
             "deploy-gate must publish the descriptor service name"
           # Tested with contains(): a literal expression here would be expanded by Actions before the shell runs.
