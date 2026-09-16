@@ -220,6 +220,9 @@ jobs:
             exit 0
           fi
 
+          # The checkout above uses fetch-depth: 0, which fetches full history for every
+          # branch, so BASE_SHA and HEAD_SHA are already resolvable; this fetch is a
+          # belt-and-braces guarantee that origin/fork_upstream itself is present.
           if ! git fetch origin fork_upstream --depth=1; then
             echo "::error::Unable to fetch origin/fork_upstream to enforce the ownership split"
             exit 1
