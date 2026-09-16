@@ -221,9 +221,9 @@ jobs:
           fi
 
           # The checkout above uses fetch-depth: 0, which fetches full history for every
-          # branch, so BASE_SHA and HEAD_SHA are already resolvable; this fetch is a
-          # belt-and-braces guarantee that origin/fork_upstream itself is present.
-          if ! git fetch origin fork_upstream --depth=1; then
+          # branch, so origin/fork_upstream is normally already present; this fetch is a
+          # belt-and-braces guarantee it is there without altering the depth already fetched.
+          if ! git fetch origin fork_upstream; then
             echo "::error::Unable to fetch origin/fork_upstream to enforce the ownership split"
             exit 1
           fi
@@ -252,7 +252,7 @@ jobs:
           fi
 
           while IFS= read -r file; do
-            echo "::error file=$file::Upstream-owned file changed on a PR to main without the port label (ADR-038)"
+            echo "::error file=$file::Upstream-owned file changed on a PR to main without the port label (ADR-038). Add the 'port' label to declare a deliberate port, or contribute the change upstream instead."
           done <<< "$TOUCHED"
           exit 1
 
