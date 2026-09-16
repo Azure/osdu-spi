@@ -429,10 +429,10 @@ jobs:
           [ -n "$reason" ] || [ "$REF" != "fork_upstream" ] || reason="fork_upstream builds no Azure image"
           [ -n "$reason" ] || [ -z "${MISSING// /}" ] || reason="repository is not onboarded to a stack (missing: $(echo $MISSING))"
           [ -n "$reason" ] || [ -f .spi/service.yaml ] || reason="no .spi/service.yaml declares the suites"
-          [ -n "$reason" ] || [ "$PUSH_RESULT" = "success" ] || reason="no image was pushed (docker-push: $PUSH_RESULT)"
-          [ -n "$reason" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="descriptor declares no test suite"
           # The stack knows the descriptor's service.name. The image name (SERVICE_NAME, or the
           # repository name when unset) differs from it where repositories are prefixed (osdu-spi-<service>).
+          # Resolved before the push checks: a rejected descriptor already failed docker-build, and
+          # the gate names the rejection rather than the missing image it caused.
           service=""
           if [ -z "$reason" ]; then
             if python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
@@ -442,6 +442,8 @@ jobs:
               reason=$(jq -r '.error | "descriptor rejected, \(.code): \(.detail)"' contract.json 2>/dev/null || echo "descriptor rejected by the resolver")
             fi
           fi
+          [ -n "$reason" ] || [ "$PUSH_RESULT" = "success" ] || reason="no image was pushed (docker-push: $PUSH_RESULT)"
+          [ -n "$reason" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="descriptor declares no test suite"
           echo "service=$service" >> "$GITHUB_OUTPUT"
           if [ -n "$reason" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"
