@@ -225,9 +225,12 @@ jobs:
             exit 1
           fi
 
-          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || echo "")
+          if ! CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA"); then
+            echo "::error::Unable to diff $BASE_SHA..$HEAD_SHA to enforce the ownership split"
+            exit 1
+          fi
           if [ -z "$CHANGED_FILES" ]; then
-            echo "Skipping ownership check: unable to determine changed files"
+            echo "No changed files to check"
             exit 0
           fi
 
