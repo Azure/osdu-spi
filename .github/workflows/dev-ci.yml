@@ -208,8 +208,11 @@ jobs:
           # the image name and differs from it under the osdu-spi-<service> convention.
           assert_yq '.jobs."deploy-gate".outputs.service != null' "$VALIDATE" \
             "deploy-gate must publish the descriptor service name"
-          assert_yq '.jobs."deploy-test".env.SERVICE == "${{ needs.deploy-gate.outputs.service }}"' "$VALIDATE" \
-            "deploy-test must pin under the descriptor service name, not the repository name"
+          # Tested with contains(): a literal expression here would be expanded by Actions before the shell runs.
+          assert_yq '.jobs."deploy-test".env.SERVICE | contains("needs.deploy-gate.outputs.service")' "$VALIDATE" \
+            "deploy-test must pin under the descriptor service name"
+          assert_yq '.jobs."deploy-test".env.SERVICE | contains("repository.name") | not' "$VALIDATE" \
+            "deploy-test must not pin under the repository name"
           assert_yq '.jobs."deploy-test".concurrency.group | contains("needs.deploy-gate.outputs.service")' "$VALIDATE" \
             "deploy-test must serialize per descriptor service name"
           assert_yq '.jobs."deploy-test".environment == "spi-stack"' "$VALIDATE" \
