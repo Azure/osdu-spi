@@ -185,73 +185,28 @@ jobs:
             echo "Skipping build: only config/docs paths changed"
           fi
 
+      - name: "List upstream-owned files the PR changes"
+        id: owned
+        # pull_request only: the pull_request_target lane checks out the PR head, and a local action
+        # resolved from there would run PR-controlled code with this lane's token (ADR-036). That
+        # lane carries same-repo sync PRs to fork_upstream, which the split never applies to.
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/upstream-owned-files
+        with:
+          base_ref: ${{ github.event.pull_request.base.ref }}
+          head_ref: ${{ github.event.pull_request.head.ref }}
+          base_sha: ${{ github.event.pull_request.base.sha }}
+          head_sha: ${{ github.event.pull_request.head.sha }}
+          same_repo: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          sync_mode: ${{ vars.SYNC_MODE }}
+
       - name: "Assert upstream ownership split (ADR-038)"
-        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        if: steps.owned.outputs.checked == 'true' && steps.owned.outputs.files != ''
         env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          SYNC_MODE: ${{ vars.SYNC_MODE }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          TOUCHED: ${{ steps.owned.outputs.files }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # A fork's ownership split (ADR-038) only applies to PRs landing on main. PRs that
-          # exist to move upstream code (fork_integration, release/upstream-*) are exempt by
-          # design, as is mirror mode (ADR-039, no ownership split) and a fork with no filter.
-          if [ "$BASE_REF" != "main" ]; then
-            echo "Skipping ownership check: base branch is $BASE_REF, not main"
-            exit 0
-          fi
-
-          # Only this repository's own automation branches qualify: a fork can name a branch anything.
-          case "$HEAD_REF" in
-            fork_integration|release/upstream-*)
-              if [ "$SAME_REPO" = "true" ]; then
-                echo "Skipping ownership check: $HEAD_REF moves upstream code by design"
-                exit 0
-              fi
-              ;;
-          esac
-
-          if [ "${SYNC_MODE:-}" = "mirror" ]; then
-            echo "Skipping ownership check: mirror mode has no ownership split (ADR-039)"
-            exit 0
-          fi
-
-          # Checked on the base tree: a PR that deletes the filter config must not switch the check off.
-          if ! git cat-file -e "$BASE_SHA:.github/upstream-filter.yml" 2>/dev/null; then
-            echo "Skipping ownership check: no .github/upstream-filter.yml on $BASE_REF"
-            exit 0
-          fi
-
-          # fetch-depth: 0 normally brings origin/fork_upstream along; fetch it explicitly so the tree is never missing.
-          if ! git fetch origin fork_upstream; then
-            echo "::error::Unable to fetch origin/fork_upstream to enforce the ownership split"
-            exit 1
-          fi
-
-          if ! CHANGED_FILES=$(git diff --name-only "$BASE_SHA...$HEAD_SHA"); then
-            echo "::error::Unable to diff $BASE_SHA...$HEAD_SHA to enforce the ownership split"
-            exit 1
-          fi
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No changed files to check"
-            exit 0
-          fi
-
-          if ! UPSTREAM_OWNED=$(git ls-tree -r --name-only origin/fork_upstream) || [ -z "$UPSTREAM_OWNED" ]; then
-            echo "::error::Unable to list the origin/fork_upstream tree to enforce the ownership split"
-            exit 1
-          fi
-          TOUCHED=$(comm -12 <(echo "$CHANGED_FILES" | sort) <(echo "$UPSTREAM_OWNED" | sort))
-
-          if [ -z "$TOUCHED" ]; then
-            echo "✅ No upstream-owned files touched"
-            exit 0
-          fi
-
           # Read the label live: labeling does not trigger a run, so a re-run of this job must see it.
           if ! HAS_PORT_LABEL=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" --jq 'any(.[]; .name == "port")'); then
             echo "::error::Unable to read the labels on pull request #$PR_NUMBER to enforce the ownership split"

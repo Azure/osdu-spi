@@ -7,6 +7,7 @@
 **Updated** - 2025-12-19 (Changed Maven schedule from weekly to daily for faster rebasing)
 **Updated** - 2026-09-11 (Initialization closes PRs from the inherited template configuration; docker limited to digest and patch updates)
 **Updated** - 2026-09-15 (Maven directories restricted to fork-owned Azure paths; shared code arrives through the upstream sync, per ADR-038)
+**Updated** - 2026-09-15 (A bump that edits an upstream-owned pom is closed by the validation workflow; groups removed; weekly schedule; no issue on a failed build)
 
 ## Context
 
@@ -20,11 +21,11 @@ Dependabot is split by ownership:
 2. **Forks own application code.** The fork configuration deployed from `.github/fork-resources/dependabot.yml` scans Maven only.
 3. **Template sync carries platform updates.** Action and Dockerfile bumps merged in the template reach forks through `sync-template.yml`, never through a fork's Dependabot.
 4. **Conservative policy.** Fork Maven updates are patch-only; build tooling is pinned by hand.
-5. **Grouped updates** reduce PR count.
+5. **Only fork-owned bumps merge.** Maven writes an inherited version where it is declared, so a bump seen from an Azure pom can land in the root `pom.xml` or `testing/pom.xml`. `dependabot-validation.yml` lists the upstream-owned files a PR changes, using the same action as the ADR-038 check in `validate.yml`, and closes the PR with a comment when there are any. Dependabot does not reopen a closed version. Shared-code CVEs stay visible in the Security tab and are fixed upstream.
 
 ### Auto-rebase
 
-Dependabot rebases its open PRs on the daily check, on conflict with the target branch, and when a closed PR is reopened. The schedule was moved from weekly to daily because PRs against a busy `pom.xml` went stale for up to a week. `@dependabot rebase` on a PR forces an immediate rebase.
+Dependabot rebases its open PRs on the scheduled check, on conflict with the target branch, and when a closed PR is reopened. `@dependabot rebase` on a PR forces an immediate rebase. Fork PRs only touch the Azure poms now, which rarely conflict, so the fork schedule is weekly.
 
 ## Alternatives Considered
 
@@ -41,14 +42,14 @@ There is no pip ecosystem for `doc/`. A fork inherits this file until `deploy-fo
 
 The same inheritance means Dependabot runs this file in a new repository until initialization replaces it, starting with the initial commit, and can open PRs against `build/` or `.github`. It never revisits them after the swap, so `init-complete.yml` closes every open Dependabot PR outside the fork's `maven` ecosystem once the fork configuration lands.
 
-**Fork repositories** (`.github/fork-resources/dependabot.yml`, deployed to `.github/dependabot.yml`): one `maven` ecosystem, daily at 09:00, targeting `main` with the `dependencies` label.
+**Fork repositories** (`.github/fork-resources/dependabot.yml`, deployed to `.github/dependabot.yml`): one `maven` ecosystem, weekly on Monday at 09:00, targeting `main` with the `dependencies` label.
 
 - Directories: `/provider/*-azure`, `/testing/*-test-azure`. Shared code (`/`, `/*-core`, `/*-acceptance-test`, `/testing`, `/testing/*-test-core`) is upstream-owned and arrives through the upstream sync, not Dependabot ([ADR-038](038-upstream-filter-transform.md)).
 - Minor and major updates ignored for every dependency
 - Build tooling ignored entirely: JaCoCo, git-commit-id, Lombok, Maven plugins, the Spring Boot Maven plugin
-- Groups: `spring`, `logging`, `jackson`, `azure`
+- No groups: a grouped PR that reaches an upstream-owned pom is closed whole, which would take its fork-owned bumps down with it
 
-**Validation** (`.github/template-workflows/dependabot-validation.yml`): runs on PRs from `dependabot[bot]` against `main`, `fork_integration`, and `fork_upstream`, skipping `.github` and documentation paths. It builds the Java project, runs a validate-only Docker build, and opens an issue labelled `build-failed` when the build fails. There is no auto-approve and no auto-merge; a human merges every Dependabot PR.
+**Validation** (`.github/template-workflows/dependabot-validation.yml`): runs on PRs from `dependabot[bot]` against `main`, `fork_integration`, and `fork_upstream`, skipping `.github` and documentation paths. It first closes any PR that edits an upstream-owned file, then builds the Java project and runs a validate-only Docker build. A failed build is reported on the PR's checks, where the code-owner review already puts it in front of a reviewer; no issue is opened. There is no auto-approve and no auto-merge; a human merges every Dependabot PR.
 
 ### Update flow
 
@@ -60,8 +61,9 @@ Template (azure/osdu-spi):
   next sync-template run → PR in every fork with the updated workflows/Dockerfile
 
 Fork (service repository):
-  09:00 → Dependabot scans Maven, opens grouped patch PRs
-         → dependabot-validation builds and comments
+  Monday 09:00 → Dependabot scans the Azure poms, opens one patch PR per dependency
+         → dependabot-validation closes a PR that edits an upstream-owned pom
+         → otherwise builds and validates the image; the result is the PR's check
          → human reviews and merges
 ```
 

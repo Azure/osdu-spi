@@ -38,6 +38,11 @@ Located directly in `.github/workflows/` with `.yml` extension:
 - **Type**: Reusable workflow
 - **Usage**: Called by other workflows that need Java build capabilities
 
+### Upstream-owned files (`upstream-owned-files/`)
+- **Purpose**: List the files a pull request changes that exist on `origin/fork_upstream`, the ADR-038 ownership split
+- **Type**: Composite action
+- **Usage**: `validate.yml` fails or notices on the result depending on the `port` label; `dependabot-validation.yml` closes a Dependabot PR on a non-empty result
+
 ## Conventions
 
 1. **Composite Actions**:

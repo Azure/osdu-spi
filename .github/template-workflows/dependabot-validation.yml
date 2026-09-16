@@ -32,9 +32,45 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
+      closed: ${{ steps.close.outputs.closed }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-      
+        with:
+          fetch-depth: 0
+
+      - name: "List upstream-owned files the PR changes"
+        id: owned
+        uses: ./.github/actions/upstream-owned-files
+        with:
+          base_ref: ${{ github.event.pull_request.base.ref }}
+          head_ref: ${{ github.event.pull_request.head.ref }}
+          base_sha: ${{ github.event.pull_request.base.sha }}
+          head_sha: ${{ github.event.pull_request.head.sha }}
+          same_repo: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          sync_mode: ${{ vars.SYNC_MODE }}
+
+      - name: "Close a bump that edits upstream-owned files"
+        id: close
+        if: steps.owned.outputs.files != ''
+        env:
+          TOUCHED: ${{ steps.owned.outputs.files }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Maven writes an inherited version where it is declared, so a bump seen from an Azure
+          # pom can land in the root pom. Shared versions move through the upstream sync (ADR-038);
+          # Dependabot does not reopen a closed version, so the next one arrives as a fresh PR.
+          {
+            echo "Closed: this bump edits upstream-owned files, which change only through the upstream sync (ADR-038)."
+            echo
+            while IFS= read -r file; do echo "- \`$file\`"; done <<< "$TOUCHED"
+            echo
+            echo "Bumps confined to the fork-owned Azure poms build and merge here. Shared-code CVEs are tracked in the Security tab and fixed upstream."
+          } > /tmp/close-comment.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/close-comment.md
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+          echo "closed=true" >> "$GITHUB_OUTPUT"
+
       - name: "Check if Java Repository"
         id: check_java
         run: |
@@ -47,7 +83,7 @@ jobs:
   java-build:
     name: "Dependabot Build Validation"
     needs: check-repo-state
-    if: needs.check-repo-state.outputs.is_java_repo == 'true'
+    if: needs.check-repo-state.outputs.is_java_repo == 'true' && needs.check-repo-state.outputs.closed != 'true'
     runs-on: ubuntu-latest
     outputs:
       build_result: ${{ steps.build.outputs.build_result }}
@@ -104,68 +140,3 @@ jobs:
           push: 'false'
           image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
-
-  create-issue-on-failure:
-    name: "🔔 Notify Failed Dependabot Build"
-    needs: [check-repo-state, java-build, docker-build]
-    if: |
-      always() &&
-      needs.check-repo-state.outputs.is_java_repo == 'true' &&
-      (needs.java-build.result == 'failure' || needs.java-build.result == 'cancelled' ||
-       needs.docker-build.result == 'failure' || needs.docker-build.result == 'cancelled')
-    runs-on: ubuntu-latest
-    steps:
-      - name: "Create Required Labels"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh label create build-failed \
-            --description "Issues related to build failures" \
-            --color "d73a4a" || true
-          gh label create dependencies \
-            --description "Dependency-related issues" \
-            --color "0366d6" || true
-
-      - name: "Create Issue for Failed Build"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # PR metadata via env, not ${{ }} in the script: a title with quotes would break the shell.
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          DEPENDENCY=$(echo "$PR_TITLE" | grep -oP 'bump \K[^ ]+ from [^ ]+ to [^ ]+' || echo "dependency")
-
-          cat > /tmp/issue_body.md << ISSUE_EOF
-          ## Dependabot PR Build Failure
-
-          A Dependabot PR has failed to build successfully.
-
-          ### Dependency Update
-          \`$DEPENDENCY\`
-
-          ### PR Details
-          - **PR Title**: $PR_TITLE
-          - **PR Number**: $PR_NUMBER
-          - **PR URL**: $PR_URL
-
-          ### Build Information
-          - **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          ### Next Steps
-          1. Review the build logs to identify the failure cause
-          2. Either:
-             - Fix the issue and update the PR
-             - Close the PR if the dependency update is problematic
-             - Pin the dependency to a compatible version
-             - Add compatibility patches
-
-          @${{ github.repository_owner }}
-          ISSUE_EOF
-
-          gh issue create \
-            --title "🔴 Dependabot Build Failure: $DEPENDENCY" \
-            --body-file /tmp/issue_body.md \
-            --label "build-failed" \
-            --label "dependencies"
-          rm -f /tmp/issue_body.md

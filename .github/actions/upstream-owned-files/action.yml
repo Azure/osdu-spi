@@ -1,0 +1,46 @@
+name: 'Upstream-owned files'
+description: 'Lists the files a pull request changes that exist on origin/fork_upstream, the ownership split of ADR-038'
+inputs:
+  base_ref:
+    description: 'Pull request base branch name'
+    required: true
+  head_ref:
+    description: 'Pull request head branch name'
+    required: true
+  base_sha:
+    description: 'Pull request base commit'
+    required: true
+  head_sha:
+    description: 'Pull request head commit'
+    required: true
+  same_repo:
+    description: 'true when the head branch lives in this repository'
+    required: true
+  sync_mode:
+    description: 'The SYNC_MODE repository variable; mirror forks have no ownership split'
+    required: false
+    default: ''
+outputs:
+  checked:
+    description: 'true when the split applies to this pull request; false names an exemption in reason'
+    value: ${{ steps.list.outputs.checked }}
+  reason:
+    description: 'Why the check did not apply, empty when it did'
+    value: ${{ steps.list.outputs.reason }}
+  files:
+    description: 'Newline-separated upstream-owned files the pull request changes, empty when none'
+    value: ${{ steps.list.outputs.files }}
+runs:
+  using: 'composite'
+  steps:
+    - id: list
+      shell: bash
+      env:
+        BASE_REF: ${{ inputs.base_ref }}
+        HEAD_REF: ${{ inputs.head_ref }}
+        BASE_SHA: ${{ inputs.base_sha }}
+        HEAD_SHA: ${{ inputs.head_sha }}
+        SAME_REPO: ${{ inputs.same_repo }}
+        SYNC_MODE: ${{ inputs.sync_mode }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/list.sh"

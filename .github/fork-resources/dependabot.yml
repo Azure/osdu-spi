@@ -1,14 +1,16 @@
 version: 2
 updates:
   # Maven only: workflow and action updates arrive through template sync.
-  # Patch updates only, with Spring, logging, Jackson, and Azure SDK grouped.
+  # Patch updates only, one PR per dependency: a grouped PR that reaches an upstream-owned
+  # pom is closed whole, which would take the fork-owned bumps down with it.
 
   - package-ecosystem: "maven"
     directories:
       - "/provider/*-azure"
       - "/testing/*-test-azure"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
       time: "09:00"
     target-branch: "main"
     labels:
@@ -24,24 +26,3 @@ updates:
       - dependency-name: "org.projectlombok:lombok"
       - dependency-name: "org.apache.maven.plugins:*"
       - dependency-name: "org.springframework.boot:spring-boot-maven-plugin"
-    groups:
-      spring:
-        patterns:
-          - "org.springframework*"
-          - "org.springframework.boot:*"
-          - "org.springframework.security:*"
-          - "org.springdoc:*"
-      logging:
-        patterns:
-          - "org.slf4j:*"
-          - "ch.qos.logback:*"
-          - "org.apache.logging.log4j:*"
-      jackson:
-        patterns:
-          - "com.fasterxml.jackson*"
-          - "net.minidev:json-smart"
-      azure:
-        patterns:
-          - "com.azure:*"
-          - "com.azure.spring:*"
-          - "com.microsoft.azure:*"
