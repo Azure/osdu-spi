@@ -42,4 +42,5 @@ runs:
         HEAD_SHA: ${{ inputs.head_sha }}
         SAME_REPO: ${{ inputs.same_repo }}
         SYNC_MODE: ${{ inputs.sync_mode }}
-      run: bash "${{ github.action_path }}/list.sh"
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/list.sh"
