@@ -203,6 +203,15 @@ jobs:
             "deploy-test must chain on docker-push and the deploy gate"
           assert_yq '.jobs."deploy-test".if == "needs.deploy-gate.outputs.run == '"'"'true'"'"'"' "$VALIDATE" \
             "deploy-test must run only when the gate decided to borrow"
+
+          # The stack service is the descriptor's service.name (#221); the repository name is
+          # the image name and differs from it under the osdu-spi-<service> convention.
+          assert_yq '.jobs."deploy-gate".outputs.service != null' "$VALIDATE" \
+            "deploy-gate must publish the descriptor service name"
+          assert_yq '.jobs."deploy-test".env.SERVICE == "${{ needs.deploy-gate.outputs.service }}"' "$VALIDATE" \
+            "deploy-test must pin under the descriptor service name, not the repository name"
+          assert_yq '.jobs."deploy-test".concurrency.group | contains("needs.deploy-gate.outputs.service")' "$VALIDATE" \
+            "deploy-test must serialize per descriptor service name"
           assert_yq '.jobs."deploy-test".environment == "spi-stack"' "$VALIDATE" \
             "deploy-test must run in the spi-stack environment the deploy identity trusts"
           assert_yq '.jobs."deploy-test".concurrency."cancel-in-progress" == false' "$VALIDATE" \

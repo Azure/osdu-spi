@@ -396,10 +396,13 @@ jobs:
     outputs:
       run: ${{ steps.decide.outputs.run }}
       reason: ${{ steps.decide.outputs.reason }}
+      service: ${{ steps.decide.outputs.service }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
-          sparse-checkout: .spi
+          sparse-checkout: |
+            .spi
+            .github/actions/acceptance-resolver
           sparse-checkout-cone-mode: false
 
       - name: "Decide"
@@ -428,13 +431,25 @@ jobs:
           [ -n "$reason" ] || [ -f .spi/service.yaml ] || reason="no .spi/service.yaml declares the suites"
           [ -n "$reason" ] || [ "$PUSH_RESULT" = "success" ] || reason="no image was pushed (docker-push: $PUSH_RESULT)"
           [ -n "$reason" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="descriptor declares no test suite"
+          # The stack knows the descriptor's service.name; the repository name is the image name
+          # and differs from it in organizations that prefix repositories (osdu-spi-<service>).
+          service=""
+          if [ -z "$reason" ]; then
+            if python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
+                --descriptor .spi/service.yaml --report contract.json > /dev/null 2>&1; then
+              service=$(jq -r '.service // empty' contract.json)
+            else
+              reason=$(jq -r '.error | "descriptor rejected, \(.code): \(.detail)"' contract.json 2>/dev/null || echo "descriptor rejected by the resolver")
+            fi
+          fi
+          echo "service=$service" >> "$GITHUB_OUTPUT"
           if [ -n "$reason" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"
             echo "::notice title=Deploy and Test skipped::$reason"
             echo "Deploy and Test: skipped, $reason" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "reason=" >> "$GITHUB_OUTPUT"
-            echo "Deploy and Test: borrowing $CLUSTER for the pushed image" >> "$GITHUB_STEP_SUMMARY"
+            echo "Deploy and Test: borrowing $CLUSTER for $service with the pushed image" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy-test:
@@ -450,14 +465,14 @@ jobs:
       verdicts: ${{ steps.prove.outputs.verdicts }}
     environment: spi-stack
     concurrency:
-      group: spi-stack-${{ vars.SERVICE_NAME || github.event.repository.name }}
+      group: spi-stack-${{ needs.deploy-gate.outputs.service }}
       cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
       packages: read
     env:
-      SERVICE: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+      SERVICE: ${{ needs.deploy-gate.outputs.service }}
       SERVICE_IMAGE: ${{ needs.docker-push.outputs.image_repository }}@${{ needs.docker-push.outputs.image_digest }}
       TEST_IMAGE: ${{ needs.docker-push.outputs.acceptance_image_repository }}@${{ needs.docker-push.outputs.acceptance_image_digest }}
       STACK_REPO: Azure/osdu-spi-stack
