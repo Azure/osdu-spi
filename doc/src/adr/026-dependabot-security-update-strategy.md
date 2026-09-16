@@ -61,8 +61,9 @@ Template (azure/osdu-spi):
   next sync-template run → PR in every fork with the updated workflows/Dockerfile
 
 Fork (service repository):
-  09:00 → Dependabot scans Maven, opens grouped patch PRs
-         → dependabot-validation builds and comments
+  Monday 09:00 → Dependabot scans the Azure poms, opens one patch PR per dependency
+         → dependabot-validation closes a PR that edits an upstream-owned pom
+         → otherwise builds and validates the image; the result is the PR's check
          → human reviews and merges
 ```
 
