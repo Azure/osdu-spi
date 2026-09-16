@@ -185,6 +185,72 @@ jobs:
             echo "Skipping build: only config/docs paths changed"
           fi
 
+      - name: "Assert upstream ownership split (ADR-038)"
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SYNC_MODE: ${{ vars.SYNC_MODE }}
+          HAS_PORT_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'port') }}
+        run: |
+          # A fork's ownership split (ADR-038) only applies to PRs landing on main. PRs that
+          # exist to move upstream code (fork_integration, release/upstream-*) are exempt by
+          # design, as is mirror mode (ADR-039, no ownership split) and a fork with no filter.
+          if [ "$BASE_REF" != "main" ]; then
+            echo "Skipping ownership check: base branch is $BASE_REF, not main"
+            exit 0
+          fi
+
+          case "$HEAD_REF" in
+            fork_integration|release/upstream-*)
+              echo "Skipping ownership check: $HEAD_REF moves upstream code by design"
+              exit 0
+              ;;
+          esac
+
+          if [ "${SYNC_MODE:-}" = "mirror" ]; then
+            echo "Skipping ownership check: mirror mode has no ownership split (ADR-039)"
+            exit 0
+          fi
+
+          if [ ! -f ".github/upstream-filter.yml" ]; then
+            echo "Skipping ownership check: no .github/upstream-filter.yml"
+            exit 0
+          fi
+
+          if ! git fetch origin fork_upstream --depth=1; then
+            echo "::error::Unable to fetch origin/fork_upstream to enforce the ownership split"
+            exit 1
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || echo "")
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "Skipping ownership check: unable to determine changed files"
+            exit 0
+          fi
+
+          git ls-tree -r --name-only origin/fork_upstream | sort > upstream_owned
+          TOUCHED=$(comm -12 <(echo "$CHANGED_FILES" | sort) upstream_owned)
+
+          if [ -z "$TOUCHED" ]; then
+            echo "✅ No upstream-owned files touched"
+            exit 0
+          fi
+
+          if [ "$HAS_PORT_LABEL" = "true" ]; then
+            while IFS= read -r file; do
+              echo "::notice file=$file::Declared port of an upstream-owned file (port label)"
+            done <<< "$TOUCHED"
+            exit 0
+          fi
+
+          while IFS= read -r file; do
+            echo "::error file=$file::Upstream-owned file changed on a PR to main without the port label (ADR-038)"
+          done <<< "$TOUCHED"
+          exit 1
+
   java-build:
     name: "Java Build"
     needs: [check-initialization, check-repo-state, check-paths]

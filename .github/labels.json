@@ -144,6 +144,11 @@
       "name": "validation-failed",
       "description": "Integration validation (build/test) failed",
       "color": "d73a4a"
+    },
+    {
+      "name": "port",
+      "description": "Deliberate port of an upstream-owned file, exempt from the ADR-038 ownership check",
+      "color": "1d76db"
     }
   ]
 }

@@ -5,12 +5,7 @@ updates:
 
   - package-ecosystem: "maven"
     directories:
-      - "/"
-      - "/*-core"
-      - "/*-acceptance-test"
       - "/provider/*-azure"
-      - "/testing"
-      - "/testing/*-test-core"
       - "/testing/*-test-azure"
     schedule:
       interval: "daily"
