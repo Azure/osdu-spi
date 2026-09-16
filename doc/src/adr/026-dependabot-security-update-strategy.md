@@ -6,7 +6,7 @@
 **Updated** - 2025-10-28 (Removed pip/doc from template to prevent fork caching issues)
 **Updated** - 2025-12-19 (Changed Maven schedule from weekly to daily for faster rebasing)
 **Updated** - 2026-09-11 (Initialization closes PRs from the inherited template configuration; docker limited to digest and patch updates)
-**Updated** - 2026-09-16 (Maven directories restricted to fork-owned Azure paths; shared code arrives through the upstream sync, per ADR-038)
+**Updated** - 2026-09-15 (Maven directories restricted to fork-owned Azure paths; shared code arrives through the upstream sync, per ADR-038)
 
 ## Context
 

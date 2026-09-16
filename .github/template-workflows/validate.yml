@@ -193,7 +193,8 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           SYNC_MODE: ${{ vars.SYNC_MODE }}
-          HAS_PORT_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'port') }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # A fork's ownership split (ADR-038) only applies to PRs landing on main. PRs that
           # exist to move upstream code (fork_integration, release/upstream-*) are exempt by
@@ -220,9 +221,7 @@ jobs:
             exit 0
           fi
 
-          # The checkout above uses fetch-depth: 0, which fetches full history for every
-          # branch, so origin/fork_upstream is normally already present; this fetch is a
-          # belt-and-braces guarantee it is there without altering the depth already fetched.
+          # fetch-depth: 0 normally brings origin/fork_upstream along; fetch it explicitly so the tree is never missing.
           if ! git fetch origin fork_upstream; then
             echo "::error::Unable to fetch origin/fork_upstream to enforce the ownership split"
             exit 1
@@ -244,6 +243,12 @@ jobs:
             exit 0
           fi
 
+          # Read the label live: labeling does not trigger a run, so a re-run of this job must see it.
+          if ! HAS_PORT_LABEL=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" --jq 'any(.[]; .name == "port")'); then
+            echo "::error::Unable to read the labels on pull request #$PR_NUMBER to enforce the ownership split"
+            exit 1
+          fi
+
           if [ "$HAS_PORT_LABEL" = "true" ]; then
             while IFS= read -r file; do
               echo "::notice file=$file::Declared port of an upstream-owned file (port label)"
@@ -252,7 +257,7 @@ jobs:
           fi
 
           while IFS= read -r file; do
-            echo "::error file=$file::Upstream-owned file changed on a PR to main without the port label (ADR-038). Add the 'port' label to declare a deliberate port, or contribute the change upstream instead."
+            echo "::error file=$file::Upstream-owned file changed on a PR to main without the port label (ADR-038). Add the 'port' label and re-run Check Paths to declare a deliberate port, or contribute the change upstream instead."
           done <<< "$TOUCHED"
           exit 1
 

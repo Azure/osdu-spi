@@ -146,8 +146,8 @@ jobs:
             "The ownership check must fetch origin/fork_upstream before comparing changed files"
           assert_contains "$OWNERSHIP_STEP" 'git ls-tree -r --name-only origin/fork_upstream' \
             "The ownership check must derive owned paths from origin/fork_upstream's tree, not a hardcoded list"
-          assert_contains "$OWNERSHIP_STEP" "contains(github.event.pull_request.labels.*.name, 'port')" \
-            "The ownership check must honor the port label exemption"
+          assert_contains "$OWNERSHIP_STEP" 'issues/$PR_NUMBER/labels' \
+            "The ownership check must read the port label live so a re-run after labeling sees it"
           assert_contains "$OWNERSHIP_STEP" 'SYNC_MODE' \
             "The ownership check must skip in mirror mode (ADR-039)"
 
