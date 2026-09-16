@@ -118,7 +118,7 @@ graph TD
 
     ---
 
-    Dedicated build and image validation with failure tracking for Dependabot pull requests
+    Dedicated build and image validation with failure tracking for Dependabot pull requests. The planted Dependabot configuration watches only the fork-owned Azure poms; shared-code bumps arrive through the upstream sync (ADR-038)
 
     - **Automation**: Runs one reusable Java build with coverage, then validates the service image
     - **Feedback**: Posts the build result to the pull request

@@ -83,7 +83,7 @@ The workflow coordinates the following validation jobs:
 |-----|---------|----------------|
 | **Check Initialization** | Verifies repository setup | Ensures workflows are properly deployed |
 | **Check Repository** | Detects project type | Identifies Java projects via `pom.xml` |
-| **Check Paths** | Avoids unnecessary work | Skips heavy jobs for docs/config-only PRs |
+| **Check Paths** | Avoids unnecessary work; enforces ownership | Skips heavy jobs for docs/config-only PRs; fails PRs to `main` that touch a file owned by `origin/fork_upstream` (ADR-038) |
 | **Java Build** | Compiles and tests | Uses `core,azure` by default; `core` on `fork_upstream` |
 | **Docker Build** | Validates both images | Builds the canonical service and test-suite Dockerfiles without registry credentials |
 | **Docker Push** | Publishes trusted builds | Pushes multi-arch SHA and branch tags to public GHCR, with the test-suite image beside them |
@@ -122,6 +122,7 @@ The integration-branch ruleset does not currently require status checks.
 - **Release and automation PRs**: Skip semantic PR-title validation
 - **Dependabot PRs**: Build with coverage and validate the image through `dependabot-validation.yml`
 - **Docs/config-only PRs**: Changes limited to `.github/**`, `devops/**`, `docs/**`, other dotfiles, or Markdown skip Java and container work while summary checks still report. `.mvn/**` and `.spi/**` are never config-only, so a change there always passes the path filter and the build runs; the branch and deploy-gate rules above still apply
+- **Upstream-owned files on a PR to `main`**: Check Paths fails when a changed file exists on `origin/fork_upstream` (ADR-038), unless the PR carries the `port` label declaring a deliberate port (add the label and re-run Check Paths; a fork initialized before the label existed creates it once with `gh label create port`, as the template-sync labels issue for that fork also notes), targets a branch other than `main`, or is a `fork_integration`/`release/upstream-*` head, mirror mode, or a fork with no `.github/upstream-filter.yml`
 - **Pull requests from other repositories**: Build and validate only; the deploy lane skips because such a run carries no deploy identity
 
 ## Troubleshooting

@@ -112,6 +112,7 @@ New forks have no cutover. A `--seed` mode copies the Azure trees onto `main` at
 - The sync surface on the partition reference fork drops from 421 files to 88 (21%). The filter discards 274 files, and the 59 files of the Azure trees leave the sync surface by becoming fork-owned. Reviewers read Azure-relevant diffs, and Dependabot, CodeQL, and Trivy stop covering code we never ship.
 - Upstream's removal of the Azure provider requires no action and produces no incident.
 - A new provider under `provider/` is stripped automatically, anything outside the recognized categories halts for review, and a rename of a kept module fails loud via `expected_kept`.
+- The ownership split is enforced on pull requests to `main`: Check Paths fails a PR that touches a file present on `origin/fork_upstream` unless the PR carries the `port` label declaring a deliberate port.
 
 ### Negative
 

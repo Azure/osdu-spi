@@ -6,6 +6,7 @@
 **Updated** - 2025-10-28 (Removed pip/doc from template to prevent fork caching issues)
 **Updated** - 2025-12-19 (Changed Maven schedule from weekly to daily for faster rebasing)
 **Updated** - 2026-09-11 (Initialization closes PRs from the inherited template configuration; docker limited to digest and patch updates)
+**Updated** - 2026-09-15 (Maven directories restricted to fork-owned Azure paths; shared code arrives through the upstream sync, per ADR-038)
 
 ## Context
 
@@ -42,7 +43,7 @@ The same inheritance means Dependabot runs this file in a new repository until i
 
 **Fork repositories** (`.github/fork-resources/dependabot.yml`, deployed to `.github/dependabot.yml`): one `maven` ecosystem, daily at 09:00, targeting `main` with the `dependencies` label.
 
-- Directories: `/`, `/*-core`, `/*-acceptance-test`, `/provider/*-azure`, `/testing`, `/testing/*-test-core`, `/testing/*-test-azure`
+- Directories: `/provider/*-azure`, `/testing/*-test-azure`. Shared code (`/`, `/*-core`, `/*-acceptance-test`, `/testing`, `/testing/*-test-core`) is upstream-owned and arrives through the upstream sync, not Dependabot ([ADR-038](038-upstream-filter-transform.md)).
 - Minor and major updates ignored for every dependency
 - Build tooling ignored entirely: JaCoCo, git-commit-id, Lombok, Maven plugins, the Spring Boot Maven plugin
 - Groups: `spring`, `logging`, `jackson`, `azure`
