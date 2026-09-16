@@ -203,6 +203,18 @@ jobs:
             "deploy-test must chain on docker-push and the deploy gate"
           assert_yq '.jobs."deploy-test".if == "needs.deploy-gate.outputs.run == '"'"'true'"'"'"' "$VALIDATE" \
             "deploy-test must run only when the gate decided to borrow"
+
+          # The stack service is the descriptor's service.name (#221); the image name (SERVICE_NAME,
+          # or the repository name when unset) differs from it under the osdu-spi-<service> convention.
+          assert_yq '.jobs."deploy-gate".outputs.service != null' "$VALIDATE" \
+            "deploy-gate must publish the descriptor service name"
+          # Tested with contains(): a literal expression here would be expanded by Actions before the shell runs.
+          assert_yq '.jobs."deploy-test".env.SERVICE | contains("needs.deploy-gate.outputs.service")' "$VALIDATE" \
+            "deploy-test must pin under the descriptor service name"
+          assert_yq '.jobs."deploy-test".env.SERVICE | contains("repository.name") | not' "$VALIDATE" \
+            "deploy-test must not pin under the repository name"
+          assert_yq '.jobs."deploy-test".concurrency.group | contains("needs.deploy-gate.outputs.service")' "$VALIDATE" \
+            "deploy-test must serialize per descriptor service name"
           assert_yq '.jobs."deploy-test".environment == "spi-stack"' "$VALIDATE" \
             "deploy-test must run in the spi-stack environment the deploy identity trusts"
           assert_yq '.jobs."deploy-test".concurrency."cancel-in-progress" == false' "$VALIDATE" \
@@ -228,6 +240,13 @@ jobs:
             "The gate must refuse Dependabot"
           assert_contains "$GATE_RUN" '[ "$REF" != "fork_upstream" ] || reason=' \
             "The gate must refuse fork_upstream"
+          # A rejected descriptor fails docker-build first; the gate must name the rejection, not the missing image.
+          RESOLVE_AT=$(printf '%s\n' "$GATE_RUN" | grep -n 'resolve.py --contract-only' | head -1 | cut -d: -f1)
+          PUSH_AT=$(printf '%s\n' "$GATE_RUN" | grep -n '"$PUSH_RESULT" = "success"' | head -1 | cut -d: -f1)
+          if [ -z "$RESOLVE_AT" ] || [ -z "$PUSH_AT" ] || [ "$RESOLVE_AT" -ge "$PUSH_AT" ]; then
+            echo "::error file=$VALIDATE::The gate must resolve the descriptor before it checks whether an image was pushed"
+            exit 1
+          fi
 
           # The ruleset requires the summary by its job name; the two must not drift apart.
           SUMMARY_NAME=$(yq -r '.jobs."validation-summary".name' "$VALIDATE")

@@ -43,7 +43,7 @@ tests:
 
 `<service>` stands for the service's name; the suite paths, module names, and variable names come from the suites in the repository, not from the descriptor. The sources are the part that's fixed.
 
-`service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. It must equal the slug the workflows build and pin under, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise. `archetype` is always `java-maven-azure`.
+`service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. The deploy lane pins, verifies, and restores under this name. It is independent of the image and GHCR package name, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise, so `Azure/osdu-spi-partition` and `danielscholl-osdu/partition` both declare `partition`. `archetype` is always `java-maven-azure`.
 
 `tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
 
