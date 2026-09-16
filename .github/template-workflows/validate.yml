@@ -234,8 +234,7 @@ jobs:
             exit 0
           fi
 
-          git ls-tree -r --name-only origin/fork_upstream | sort > upstream_owned
-          TOUCHED=$(comm -12 <(echo "$CHANGED_FILES" | sort) upstream_owned)
+          TOUCHED=$(comm -12 <(echo "$CHANGED_FILES" | sort) <(git ls-tree -r --name-only origin/fork_upstream | sort))
 
           if [ -z "$TOUCHED" ]; then
             echo "✅ No upstream-owned files touched"
