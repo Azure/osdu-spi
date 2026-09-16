@@ -150,6 +150,8 @@ jobs:
             "The ownership check must read the port label live so a re-run after labeling sees it"
           assert_contains "$OWNERSHIP_STEP" 'SYNC_MODE' \
             "The ownership check must skip in mirror mode (ADR-039)"
+          assert_contains "$OWNERSHIP_STEP" '$BASE_SHA:.github/upstream-filter.yml' \
+            "The ownership check must test for the filter config on the base tree, not the PR checkout"
 
           # One lane per PR: check-initialization routes, and validation-summary repeats
           # the test because always() bypasses it.
