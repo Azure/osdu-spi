@@ -67,8 +67,8 @@ jobs:
             echo
             echo "Bumps confined to the fork-owned Azure poms build and merge here. Shared-code CVEs are tracked in the Security tab and fixed upstream."
           } > /tmp/close-comment.md
-          gh pr comment "$PR_NUMBER" --body-file /tmp/close-comment.md
-          gh pr close "$PR_NUMBER"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/close-comment.md
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
           echo "closed=true" >> "$GITHUB_OUTPUT"
 
       - name: "Check if Java Repository"
@@ -155,10 +155,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh label create build-failed \
+          # No checkout in this job, so gh needs the repository named.
+          gh label create build-failed --repo "$GITHUB_REPOSITORY" \
             --description "Issues related to build failures" \
             --color "d73a4a" || true
-          gh label create dependencies \
+          gh label create dependencies --repo "$GITHUB_REPOSITORY" \
             --description "Dependency-related issues" \
             --color "0366d6" || true
 
@@ -199,7 +200,7 @@ jobs:
           @${{ github.repository_owner }}
           ISSUE_EOF
 
-          gh issue create \
+          gh issue create --repo "$GITHUB_REPOSITORY" \
             --title "🔴 Dependabot Build Failure: $DEPENDENCY" \
             --body-file /tmp/issue_body.md \
             --label "build-failed" \

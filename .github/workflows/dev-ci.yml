@@ -151,6 +151,8 @@ jobs:
             "The ownership check must test for the filter config on the base tree, not the PR checkout"
           assert_yq '.jobs."check-paths".steps[] | select(.id == "owned") | .uses == "./.github/actions/upstream-owned-files"' "$VALIDATE" \
             "Check Paths must list upstream-owned files through the shared action"
+          assert_yq '.jobs."check-paths".steps[] | select(.id == "owned") | .if == "github.event_name == '"'"'pull_request'"'"'"' "$VALIDATE" \
+            "The local action must not run on the pull_request_target lane, which checks out the PR head (ADR-036)"
           OWNERSHIP_STEP=$(yq -r '.jobs."check-paths".steps[] | select(.name == "Assert upstream ownership split (ADR-038)")' "$VALIDATE")
           assert_contains "$OWNERSHIP_STEP" 'issues/$PR_NUMBER/labels' \
             "The ownership check must read the port label live so a re-run after labeling sees it"

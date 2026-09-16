@@ -187,7 +187,10 @@ jobs:
 
       - name: "List upstream-owned files the PR changes"
         id: owned
-        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        # pull_request only: the pull_request_target lane checks out the PR head, and a local action
+        # resolved from there would run PR-controlled code with this lane's token (ADR-036). That
+        # lane carries same-repo sync PRs to fork_upstream, which the split never applies to.
+        if: github.event_name == 'pull_request'
         uses: ./.github/actions/upstream-owned-files
         with:
           base_ref: ${{ github.event.pull_request.base.ref }}
