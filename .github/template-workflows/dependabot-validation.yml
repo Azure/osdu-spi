@@ -32,9 +32,45 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
+      closed: ${{ steps.close.outputs.closed }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-      
+        with:
+          fetch-depth: 0
+
+      - name: "List upstream-owned files the PR changes"
+        id: owned
+        uses: ./.github/actions/upstream-owned-files
+        with:
+          base_ref: ${{ github.event.pull_request.base.ref }}
+          head_ref: ${{ github.event.pull_request.head.ref }}
+          base_sha: ${{ github.event.pull_request.base.sha }}
+          head_sha: ${{ github.event.pull_request.head.sha }}
+          same_repo: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          sync_mode: ${{ vars.SYNC_MODE }}
+
+      - name: "Close a bump that edits upstream-owned files"
+        id: close
+        if: steps.owned.outputs.files != ''
+        env:
+          TOUCHED: ${{ steps.owned.outputs.files }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Maven writes an inherited version where it is declared, so a bump seen from an Azure
+          # pom can land in the root pom. Shared versions move through the upstream sync (ADR-038);
+          # Dependabot does not reopen a closed version, so the next one arrives as a fresh PR.
+          {
+            echo "Closed: this bump edits upstream-owned files, which change only through the upstream sync (ADR-038)."
+            echo
+            while IFS= read -r file; do echo "- \`$file\`"; done <<< "$TOUCHED"
+            echo
+            echo "Bumps confined to the fork-owned Azure poms build and merge here. Shared-code CVEs are tracked in the Security tab and fixed upstream."
+          } > /tmp/close-comment.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/close-comment.md
+          gh pr close "$PR_NUMBER"
+          echo "closed=true" >> "$GITHUB_OUTPUT"
+
       - name: "Check if Java Repository"
         id: check_java
         run: |
@@ -47,7 +83,7 @@ jobs:
   java-build:
     name: "Dependabot Build Validation"
     needs: check-repo-state
-    if: needs.check-repo-state.outputs.is_java_repo == 'true'
+    if: needs.check-repo-state.outputs.is_java_repo == 'true' && needs.check-repo-state.outputs.closed != 'true'
     runs-on: ubuntu-latest
     outputs:
       build_result: ${{ steps.build.outputs.build_result }}

@@ -36,6 +36,9 @@ jobs:
       - name: Run acceptance image harness
         run: bash .github/local-actions/acceptance-image-tests/run-tests.sh
 
+      - name: Run upstream-owned files harness
+        run: bash .github/local-actions/upstream-owned-files-tests/run-tests.sh
+
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
@@ -139,19 +142,18 @@ jobs:
           assert_contains "$CHECK_PATHS" "grep -qE '^(\.github/|devops/|docs/|\.)|\.md$'" \
             "Config-only directory prefixes and Markdown suffixes must be filtered"
 
-          # ADR-038 ownership split must be enforced against fork_upstream's actual tree, not
-          # a hardcoded path list, and must honor the port label exemption.
-          OWNERSHIP_STEP=$(yq -r '.jobs."check-paths".steps[] | select(.name == "Assert upstream ownership split (ADR-038)")' "$VALIDATE")
-          assert_contains "$OWNERSHIP_STEP" 'git fetch origin fork_upstream' \
-            "The ownership check must fetch origin/fork_upstream before comparing changed files"
-          assert_contains "$OWNERSHIP_STEP" 'git ls-tree -r --name-only origin/fork_upstream' \
+          # ADR-038 ownership split: one implementation in the upstream-owned-files action, derived
+          # from fork_upstream's tree rather than a path list; validate honors the port label live.
+          OWNED_SCRIPT=".github/actions/upstream-owned-files/list.sh"
+          assert_contains "$(cat "$OWNED_SCRIPT")" 'git ls-tree -r --name-only origin/fork_upstream' \
             "The ownership check must derive owned paths from origin/fork_upstream's tree, not a hardcoded list"
+          assert_contains "$(cat "$OWNED_SCRIPT")" '$BASE_SHA:.github/upstream-filter.yml' \
+            "The ownership check must test for the filter config on the base tree, not the PR checkout"
+          assert_yq '.jobs."check-paths".steps[] | select(.id == "owned") | .uses == "./.github/actions/upstream-owned-files"' "$VALIDATE" \
+            "Check Paths must list upstream-owned files through the shared action"
+          OWNERSHIP_STEP=$(yq -r '.jobs."check-paths".steps[] | select(.name == "Assert upstream ownership split (ADR-038)")' "$VALIDATE")
           assert_contains "$OWNERSHIP_STEP" 'issues/$PR_NUMBER/labels' \
             "The ownership check must read the port label live so a re-run after labeling sees it"
-          assert_contains "$OWNERSHIP_STEP" 'SYNC_MODE' \
-            "The ownership check must skip in mirror mode (ADR-039)"
-          assert_contains "$OWNERSHIP_STEP" '$BASE_SHA:.github/upstream-filter.yml' \
-            "The ownership check must test for the filter config on the base tree, not the PR checkout"
 
           # One lane per PR: check-initialization routes, and validation-summary repeats
           # the test because always() bypasses it.
@@ -255,6 +257,12 @@ jobs:
           # Dependabot owns one build plus one image validation, under its own check name.
           assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.maven_profile | contains("core,azure")' "$DEPENDABOT" \
             "Dependabot must produce the Azure JAR used by Docker"
+          assert_yq '.jobs."check-repo-state".steps[] | select(.id == "owned") | .uses == "./.github/actions/upstream-owned-files"' "$DEPENDABOT" \
+            "Dependabot validation must list upstream-owned files through the shared action"
+          assert_contains "$(yq -r '.jobs."check-repo-state".steps[] | select(.id == "close") | .run' "$DEPENDABOT")" 'gh pr close "$PR_NUMBER"' \
+            "A Dependabot bump that edits upstream-owned files must be closed, not left red"
+          assert_yq '.jobs."java-build".if | contains("closed != '"'"'true'"'"'")' "$DEPENDABOT" \
+            "The Dependabot build must not run for a closed bump"
           assert_yq '.jobs."docker-build".needs == "java-build"' "$DEPENDABOT" \
             "Dependabot Docker validation must consume its Java build"
           assert_yq '.jobs."docker-build".name | contains("Dependabot")' "$DEPENDABOT" \
