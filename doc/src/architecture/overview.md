@@ -98,6 +98,6 @@ See [ADR-033](../adr/033-ghcr-as-service-image-registry.md), [ADR-035](../adr/03
 
 ## Enterprise Capabilities
 
-The system combines repository rulesets, CodeQL, Dependabot validation, trusted-event package publication, and GitHub App authentication. The default-branch ruleset keeps human approval on `main`, the integration-branch ruleset lets automation maintain `fork_upstream` and `fork_integration`, and the Copilot code review ruleset requests a Copilot review on every `main` pull request where the organization supports it. Forks receive centrally maintained workflows and the shared Dockerfile while keeping ownership of their Azure source and filter configuration.
+The system combines repository rulesets, CodeQL, Dependabot validation, trusted-event package publication, and GitHub App authentication. The default-branch ruleset keeps human approval on `main`, the integration-branch ruleset lets automation maintain `fork_upstream` and `fork_integration`, and the Copilot code review ruleset requests a Copilot review on every `main` pull request where the organization supports it. Forks receive centrally maintained workflows and the shared Dockerfile while keeping ownership of their Azure source and filter configuration. A pull request to `main` that changes a file present on `fork_upstream` fails Check Paths unless it carries the `port` label declaring a deliberate port (ADR-038).
 
 ---

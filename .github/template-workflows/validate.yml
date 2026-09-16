@@ -193,6 +193,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           SYNC_MODE: ${{ vars.SYNC_MODE }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -204,10 +205,13 @@ jobs:
             exit 0
           fi
 
+          # Only this repository's own automation branches qualify: a fork can name a branch anything.
           case "$HEAD_REF" in
             fork_integration|release/upstream-*)
-              echo "Skipping ownership check: $HEAD_REF moves upstream code by design"
-              exit 0
+              if [ "$SAME_REPO" = "true" ]; then
+                echo "Skipping ownership check: $HEAD_REF moves upstream code by design"
+                exit 0
+              fi
               ;;
           esac
 
@@ -236,7 +240,11 @@ jobs:
             exit 0
           fi
 
-          TOUCHED=$(comm -12 <(echo "$CHANGED_FILES" | sort) <(git ls-tree -r --name-only origin/fork_upstream | sort))
+          if ! UPSTREAM_OWNED=$(git ls-tree -r --name-only origin/fork_upstream) || [ -z "$UPSTREAM_OWNED" ]; then
+            echo "::error::Unable to list the origin/fork_upstream tree to enforce the ownership split"
+            exit 1
+          fi
+          TOUCHED=$(comm -12 <(echo "$CHANGED_FILES" | sort) <(echo "$UPSTREAM_OWNED" | sort))
 
           if [ -z "$TOUCHED" ]; then
             echo "✅ No upstream-owned files touched"
