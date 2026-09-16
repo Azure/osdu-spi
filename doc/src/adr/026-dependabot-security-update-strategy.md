@@ -7,7 +7,7 @@
 **Updated** - 2025-12-19 (Changed Maven schedule from weekly to daily for faster rebasing)
 **Updated** - 2026-09-11 (Initialization closes PRs from the inherited template configuration; docker limited to digest and patch updates)
 **Updated** - 2026-09-15 (Maven directories restricted to fork-owned Azure paths; shared code arrives through the upstream sync, per ADR-038)
-**Updated** - 2026-09-15 (A bump that edits an upstream-owned pom is closed by the validation workflow; groups removed; weekly schedule)
+**Updated** - 2026-09-15 (A bump that edits an upstream-owned pom is closed by the validation workflow; groups removed; weekly schedule; no issue on a failed build)
 
 ## Context
 
@@ -49,7 +49,7 @@ The same inheritance means Dependabot runs this file in a new repository until i
 - Build tooling ignored entirely: JaCoCo, git-commit-id, Lombok, Maven plugins, the Spring Boot Maven plugin
 - No groups: a grouped PR that reaches an upstream-owned pom is closed whole, which would take its fork-owned bumps down with it
 
-**Validation** (`.github/template-workflows/dependabot-validation.yml`): runs on PRs from `dependabot[bot]` against `main`, `fork_integration`, and `fork_upstream`, skipping `.github` and documentation paths. It first closes any PR that edits an upstream-owned file, then builds the Java project, runs a validate-only Docker build, and opens an issue labelled `build-failed` when the build fails. There is no auto-approve and no auto-merge; a human merges every Dependabot PR.
+**Validation** (`.github/template-workflows/dependabot-validation.yml`): runs on PRs from `dependabot[bot]` against `main`, `fork_integration`, and `fork_upstream`, skipping `.github` and documentation paths. It first closes any PR that edits an upstream-owned file, then builds the Java project and runs a validate-only Docker build. A failed build is reported on the PR's checks, where the code-owner review already puts it in front of a reviewer; no issue is opened. There is no auto-approve and no auto-merge; a human merges every Dependabot PR.
 
 ### Update flow
 

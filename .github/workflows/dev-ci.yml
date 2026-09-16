@@ -272,12 +272,9 @@ jobs:
           assert_yq '.jobs."docker-build".steps[] | select(.name == "Docker Build (validate-only)") | .with.push == "false"' "$DEPENDABOT" \
             "Dependabot Docker validation must never push an image"
 
-          ISSUE_IF=$(yq -r '.jobs."create-issue-on-failure".if | sub("\s+"; " ")' "$DEPENDABOT")
-          case "$ISSUE_IF" in
-            *"!= 'success'"*)
-              echo "::error file=$DEPENDABOT::A skipped prerequisite is not a Dependabot build failure"
-              exit 1 ;;
-          esac
+          # A failed Dependabot build is reported on the PR's checks, never as an issue (ADR-026).
+          assert_yq '.jobs | has("create-issue-on-failure") | not' "$DEPENDABOT" \
+            "Dependabot validation must not open issues for failed builds"
 
           echo "✅ CI de-duplication invariants hold"
 
