@@ -8,6 +8,7 @@ Each step ends with an expected result. Check it before you move on.
 
 - `gh` signed in as an admin of the GitHub organization that will hold the repository, so you can create it and read its variables.
 - `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` set as organization secrets, or ready to set on the repository as [Initialization](../workflows/initialization.md) describes.
+- The GitHub App those secrets belong to installed on the repository. An app installed on selected repositories does not cover a new one, and `Initialize Complete` fails at its first step, "Generate GitHub App Token", until it does. In the Azure organization this is an installation request through the OSPO process, so file it as soon as the repository exists.
 - The `spi` CLI, installed from a release of `Azure/osdu-spi-stack` and connected to the stack environment the repository will test against: run `spi connect --resource-group <rg> --cluster <cluster>`, then check that `spi status` reports the environment as deployable.
 - `az` signed in to the subscription that holds that environment, with rights to update federated credentials on its three identities: the deploy, member, and no-access identities.
 

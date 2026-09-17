@@ -175,8 +175,8 @@ set_variable() {
   fi
 }
 
+# INITIALIZATION_COMPLETE is left to init-complete.yml; setting it here stops init from running.
 set_variable "COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS" "$FIREWALL_DOMAINS"
-set_variable "INITIALIZATION_COMPLETE" "true"
 set_variable "TEMPLATE_REPO_URL" "$TEMPLATE_REPO"
 set_variable "UPSTREAM_REPO_URL" "$UPSTREAM"
 if [[ -n "$CODEOWNERS" ]]; then
@@ -234,7 +234,6 @@ if [ "$DRY_RUN" = true ]; then
   echo ""
   echo "Variables that would be configured:"
   echo "  - COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS"
-  echo "  - INITIALIZATION_COMPLETE"
   echo "  - TEMPLATE_REPO_URL"
   echo "  - UPSTREAM_REPO_URL"
   [[ -n "$CODEOWNERS" ]] && echo "  - CODEOWNERS"
@@ -244,15 +243,15 @@ if [ "$DRY_RUN" = true ]; then
   echo "  - RELEASE_APP_PRIVATE_KEY"
   echo ""
   echo "Next steps (after running without --dry-run):"
-  echo "  1. Push template content to the repo (if not already done)"
-  echo "  2. The init workflow will trigger automatically on push to main"
-  echo "  3. Or, if already initialized, trigger a sync workflow to verify"
+  echo "  1. Make sure the GitHub App behind RELEASE_APP_ID is installed on $REPO"
+  echo "  2. Push template content to the repo (if not already done)"
+  echo "  3. The init workflow will trigger automatically on push to main"
+  echo "  4. Or, if already initialized, trigger a sync workflow to verify"
 else
   echo "==> Setup complete for $REPO"
   echo ""
   echo "Variables configured:"
   echo "  - COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS"
-  echo "  - INITIALIZATION_COMPLETE"
   echo "  - TEMPLATE_REPO_URL"
   echo "  - UPSTREAM_REPO_URL"
   [[ -n "$CODEOWNERS" ]] && echo "  - CODEOWNERS"
@@ -262,7 +261,8 @@ else
   echo "  - RELEASE_APP_PRIVATE_KEY"
   echo ""
   echo "Next steps:"
-  echo "  1. Push template content to the repo (if not already done)"
-  echo "  2. The init workflow will trigger automatically on push to main"
-  echo "  3. Or, if already initialized, trigger a sync workflow to verify"
+  echo "  1. Make sure the GitHub App behind RELEASE_APP_ID is installed on $REPO"
+  echo "  2. Push template content to the repo (if not already done)"
+  echo "  3. The init workflow will trigger automatically on push to main"
+  echo "  4. Or, if already initialized, trigger a sync workflow to verify"
 fi

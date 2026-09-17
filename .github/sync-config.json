@@ -59,7 +59,7 @@
           "description": "Upstream repository synchronization"
         },
         {
-          "path": ".github/template-workflows/validate.yml", 
+          "path": ".github/template-workflows/validate.yml",
           "description": "PR validation and commit message checks"
         },
         {
@@ -79,7 +79,7 @@
           "description": "Dependabot PR automation and validation"
         },
         {
-          "path": ".github/template-workflows/cascade.yml", 
+          "path": ".github/template-workflows/cascade.yml",
           "description": "Multi-repository cascade operations"
         },
         {
@@ -174,10 +174,6 @@
       {
         "path": "AI_PRINCIPLES.md",
         "reason": "Template-specific AI development principles"
-      },
-      {
-        "path": "LICENSE",
-        "reason": "Template license - fork instances use upstream license"
       },
       {
         "path": "CHANGELOG.md",
