@@ -243,9 +243,10 @@ if [ "$DRY_RUN" = true ]; then
   echo "  - RELEASE_APP_PRIVATE_KEY"
   echo ""
   echo "Next steps (after running without --dry-run):"
-  echo "  1. Push template content to the repo (if not already done)"
-  echo "  2. The init workflow will trigger automatically on push to main"
-  echo "  3. Or, if already initialized, trigger a sync workflow to verify"
+  echo "  1. Make sure the GitHub App behind RELEASE_APP_ID is installed on $REPO"
+  echo "  2. Push template content to the repo (if not already done)"
+  echo "  3. The init workflow will trigger automatically on push to main"
+  echo "  4. Or, if already initialized, trigger a sync workflow to verify"
 else
   echo "==> Setup complete for $REPO"
   echo ""
