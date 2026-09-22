@@ -30,8 +30,7 @@ output_value() {
 
 resolve() {
   local workspace="$1" out="$2"
-  shift 2
-  (cd "$workspace" && env "$@" GITHUB_OUTPUT="$out" "$RESOLVE")
+  (cd "$workspace" && GITHUB_OUTPUT="$out" "$RESOLVE")
 }
 
 plant_loader() {
@@ -71,14 +70,6 @@ for missing in DeploySharedSchemas.py Utility.py requirements.txt; do
   echo "$OUT" | grep -q "deployments/scripts/$missing" || die "halt must name the missing file: $OUT"
 done
 ok "missing loader halts with the file named"
-
-note "override: PAYLOAD_DIR and LOADER_DIR are honored"
-WS4="$TMP/ws-override"
-mkdir -p "$WS4/seed/schemas" "$WS4/seed/tools"
-touch "$WS4/seed/tools/DeploySharedSchemas.py" "$WS4/seed/tools/Utility.py" "$WS4/seed/tools/requirements.txt"
-resolve "$WS4" "$TMP/out4.txt" PAYLOAD_DIR=seed/schemas LOADER_DIR=seed/tools >/dev/null
-[ "$(output_value "$TMP/out4.txt" buildable)" = "true" ] || die "overridden paths must resolve"
-ok "path overrides honored"
 
 note "Dockerfile contract: only the payload and the three loader files enter the image"
 grep -q '^COPY deployments/shared-schemas/ deployments/shared-schemas/$' "$DOCKERFILE" || die "payload COPY missing or moved: the loader resolves it relative to deployments/"

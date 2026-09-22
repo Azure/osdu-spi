@@ -1,18 +1,10 @@
 name: 'Load Image Build'
-description: 'Build the shared-schemas loader image beside the service image when the checkout carries a payload, and optionally push it to GHCR'
+description: 'Build the shared-schemas loader image beside the service image when the checkout carries deployments/shared-schemas, and optionally push it to GHCR'
 
 inputs:
   image_name:
     description: 'Short service name (e.g. schema); the image is named <image_name>-load. Required.'
     required: true
-  payload_dir:
-    description: 'Directory whose presence triggers the build; its contents are the payload'
-    required: false
-    default: 'deployments/shared-schemas'
-  loader_dir:
-    description: 'Directory holding the upstream loader (DeploySharedSchemas.py, Utility.py, requirements.txt)'
-    required: false
-    default: 'deployments/scripts'
   dockerfile_path:
     description: 'Path to the load Dockerfile. Defaults to the canonical one the engineering system syncs to every fork (ADR-037).'
     required: false
@@ -57,9 +49,6 @@ runs:
       id: payload
       shell: bash
       run: "$GITHUB_ACTION_PATH/resolve-payload.sh"
-      env:
-        PAYLOAD_DIR: ${{ inputs.payload_dir }}
-        LOADER_DIR: ${{ inputs.loader_dir }}
 
     - name: "Validate push prerequisites"
       # After payload resolution: a fork with no payload must not be made to supply an unused token.
@@ -96,6 +85,11 @@ runs:
         SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
         REF_NAME: ${{ github.ref_name }}
         PUSH: ${{ inputs.push }}
+
+    - name: "Set up QEMU"
+      # Only the push path builds the emulated linux/arm64 leg.
+      if: ${{ steps.payload.outputs.buildable == 'true' && inputs.push == 'true' }}
+      uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
 
     - name: "Set up Docker Buildx"
       if: ${{ steps.payload.outputs.buildable == 'true' }}

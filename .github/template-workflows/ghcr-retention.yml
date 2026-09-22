@@ -71,8 +71,11 @@ jobs:
             echo "Package: ${OWNER_LC}/${PKG}  (base: ${BASE}, dry_run: ${DRY_RUN})"
             echo "### GHCR retention: ${OWNER_LC}/${PKG} (dry_run: ${DRY_RUN})" >> "$GITHUB_STEP_SUMMARY"
 
-            # A fork without a suite or a payload has no such package; a failed read must yield [] (not abort under set -e).
-            VERSIONS="$(gh api --paginate "${BASE}/packages/container/${PKG}/versions" 2>/dev/null | jq -s 'add // []' || echo '[]')"
+            # A fork without a suite or a payload has no such package: gh api exits nonzero on the
+            # 404 and, under pipefail, so does the pipeline, so the read yields [] instead of aborting.
+            if ! VERSIONS="$(gh api --paginate "${BASE}/packages/container/${PKG}/versions" 2>/dev/null | jq -s 'add // []')"; then
+              VERSIONS='[]'
+            fi
             COUNT="$(echo "$VERSIONS" | jq 'length')"
             if [ "$COUNT" -eq 0 ]; then
               echo "No versions found for ${OWNER_LC}/${PKG}; nothing to do."

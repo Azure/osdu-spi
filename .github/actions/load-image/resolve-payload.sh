@@ -3,16 +3,15 @@
 # Decides whether the loader image can build: the checkout must carry the shared
 # schemas payload, and then every loader file the Dockerfile copies must be there.
 # An absent payload is a clean skip (most forks). A payload without its loader is
-# an upstream rename and halts with exit 2 naming the missing file.
+# an upstream rename and halts with exit 2 naming the missing file. The paths are
+# the ones build/load.Dockerfile and its dockerignore hard-code.
 #
-# Env: PAYLOAD_DIR (default deployments/shared-schemas),
-#      LOADER_DIR (default deployments/scripts)
 # Local: GITHUB_OUTPUT=/dev/stdout ./resolve-payload.sh
 
 set -euo pipefail
 
-PAYLOAD_DIR="${PAYLOAD_DIR:-deployments/shared-schemas}"
-LOADER_DIR="${LOADER_DIR:-deployments/scripts}"
+PAYLOAD_DIR="deployments/shared-schemas"
+LOADER_DIR="deployments/scripts"
 LOADER_FILES=(DeploySharedSchemas.py Utility.py requirements.txt)
 
 BUILDABLE="true"
