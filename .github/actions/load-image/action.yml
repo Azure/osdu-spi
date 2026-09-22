@@ -1,0 +1,162 @@
+name: 'Load Image Build'
+description: 'Build the shared-schemas loader image beside the service image when the checkout carries deployments/shared-schemas, and optionally push it to GHCR'
+
+inputs:
+  image_name:
+    description: 'Short service name (e.g. schema); the image is named <image_name>-load. Required.'
+    required: true
+  dockerfile_path:
+    description: 'Path to the load Dockerfile. Defaults to the canonical one the engineering system syncs to every fork (ADR-037).'
+    required: false
+    default: 'build/load.Dockerfile'
+  build_context:
+    description: 'Docker build context directory'
+    required: false
+    default: '.'
+  registry:
+    description: 'Container registry host'
+    required: false
+    default: 'ghcr.io'
+  org:
+    description: 'Registry organisation/owner. Falls back to the workflow github.repository_owner at runtime when omitted.'
+    required: false
+  push:
+    description: 'When true, log in to GHCR, push the image, and check package visibility. When false, build only. The caller must set this explicitly per job.'
+    required: false
+    default: 'true'
+  github_token:
+    description: 'Token for GHCR login and the package-visibility check. Only consumed on the push path.'
+    required: false
+
+outputs:
+  skipped:
+    description: '"true" when the checkout carries no payload and the image build was skipped'
+    value: ${{ steps.payload.outputs.buildable != 'true' }}
+  image_repository:
+    description: 'Full registry path, e.g. ghcr.io/<org>/<service>-load (empty when skipped)'
+    value: ${{ steps.meta.outputs.image_repository }}
+  image_digest:
+    description: 'sha256:... digest of the pushed image (empty when skipped or push is not true)'
+    value: ${{ inputs.push == 'true' && steps.build.outputs.digest || '' }}
+  image_tags:
+    description: 'Comma-separated tags pushed; for human/log use only'
+    value: ${{ steps.tags.outputs.image_tags }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Resolve payload"
+      id: payload
+      shell: bash
+      run: "$GITHUB_ACTION_PATH/resolve-payload.sh"
+
+    - name: "Validate push prerequisites"
+      # After payload resolution: a fork with no payload must not be made to supply an unused token.
+      if: ${{ steps.payload.outputs.buildable == 'true' && inputs.push == 'true' }}
+      shell: bash
+      run: |
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "::error::push=true requires github_token (GHCR login + visibility check)."
+          exit 1
+        fi
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: "Compute image metadata"
+      id: meta
+      if: ${{ steps.payload.outputs.buildable == 'true' }}
+      shell: bash
+      # Same metadata, tag, and visibility conventions as the service image (ADR-028).
+      run: |
+        "$GITHUB_ACTION_PATH/../docker-build/compute-metadata.sh" "$REGISTRY" "$ORG" "$IMAGE_NAME"
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        ORG: ${{ inputs.org || github.repository_owner }}
+        IMAGE_NAME: ${{ inputs.image_name }}-load
+
+    - name: "Compute image tags"
+      id: tags
+      if: ${{ steps.payload.outputs.buildable == 'true' }}
+      shell: bash
+      run: |
+        "$GITHUB_ACTION_PATH/../docker-build/compute-tags.sh" "$IMAGE_REPOSITORY" "$SHORT_SHA" "$REF_NAME" "$PUSH"
+      env:
+        IMAGE_REPOSITORY: ${{ steps.meta.outputs.image_repository }}
+        SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+        REF_NAME: ${{ github.ref_name }}
+        PUSH: ${{ inputs.push }}
+
+    - name: "Set up QEMU"
+      # Only the push path builds the emulated linux/arm64 leg.
+      if: ${{ steps.payload.outputs.buildable == 'true' && inputs.push == 'true' }}
+      uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+
+    - name: "Set up Docker Buildx"
+      if: ${{ steps.payload.outputs.buildable == 'true' }}
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+    - name: "Log in to GHCR"
+      if: ${{ steps.payload.outputs.buildable == 'true' && inputs.push == 'true' }}
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: "Build load image"
+      id: build
+      if: ${{ steps.payload.outputs.buildable == 'true' }}
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+      with:
+        context: ${{ inputs.build_context }}
+        file: ${{ inputs.dockerfile_path }}
+        push: ${{ inputs.push == 'true' }}
+        # Same platforms as the service image: the Job runs wherever the service does.
+        platforms: ${{ inputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+        provenance: false
+        tags: ${{ steps.tags.outputs.docker_tags }}
+        labels: |
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        # Own cache scope: the payload layers share nothing with the other images.
+        cache-from: type=gha,scope=load-image
+        cache-to: type=gha,mode=max,scope=load-image,ignore-error=true
+
+    - name: "Verify package visibility"
+      if: ${{ steps.payload.outputs.buildable == 'true' && inputs.push == 'true' && steps.build.outcome == 'success' }}
+      shell: bash
+      run: |
+        "$GITHUB_ACTION_PATH/../docker-build/set-package-visibility.sh" "$ORG" "$IMAGE_NAME"
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        ORG: ${{ inputs.org || github.repository_owner }}
+        IMAGE_NAME: ${{ inputs.image_name }}-load
+
+    - name: "Summary"
+      shell: bash
+      run: |
+        # Never echoes the token.
+        if [ "$BUILDABLE" != "true" ]; then
+          HEADING="📦 Load Image"
+          MSG="Skipped: ${REASON}"
+        elif [ "$PUSH" = "true" ]; then
+          HEADING="📦 Load Image Push"
+          MSG="Image pushed: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\` (payload: \`${PAYLOAD_DIR}\`)"
+        else
+          HEADING="📦 Load Image Build"
+          MSG="Dockerfile validated for payload \`${PAYLOAD_DIR}\`; no GHCR push (validate-only job)"
+        fi
+        echo "$MSG"
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "### ${HEADING}"
+            echo ""
+            echo "- ${MSG}"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+      env:
+        BUILDABLE: ${{ steps.payload.outputs.buildable }}
+        REASON: ${{ steps.payload.outputs.reason }}
+        PAYLOAD_DIR: ${{ steps.payload.outputs.payload_dir }}
+        IMAGE_REPOSITORY: ${{ steps.meta.outputs.image_repository }}
+        IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        PUSH: ${{ inputs.push }}

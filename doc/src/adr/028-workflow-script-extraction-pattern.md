@@ -58,7 +58,7 @@ Scripts follow one shape: shebang, `set -euo pipefail`, a short header comment, 
 
 ### 3. Local testing
 
-Each action's README shows how to run its scripts directly. Where the logic warrants it, a test suite lives under `.github/local-actions/<name>-tests/run-tests.sh` and the template's `dev-ci.yml` runs it; `sync-state-manager`, `upstream-filter`, `acceptance-resolver`, and `acceptance-image` have suites.
+Each action's README shows how to run its scripts directly. Where the logic warrants it, a test suite lives under `.github/local-actions/<name>-tests/run-tests.sh` and the template's `dev-ci.yml` runs it; `sync-state-manager`, `upstream-filter`, `acceptance-resolver`, `acceptance-image`, and `load-image` have suites.
 
 ### 4. Extraction decision matrix
 
