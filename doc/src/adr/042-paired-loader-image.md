@@ -20,7 +20,7 @@ The schema fork flips `deployments: strip` to `keep` in its filter config (ADR-0
 
 ### The template owns the packaging
 
-`build/load.Dockerfile` copies the payload and the three neutral loader files (`DeploySharedSchemas.py`, `Utility.py`, `requirements.txt`) onto a digest-pinned Python base, preserving the `deployments/` layout the loader resolves its payload from. Its sidecar `.dockerignore` admits nothing else into the build context. `build/load-entrypoint.sh` waits for the service's `/info`, takes `BEARER_TOKEN` or exchanges the workload identity token with Entra using the standard library, and runs the loader against `/schemas/system`. The loader's exit status is the verdict; it treats an already PUBLISHED schema as loaded, so a re-run passes. Both files sync with `build/`, and Dependabot bumps the base digest in the template.
+`build/load.Dockerfile` copies the payload and the three neutral loader files (`DeploySharedSchemas.py`, `Utility.py`, `requirements.txt`) onto a digest-pinned Python base, preserving the `deployments/` layout the loader resolves its payload from. Its sidecar `.dockerignore` admits nothing else into the build context. `build/load-entrypoint.sh` waits for the service's `/info`, takes `BEARER_TOKEN` or exchanges the workload identity token at Entra's v1 endpoint using the standard library (the services read `appid`, which v2 tokens omit, as the deploy lane already does), and runs the loader against `/schemas/system`. The loader's exit status is the verdict; it treats an already PUBLISHED schema as loaded, so a re-run passes. Both files sync with `build/`, and Dependabot bumps the base digest in the template.
 
 ### One step in the two image jobs
 

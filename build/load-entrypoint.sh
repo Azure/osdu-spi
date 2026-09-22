@@ -7,8 +7,8 @@
 # Env: SCHEMA_URL (required, the service base ending in /api/schema-service/v1),
 #      BEARER_TOKEN (optional, skips the exchange), otherwise AZURE_TENANT_ID,
 #      AZURE_CLIENT_ID and AZURE_FEDERATED_TOKEN_FILE as the workload identity webhook
-#      injects them; TOKEN_SCOPE (default https://management.azure.com/.default),
-#      WAIT_SECONDS (default 2700).
+#      injects them; TOKEN_RESOURCE (default https://management.azure.com/, the
+#      v1 resource the token is minted for), WAIT_SECONDS (default 2700).
 set -u
 
 LOADER_HOME="${LOADER_HOME:-/loader}"
@@ -17,7 +17,7 @@ BASE="${SCHEMA_URL%/}"
 INFO_URL="$BASE/info"
 SYSTEM_URL="$BASE/schemas/system"
 WAIT_SECONDS="${WAIT_SECONDS:-2700}"
-TOKEN_SCOPE="${TOKEN_SCOPE:-https://management.azure.com/.default}"
+TOKEN_RESOURCE="${TOKEN_RESOURCE:-https://management.azure.com/}"
 LOG="${TMPDIR:-/tmp}/load.log"
 
 # The deadline is wall-clock: each probe costs its 5s timeout on top of the sleep.
@@ -42,8 +42,9 @@ done
 echo "Schema service ready after $(( $(date +%s) - start_ts ))s."
 
 if [ -z "${BEARER_TOKEN:-}" ]; then
+  # The v1 endpoint on purpose: the services read appid, which v2 tokens omit.
   echo "Acquiring bearer token through workload identity..."
-  BEARER_TOKEN=$(TOKEN_SCOPE="$TOKEN_SCOPE" python3 - <<'PY'
+  BEARER_TOKEN=$(TOKEN_RESOURCE="$TOKEN_RESOURCE" python3 - <<'PY'
 import json, os, sys, urllib.parse, urllib.request
 tenant = os.environ.get("AZURE_TENANT_ID", "")
 client = os.environ.get("AZURE_CLIENT_ID", "")
@@ -55,12 +56,12 @@ with open(token_file) as fh:
 authority = os.environ.get("AZURE_AUTHORITY_HOST", "https://login.microsoftonline.com/").rstrip("/")
 body = urllib.parse.urlencode({
     "client_id": client,
-    "scope": os.environ["TOKEN_SCOPE"],
+    "resource": os.environ["TOKEN_RESOURCE"],
     "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
     "client_assertion": assertion,
     "grant_type": "client_credentials",
 }).encode()
-req = urllib.request.Request(f"{authority}/{tenant}/oauth2/v2.0/token", data=body, method="POST")
+req = urllib.request.Request(f"{authority}/{tenant}/oauth2/token", data=body, method="POST")
 try:
     with urllib.request.urlopen(req, timeout=30) as resp:
         payload = json.load(resp)

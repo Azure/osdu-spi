@@ -136,6 +136,9 @@ ok "argument pass-through and Bearer prefix"
 run_entrypoint -- >/dev/null 2>&1 || die "workload identity path must exit 0"
 grep -q '^exchange' "$IMG/stub.log" || die "unset BEARER_TOKEN must exchange the federated token"
 grep -q 'auth=Bearer exchanged-token' "$IMG/stub.log" || die "the exchanged token must reach the loader: $(cat "$IMG/stub.log")"
+grep -q '/oauth2/token"' "$ENTRYPOINT" || die "the exchange must use the v1 endpoint: the services read appid, which v2 tokens omit"
+grep -q '"resource":' "$ENTRYPOINT" || die "the v1 exchange takes a resource, not a scope"
+grep -q 'oauth2/v2.0' "$ENTRYPOINT" && die "no v2 endpoint: its tokens omit appid"
 ok "workload identity exchange"
 
 RC=0; run_entrypoint BEARER_TOKEN=abc PROBE=503 -- >/dev/null 2>&1 || RC=$?
