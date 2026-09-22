@@ -36,6 +36,9 @@ jobs:
       - name: Run acceptance image harness
         run: bash .github/local-actions/acceptance-image-tests/run-tests.sh
 
+      - name: Run load image harness
+        run: bash .github/local-actions/load-image-tests/run-tests.sh
+
       - name: Run upstream-owned files harness
         run: bash .github/local-actions/upstream-owned-files-tests/run-tests.sh
 
