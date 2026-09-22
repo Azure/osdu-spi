@@ -1,11 +1,14 @@
 name: GHCR Retention
 
-# Prunes old service-image tags from GHCR:
+# Prunes old image tags from GHCR for the service image and the two images
+# built beside it from the same commit, <service>-acceptance and <service>-load:
 #   :sha-<short>        delete when older than 30 days
 #   :<branch>-snapshot  keep the newest 5 per protected branch
 #   :<version> (semver) keep forever (never deleted)
-# Scheduled runs prune for real; manual runs default to a dry-run so the policy
-# can be observed before it deletes anything.
+# One policy for all three keeps the acceptance and load images that go with a
+# service digest alive exactly as long as the digest. Scheduled runs prune for
+# real; manual runs default to a dry-run so the policy can be observed before it
+# deletes anything.
 
 on:
   schedule:
@@ -39,56 +42,67 @@ jobs:
           set -euo pipefail
 
           OWNER_LC=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
-          PKG=$(printf '%s' "${SERVICE_NAME:-$REPO_NAME}" | tr '[:upper:]' '[:lower:]')
+          SERVICE=$(printf '%s' "${SERVICE_NAME:-$REPO_NAME}" | tr '[:upper:]' '[:lower:]')
 
           # Org packages live under /orgs/<org>/...; a user's own packages under /user/...
           OWNER_TYPE="$(gh api "/users/${OWNER_LC}" --jq '.type' 2>/dev/null || echo "")"
           if [ "$OWNER_TYPE" = "Organization" ]; then BASE="orgs/${OWNER_LC}"; else BASE="user"; fi
 
-          echo "Package: ${OWNER_LC}/${PKG}  (base: ${BASE}, dry_run: ${DRY_RUN})"
-
-          # New/empty forks have no package yet; a failed read must yield [] (not abort under set -e).
-          VERSIONS="$(gh api --paginate "${BASE}/packages/container/${PKG}/versions" 2>/dev/null | jq -s 'add // []' || echo '[]')"
-          COUNT="$(echo "$VERSIONS" | jq 'length')"
-          if [ "$COUNT" -eq 0 ]; then
-            echo "No versions found for ${OWNER_LC}/${PKG}; nothing to do."
-            exit 0
-          fi
-
           NOW=$(date -u +%s)
           CUTOFF=$(( NOW - 30 * 24 * 3600 ))
 
-          # Any semver-tagged version is a release and leaves every bucket, pre-release and build metadata included.
-          ELIGIBLE="$(echo "$VERSIONS" | jq '[ .[] | select((.metadata.container.tags // []) | any(test("^v?[0-9]+\\.[0-9]+\\.[0-9]+([-+].*)?$")) | not) ]')"
-
-          SHA_IDS="$(echo "$ELIGIBLE" | jq -r --argjson cutoff "$CUTOFF" '
-            .[]
-            | select((.metadata.container.tags // []) | length > 0 and all(startswith("sha-")))
-            | select((.created_at | fromdateiso8601) < $cutoff)
-            | .id')"
-
-          SNAP_IDS="$(echo "$ELIGIBLE" | jq -r '
-            [ .[] | select((.metadata.container.tags // []) | any(endswith("-snapshot"))) ]
-            | group_by([ .metadata.container.tags[] | select(endswith("-snapshot")) ][0])
-            | map(sort_by(.created_at) | reverse | .[5:])
-            | flatten | .[].id')"
-
           delete_version() {
-            id="$1"; reason="$2"
+            pkg="$1"; id="$2"; reason="$3"
             if [ "$DRY_RUN" = "true" ]; then
-              echo "DRY-RUN would delete version ${id} (${reason})"
-              echo "- would delete \`${id}\` — ${reason}" >> "$GITHUB_STEP_SUMMARY"
+              echo "DRY-RUN would delete ${pkg} version ${id} (${reason})"
+              echo "- would delete \`${id}\`: ${reason}" >> "$GITHUB_STEP_SUMMARY"
             else
-              if gh api -X DELETE "${BASE}/packages/container/${PKG}/versions/${id}" >/dev/null 2>&1; then
-                echo "Deleted version ${id} (${reason})"
-                echo "- deleted \`${id}\` — ${reason}" >> "$GITHUB_STEP_SUMMARY"
+              if gh api -X DELETE "${BASE}/packages/container/${pkg}/versions/${id}" >/dev/null 2>&1; then
+                echo "Deleted ${pkg} version ${id} (${reason})"
+                echo "- deleted \`${id}\`: ${reason}" >> "$GITHUB_STEP_SUMMARY"
               else
-                echo "::warning::Could not delete version ${id} (${reason}); continuing"
+                echo "::warning::Could not delete ${pkg} version ${id} (${reason}); continuing"
               fi
             fi
           }
 
-          echo "### GHCR retention — ${OWNER_LC}/${PKG} (dry_run: ${DRY_RUN})" >> "$GITHUB_STEP_SUMMARY"
-          for id in $SHA_IDS;  do delete_version "$id" "sha-* older than 30 days"; done
-          for id in $SNAP_IDS; do delete_version "$id" "snapshot beyond newest 5 per branch"; done
+          prune_package() {
+            PKG="$1"
+            echo "Package: ${OWNER_LC}/${PKG}  (base: ${BASE}, dry_run: ${DRY_RUN})"
+            echo "### GHCR retention: ${OWNER_LC}/${PKG} (dry_run: ${DRY_RUN})" >> "$GITHUB_STEP_SUMMARY"
+
+            # A fork without a suite or a payload has no such package: gh api exits nonzero on the
+            # 404 and, under pipefail, so does the pipeline, so the read yields [] instead of aborting.
+            if ! VERSIONS="$(gh api --paginate "${BASE}/packages/container/${PKG}/versions" 2>/dev/null | jq -s 'add // []')"; then
+              VERSIONS='[]'
+            fi
+            COUNT="$(echo "$VERSIONS" | jq 'length')"
+            if [ "$COUNT" -eq 0 ]; then
+              echo "No versions found for ${OWNER_LC}/${PKG}; nothing to do."
+              echo "- no versions found" >> "$GITHUB_STEP_SUMMARY"
+              return 0
+            fi
+
+            # Any semver-tagged version is a release and leaves every bucket, pre-release and build metadata included.
+            ELIGIBLE="$(echo "$VERSIONS" | jq '[ .[] | select((.metadata.container.tags // []) | any(test("^v?[0-9]+\\.[0-9]+\\.[0-9]+([-+].*)?$")) | not) ]')"
+
+            SHA_IDS="$(echo "$ELIGIBLE" | jq -r --argjson cutoff "$CUTOFF" '
+              .[]
+              | select((.metadata.container.tags // []) | length > 0 and all(startswith("sha-")))
+              | select((.created_at | fromdateiso8601) < $cutoff)
+              | .id')"
+
+            SNAP_IDS="$(echo "$ELIGIBLE" | jq -r '
+              [ .[] | select((.metadata.container.tags // []) | any(endswith("-snapshot"))) ]
+              | group_by([ .metadata.container.tags[] | select(endswith("-snapshot")) ][0])
+              | map(sort_by(.created_at) | reverse | .[5:])
+              | flatten | .[].id')"
+
+            for id in $SHA_IDS;  do delete_version "$PKG" "$id" "sha-* older than 30 days"; done
+            for id in $SNAP_IDS; do delete_version "$PKG" "$id" "snapshot beyond newest 5 per branch"; done
+          }
+
+          for pkg in "$SERVICE" "${SERVICE}-acceptance" "${SERVICE}-load"; do
+            prune_package "$pkg"
+          done
           echo "Retention complete."

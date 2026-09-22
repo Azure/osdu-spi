@@ -155,6 +155,8 @@ chore: update dependencies
 
 The engineering system syncs the canonical `build/Dockerfile` to every fork. `SERVICE_NAME` defaults to the repository name, and `SERVICE_TARGET_JAR` is needed only to disambiguate multiple Azure Spring Boot JARs. Trusted pushes publish to `ghcr.io/<owner>/<service>` with the workflow `GITHUB_TOKEN`; untrusted PR contexts never receive package-write permission.
 
+Two more images are built beside the service image from the same commit and skipped when their inputs are absent: `<service>-acceptance` from the suites the descriptor declares (ADR-040), and `<service>-load` from `deployments/shared-schemas/` when the fork's filter keeps it (ADR-042). Only the schema fork carries that payload.
+
 ## Related
 
 - [Conventional Commits](https://conventionalcommits.org/) - Commit message standards
@@ -164,3 +166,4 @@ The engineering system syncs the canonical `build/Dockerfile` to every fork. `SE
 - [ADR-037: Canonical Service Dockerfile](../adr/037-engineering-system-owns-service-dockerfile.md)
 - [ADR-040: Descriptor-Owned Acceptance Contract](../adr/040-descriptor-acceptance-contract.md)
 - [ADR-041: Borrow, Prove, Restore Lane](../adr/041-borrow-prove-restore-lane.md)
+- [ADR-042: Paired Loader Image from the Service Fork](../adr/042-paired-loader-image.md)

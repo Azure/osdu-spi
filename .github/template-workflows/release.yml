@@ -215,3 +215,35 @@ jobs:
           fi
           docker buildx imagetools create --tag "${ACC_REPO}:${VERSION}" "$ACC_SRC"
           echo "Tagged \`${ACC_REPO}:${VERSION}\` from \`${ACC_SRC}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "Resolve load payload"
+        id: payload
+        run: .github/actions/load-image/resolve-payload.sh
+
+      - name: "Tag load image with semver"
+        # Same commit as the service image (ADR-042); the stack selects the loader at the
+        # service's commit, so the release tag must name both.
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+          REPO: ${{ steps.service_tag.outputs.repo }}
+          LOAD_BUILDABLE: ${{ steps.payload.outputs.buildable }}
+        run: |
+          set -euo pipefail
+          if [ "${LOAD_BUILDABLE}" != "true" ]; then
+            echo "No shared-schemas payload on this commit; load image retag skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          LOAD_REPO="${REPO}-load"
+          LOAD_SRC="${LOAD_REPO}:sha-${GITHUB_SHA:0:12}"
+          load_found=false
+          for attempt in $(seq 1 60); do
+            if docker buildx imagetools inspect "$LOAD_SRC" >/dev/null 2>&1; then load_found=true; break; fi
+            echo "Load image ${LOAD_SRC} not present yet (attempt ${attempt}/60); waiting for its push…"
+            sleep 20
+          done
+          if [ "$load_found" != "true" ]; then
+            echo "::error::Load image ${LOAD_SRC} did not appear within ~20 min; the load image push may have failed for this commit."
+            exit 1
+          fi
+          docker buildx imagetools create --tag "${LOAD_REPO}:${VERSION}" "$LOAD_SRC"
+          echo "Tagged \`${LOAD_REPO}:${VERSION}\` from \`${LOAD_SRC}\`" >> "$GITHUB_STEP_SUMMARY"

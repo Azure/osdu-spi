@@ -92,6 +92,7 @@ Decisions for the container image build, the image registry, the acceptance-test
 | [037](037-engineering-system-owns-service-dockerfile.md) | **Engineering System Owns the Canonical Service Dockerfile** | :material-trending-up: High |
 | [040](040-descriptor-acceptance-contract.md) | **Descriptor-Owned Acceptance Contract** | :material-trending-up: High |
 | [041](041-borrow-prove-restore-lane.md) | **Borrow, Prove, Restore Lane** | :material-trending-up: High |
+| [042](042-paired-loader-image.md) | **Paired Loader Image from the Service Fork** | :material-minus: Medium |
 
 ### :material-package-variant: Release Management
 

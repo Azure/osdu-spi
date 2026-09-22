@@ -334,6 +334,13 @@ jobs:
           push: 'false'
           image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
 
+      - name: "Load Image"
+        # Proves the loader image builds when the checkout carries deployments/shared-schemas; skips otherwise.
+        uses: ./.github/actions/load-image
+        with:
+          push: 'false'
+          image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+
   docker-push:
     name: "Docker Push"
     needs: [check-initialization, check-repo-state, java-build, docker-build]
@@ -380,6 +387,16 @@ jobs:
         # service image. Rides this job to inherit the ADR-036 trust gate; skips when no suite exists.
         id: acceptance
         uses: ./.github/actions/acceptance-image
+        with:
+          push: 'true'
+          image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Load Image Build and Push"
+        # The shared-schemas payload ships as ghcr.io/<org>/<svc>-load:sha-<sha> from the same commit
+        # (ADR-042), so the stack pairs service and loader by commit. Skips when no payload exists.
+        id: load
+        uses: ./.github/actions/load-image
         with:
           push: 'true'
           image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
