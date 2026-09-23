@@ -260,7 +260,8 @@ jobs:
                 git archive refs/remotes/template/main "$dir" | tar -x || echo "Failed to sync directory $dir"
               fi
               
-              git add "$dir" || true
+              # Forced: the fork's upstream .gitignore may cover a template-owned path (legal ignores build/).
+              git add -f "$dir" || true
             fi
           done
           
@@ -280,7 +281,7 @@ jobs:
               mkdir -p "$(dirname "$file")"
               
               if git show refs/remotes/template/main:"$file" > "$file" 2>/dev/null; then
-                git add "$file"
+                git add -f "$file"
               else
                 echo "File $file not found in template, skipping"
               fi
