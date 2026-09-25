@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+# Copyright © Microsoft Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 #
 # Copies fork-specific resources from .github/fork-resources/ to their final
 # locations and removes template-only files per sync-config.json.
@@ -50,6 +64,13 @@ if [[ -f ".github/fork-resources/triage.prompt.md" ]]; then
   mkdir -p ".github/prompts"
   cp ".github/fork-resources/triage.prompt.md" ".github/prompts/triage.prompt.md"
   git add ".github/prompts/triage.prompt.md"
+fi
+
+# Replaces the template's own guide at init; sync-template only plants it when missing.
+if [[ -f ".github/fork-resources/CONTRIBUTING.md" ]]; then
+  echo "Installing fork contributing guide..."
+  cp ".github/fork-resources/CONTRIBUTING.md" "CONTRIBUTING.md"
+  git add "CONTRIBUTING.md"
 fi
 
 if [[ -d ".github/fork-resources/ISSUE_TEMPLATE" ]]; then

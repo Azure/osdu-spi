@@ -11,9 +11,10 @@
 /build/                         <owners>
 /.release-please-config.json    <owners>
 
-# Fork-owned Azure source, descriptor, and filter config.
+# Fork-owned Azure source, descriptor, filter config, and contributing guide.
 /provider/<service>-azure/      <owners>
 /testing/<service>-test-azure/  <owners>
 /.spi/                          <owners>
 /.github/upstream-filter.yml    <owners>
 /.github/CODEOWNERS             <owners>
+/CONTRIBUTING.md                <owners>
