@@ -66,6 +66,13 @@ if [[ -f ".github/fork-resources/triage.prompt.md" ]]; then
   git add ".github/prompts/triage.prompt.md"
 fi
 
+# Replaces the template's own guide at init; sync-template only plants it when missing.
+if [[ -f ".github/fork-resources/CONTRIBUTING.md" ]]; then
+  echo "Installing fork contributing guide..."
+  cp ".github/fork-resources/CONTRIBUTING.md" "CONTRIBUTING.md"
+  git add "CONTRIBUTING.md"
+fi
+
 if [[ -d ".github/fork-resources/ISSUE_TEMPLATE" ]]; then
   echo "Installing fork-specific issue templates..."
   mkdir -p ".github/ISSUE_TEMPLATE"
