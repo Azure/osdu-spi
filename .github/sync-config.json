@@ -164,10 +164,6 @@
     ],
     "files": [
       {
-        "path": "CONTRIBUTING.md",
-        "reason": "Template-specific contributing guide"
-      },
-      {
         "path": "AI_EVOLUTION.md",
         "reason": "Template development history and AI context"
       },

@@ -385,6 +385,13 @@ jobs:
             fi
           fi
 
+          # Same create-if-missing rule for the contributing guide.
+          if [ ! -f "CONTRIBUTING.md" ] && git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" >/dev/null 2>&1; then
+            echo "Planting fork contributing guide"
+            git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" > "CONTRIBUTING.md"
+            git add "CONTRIBUTING.md"
+          fi
+
           # Same rule for CODEOWNERS: owners come from the CODEOWNERS variable, with no default
           # anywhere (ADR-018), and a plantable file is itself an update in check-updates above.
           # The fork's own Azure module names the prefix to protect; the filter's service key is
