@@ -47,7 +47,7 @@ Fork Repository (after deployment):
 ### Deployment mechanisms
 
 1. **Initialization** (`init-complete.yml`): `init-helpers/deploy-fork-resources.sh` copies each resource to its final location, sets the Copilot firewall repository variable from `copilot-firewall-config.json`, and removes `fork-resources/`
-2. **Update** (`sync-template.yml`): when `fork-resources` changes in the template, the sync re-copies the resources to their final locations and removes the staging directory again
+2. **Update** (`sync-template.yml`): when `fork-resources` changes in the template, the sync re-copies the resources that track the template (issue templates, Copilot instructions and firewall configuration, Dependabot, the triage prompt) and removes the staging directory again. Fork-owned resources follow rule 6
 3. **Sync configuration**: `.github/fork-resources` is listed in `sync_rules.directories` with `sync_all: true`, so changes are detected by template sync
 
 ### Pattern rules

@@ -97,7 +97,7 @@ curl -H "Authorization: Bearer $(spi token)" -H "data-partition-id: <partition>"
 
 ## Deploy
 
-For a pull request from this repository that changes code, CI publishes the service image and its test suite image, `osdu-spi-<service>-acceptance`, to GHCR, and the Deploy and Test lane borrows an SPI Stack environment, runs the new image there, proves it with the acceptance suite, and restores the environment's own image, so code merged to `main` has already passed on real infrastructure. This repository does not own infrastructure; SPI Stack does.
+For a pull request from this repository that changes code, CI publishes the service image and its test suite image, `osdu-spi-<service>-acceptance`, to GHCR, and the Deploy and Test lane borrows an SPI Stack environment, runs the new image there, proves it with the acceptance suite, and restores the environment's own image. When that lane runs and passes, the change is proven on real infrastructure before it merges; the Validation Summary on the pull request shows whether it ran. This repository does not own infrastructure; SPI Stack does.
 
 To try a build by hand on an environment you are connected to, pin it by digest and release the pin when done:
 
