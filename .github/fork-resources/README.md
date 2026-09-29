@@ -34,7 +34,7 @@
 
 ## Build
 
-Requires Java 17 and Maven 3.8+. OSDU dependencies resolve from the public community registry through the settings file in `.mvn`:
+Requires Java 17 and Maven 3.6.3+. OSDU dependencies resolve from the public community registry through the settings file in `.mvn`:
 
 ```bash
 mvn --settings .mvn/community-maven.settings.xml -P core,azure clean install
