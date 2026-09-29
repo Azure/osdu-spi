@@ -13,8 +13,8 @@
 
 | | |
 |---|---|
-| API base path | `/api/<service>/v1/` |
-| Swagger UI | `/api/<service>/v1/swagger` |
+| API base path | `<api-base-path>`, for example `/api/legal/v1/` |
+| Swagger UI | `<api-base-path>swagger` |
 | Health | `:<management-port>/actuator/health` |
 | Depends on | <Partition, Entitlements, ...> |
 | Azure resources | <Cosmos DB, Storage, Service Bus, Redis, Key Vault, ...> |
@@ -61,7 +61,7 @@ SPI Stack sets the service's environment from two places: the shared `osdu-confi
 
 | Variable | Value on SPI Stack | Purpose |
 |---|---|---|
-| `SERVER_SERVLET_CONTEXTPATH` | `/api/<service>/v1/` | API base path |
+| `SERVER_SERVLET_CONTEXTPATH` | `<api-base-path>` | API base path |
 | `AZURE_ISTIOAUTH_ENABLED` | `true` | Trust the mesh's token validation |
 | `AZURE_PAAS_WORKLOADIDENTITY_ISENABLED` | `true` | Authenticate to Azure with workload identity |
 | `PARTITION_SERVICE_ENDPOINT` | `http://partition/api/partition/v1` | Per-partition resource lookup |
@@ -92,7 +92,7 @@ To call the API by hand, `spi token` mints a bearer token:
 
 ```bash
 curl -H "Authorization: Bearer $(spi token)" -H "data-partition-id: <partition>" \
-  https://<gateway>/api/<service>/v1/<endpoint>
+  https://<gateway><api-base-path><endpoint>
 ```
 
 ## Deploy
