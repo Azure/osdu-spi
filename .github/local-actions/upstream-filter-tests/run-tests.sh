@@ -595,7 +595,11 @@ replace_in_file "$TTC" "top_level:" "top_level:
   archive-metadata.txt: keep"
 TGEN="$TMP/template-gen"
 fresh_copy "$TGEN"
+echo "upstream readme" > "$TGEN/README.md"
+echo "testing readme" > "$TGEN/testing/README.md"
 engine --mode generate --config "$TTC" --checkout "$TGEN" --report "$TMP/template-gen.json" > /dev/null
+[ ! -f "$TGEN/README.md" ] || die "template config kept the upstream root README"
+[ -f "$TGEN/testing/README.md" ] || die "template config stripped testing/README.md"
 [ -f "$TGEN/demo-core/pom.xml" ] || die "template config stripped demo-core"
 [ ! -d "$TGEN/provider" ] || die "template config kept provider/"
 grep -q "<module>provider/demo-azure</module>" "$TGEN/pom.xml" || die "template config azure profile injection missing"

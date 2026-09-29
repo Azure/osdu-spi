@@ -13,7 +13,7 @@ Your fork management repository is now ready! Here is what was set up:
 
 ✅ **AI Enhancement:** GitHub Copilot Agent firewall allowlist configured for OSDU domains
 
-✅ **Template Cleanup:** Removed template documentation (upstream README will be used)
+✅ **Template Cleanup:** Removed template documentation; `README.md` is a skeleton to fill in for this service
 
 {VARIABLE_STATUS}
 

@@ -22,7 +22,7 @@ top_level:
   .trufflehog-exclude: strip
   LICENSE: keep
   NOTICE: keep
-  README.md: keep
+  README.md: strip
   docs: keep
   pom.xml: keep
   publish.yml: strip
