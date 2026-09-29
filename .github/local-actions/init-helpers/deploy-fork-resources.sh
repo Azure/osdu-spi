@@ -73,6 +73,13 @@ if [[ -f ".github/fork-resources/CONTRIBUTING.md" ]]; then
   git add "CONTRIBUTING.md"
 fi
 
+# Upstream's README is stripped from fork_upstream, so init seeds the fork's own from the skeleton.
+if [[ -f ".github/fork-resources/README.md" ]]; then
+  echo "Installing fork README skeleton..."
+  cp ".github/fork-resources/README.md" "README.md"
+  git add "README.md"
+fi
+
 if [[ -d ".github/fork-resources/ISSUE_TEMPLATE" ]]; then
   echo "Installing fork-specific issue templates..."
   mkdir -p ".github/ISSUE_TEMPLATE"

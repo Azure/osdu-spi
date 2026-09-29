@@ -14,7 +14,7 @@ This tree has three owners; [`.github/CODEOWNERS`](.github/CODEOWNERS) maps the 
 
 | Area | Owner | Where to make the change |
 |---|---|---|
-| `provider/*-azure/`, `testing/*-test-azure/`, `.spi/`, `.github/upstream-filter.yml`, `.github/CODEOWNERS`, `CONTRIBUTING.md` | This repository | A pull request here. |
+| `provider/*-azure/`, `testing/*-test-azure/`, `.spi/`, `.github/upstream-filter.yml`, `.github/CODEOWNERS`, `CONTRIBUTING.md`, `README.md` | This repository | A pull request here. |
 | `.github/` (except the files above), `build/`, `.release-please-config.json` | [`Azure/osdu-spi`](https://github.com/Azure/osdu-spi) | The template. Template sync overwrites these files here. |
 | Everything else (shared service code) | OSDU community | Upstream in [OSDU GitLab](https://community.opengroup.org/osdu/platform). To bring in a specific upstream fix early, port it and add the `port` label to the pull request. |
 

@@ -28,6 +28,7 @@ Template Repository:
 │   │   ├── CODEOWNERS               # → substituted to .github/CODEOWNERS
 │   │   ├── CONTRIBUTING.md          # → copied to CONTRIBUTING.md
 │   │   ├── ISSUE_TEMPLATE/          # → copied to .github/ISSUE_TEMPLATE/
+│   │   ├── README.md                # → copied to README.md at initialization
 │   │   ├── copilot-instructions.md  # → copied to .github/copilot-instructions.md
 │   │   ├── copilot-firewall-config.json # → copied to .github/ + repository variable
 │   │   ├── dependabot.yml           # → substituted to .github/dependabot.yml
@@ -56,7 +57,7 @@ Fork Repository (after deployment):
 3. **Cleanup required**: deployment must remove `fork-resources/` after processing
 4. **Sync integration**: changes to `fork-resources` flow through the normal template sync
 5. **Service substitution**: a resource may carry a `<service>` placeholder, replaced at deployment with the service slug derived from `UPSTREAM_REPO_URL` (the URL basename). `dependabot.yml` uses this today. `upstream-filter.yml` takes its `service` from the upstream `provider/<prefix>-azure` module at initialization and falls back to the basename, since the module prefix can differ from the slug. `CODEOWNERS` reads the prefix from the fork's own `provider/<prefix>-azure` tree, falling back to the filter's `service` key, and takes `<owners>` from the `CODEOWNERS` repository variable. There is no default: a single person as sole owner could not approve their own pull requests, so an unset variable leaves the file unplanted and `settings-apply.yml` reports it.
-6. **Fork-owned after planting**: `upstream-filter.yml`, `CODEOWNERS` and `CONTRIBUTING.md` deploy create-if-missing only. `CONTRIBUTING.md` is the exception at initialization, where it replaces the template's own contributing guide. Once planted they belong to the fork, and template sync never overwrites them. A fork missing `CODEOWNERS` with the variable set receives it on the next sync run whether or not the template changed.
+6. **Fork-owned after planting**: `upstream-filter.yml`, `CODEOWNERS` and `CONTRIBUTING.md` deploy create-if-missing only. `CONTRIBUTING.md` is the exception at initialization, where it replaces the template's own contributing guide. `README.md` deploys only at initialization, replacing the template's own README with a skeleton the fork fills in; the filter strips upstream's README, so the fork owns it from then on. Once planted they belong to the fork, and template sync never overwrites them. A fork missing `CODEOWNERS` with the variable set receives it on the next sync run whether or not the template changed.
 
 ## Alternatives Considered
 
