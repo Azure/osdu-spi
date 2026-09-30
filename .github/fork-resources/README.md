@@ -59,13 +59,13 @@ SPI Stack sets the service's environment from two places: the shared `osdu-confi
 
 **Specific to <Service>**, from `services/<service>.yaml`:
 
-| Variable | Value on SPI Stack | Purpose |
-|---|---|---|
-| `SERVER_SERVLET_CONTEXTPATH` | `<api-base-path>` | API base path |
-| `AZURE_ISTIOAUTH_ENABLED` | `true` | Trust the mesh's token validation |
-| `AZURE_PAAS_WORKLOADIDENTITY_ISENABLED` | `true` | Authenticate to Azure with workload identity |
-| `PARTITION_SERVICE_ENDPOINT` | `http://partition/api/partition/v1` | Per-partition resource lookup |
-| <...> | | |
+| Variable and value on SPI Stack | Purpose |
+|---|---|
+| `SERVER_SERVLET_CONTEXTPATH`<br>`<api-base-path>` | API base path |
+| `AZURE_ISTIOAUTH_ENABLED`<br>`true` | Trust the mesh's token validation |
+| `AZURE_PAAS_WORKLOADIDENTITY_ISENABLED`<br>`true` | Authenticate to Azure with workload identity |
+| `PARTITION_SERVICE_ENDPOINT`<br>`http://partition/api/partition/v1` | Per-partition resource lookup |
+| <...><br> |  |
 
 The service authenticates to Azure with workload identity, which injects `AZURE_CLIENT_ID` and a federated token; there are no client secrets. Per-partition resources are resolved at request time through the Partition service.
 
