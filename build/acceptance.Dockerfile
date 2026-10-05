@@ -29,7 +29,7 @@ RUN set -eu; mkdir -p /suite; \
     if [ -d /src/.spi ]; then cp -R /src/.spi /suite/.spi; fi; \
     printf '%s' "${SUITE_DIRS%% *}" > /suite/.default-suite-dir
 
-FROM docker.io/library/maven:3.9-eclipse-temurin-17@sha256:42a3ac393abbc64dae6c96703e5ead2e921fe9103371ac58b5b404b0d6a26502
+FROM docker.io/library/maven:3.9-eclipse-temurin-17@sha256:1a352420f7aba21f5ad08df31bab55f74c013fb491f1ae8ab1dd7ff9ed698584
 
 ARG SUITE_DIRS
 WORKDIR /suite
