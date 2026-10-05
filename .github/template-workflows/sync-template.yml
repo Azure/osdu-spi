@@ -267,8 +267,17 @@ jobs:
           
           FILES=$(jq -r '.sync_rules.files[] | .path' temp-sync-config.json 2>/dev/null || echo "")
           for file in $FILES; do
+            # Checked every run: the sync that delivers this logic still runs the fork's previous copy.
+            if ! git cat-file -e refs/remotes/template/main:"$file" 2>/dev/null; then
+              if git ls-files --error-unmatch -- "$file" >/dev/null 2>&1; then
+                echo "Removing file (no longer in template): $file"
+                git rm -q -f -- "$file"
+              fi
+              continue
+            fi
+
             SHOULD_SYNC=false
-            
+
             if [ "$CONFIG_CHANGED" = "true" ]; then
               echo "Syncing file (config changed): $file"
               SHOULD_SYNC=true
@@ -279,12 +288,8 @@ jobs:
             
             if [ "$SHOULD_SYNC" = "true" ]; then
               mkdir -p "$(dirname "$file")"
-              
-              if git show refs/remotes/template/main:"$file" > "$file" 2>/dev/null; then
-                git add -f "$file"
-              else
-                echo "File $file not found in template, skipping"
-              fi
+              git show refs/remotes/template/main:"$file" > "$file"
+              git add -f "$file"
             fi
           done
           

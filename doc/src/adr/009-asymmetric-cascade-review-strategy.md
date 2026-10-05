@@ -58,7 +58,7 @@ The first cascade release PR on `osdu-spi-partition` was squash-merged by a huma
 
 The root vulnerability was that the human review gate and the merge-method choice were collapsed into a single click. A human reviewing a release PR could approve the changes correctly *and* misclick the merge method, with no separate gate to catch the merge-method mistake.
 
-A contributing factor was the template's `default-branch.json` ruleset including `required_linear_history`, which forbids merge commits in the GitHub UI regardless of repo settings. With merge commits hidden from the UI, "Squash" became the sticky default. That rule was removed from the ruleset alongside this revision. (`.github/branch-protection.json` still lists `required_linear_history: true`; no workflow or script reads that file.)
+A contributing factor was the template's `default-branch.json` ruleset including `required_linear_history`, which forbids merge commits in the GitHub UI regardless of repo settings. With merge commits hidden from the UI, "Squash" became the sticky default. That rule was removed from the ruleset alongside this revision.
 
 ### Decision
 Separate the human review gate from the merge-method choice:

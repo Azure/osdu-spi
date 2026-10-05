@@ -24,7 +24,7 @@ Implement configuration-driven template synchronization using `.github/sync-conf
 `.github/sync-config.json` has three top-level sections:
 
 - `sync_rules.directories`: directories synced whole (currently `.github/actions`, `.github/fork-resources`, `build`, `.github/rulesets`, `.github/scripts/settings-apply`)
-- `sync_rules.files`: individual files synced (release-please config, `labels.json`, `branch-protection.json`, `security-on.json`, `security-patterns.txt`)
+- `sync_rules.files`: individual files synced (release-please config, `labels.json`, `security-on.json`, `security-patterns.txt`); a listed file the template no longer has is removed from the fork
 - `sync_rules.workflows.template_workflows`: fork workflows stored under `.github/template-workflows/` and copied to `.github/workflows/` at initialization (ADR-015); `template_only` and `development_only` list the template's own workflows that never reach forks
 - `sync_rules.tracking_files`: `.github/.template-sync-commit`, the last synced template commit, auto-created when missing
 - `exclusions`: paths never synced (`.github/copilot-instructions.md`, `.github/local-actions`, `.spi`, `CODEOWNERS`). The excluded `CODEOWNERS` is the template's own root file; a fork's `.github/CODEOWNERS` is planted create-if-missing from `fork-resources` and is fork-owned from then on (ADR-018)
