@@ -21,7 +21,7 @@ descriptor's `mavenArguments` array verbatim, never a shell string.
 ## What the image pins
 
 The suite source and a warmed local repository — not dependency *resolution*.
-The run is online by design; `dependency:go-offline` caches artifacts, not the
+The run is online by design; the prewarm caches artifacts, not the
 metadata a version range consults, so `--offline` fails wherever the upstream
 graph carries ranges (`os-core-test` pulls `io.cucumber` ranges today) and a
 later run can resolve a different set. Registry availability is still required.
@@ -72,7 +72,7 @@ the service image.
 
 Differences, both deliberate:
 
-- **amd64-only.** This build RUNs Maven (`dependency:go-offline`); under
+- **amd64-only.** This build RUNs Maven (`dependency:resolve`); under
   QEMU arm64 emulation that costs many minutes per push for no consumer —
   CI runners are amd64 and Apple Silicon runs the amd64 image under
   emulation. A need for native arm64 local runs is the signal to revisit.

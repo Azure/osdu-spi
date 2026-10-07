@@ -12,7 +12,7 @@
 #
 # Only the suite source and a warmed local repository are pinned. The run is online, and where
 # the upstream graph carries version ranges (os-core-test pulls io.cucumber ranges) a later run
-# can resolve a different set; go-offline caches artifacts, not range metadata. A fork that
+# can resolve a different set; the prewarm caches artifacts, not range metadata. A fork that
 # wants a frozen set pins the ranges in its own suite pom.
 #
 # amd64 only: this build runs Maven, and under QEMU arm64 emulation that costs minutes per push
@@ -37,17 +37,19 @@ COPY --from=select /suite/ /suite/
 COPY --chmod=0755 build/acceptance-entrypoint.sh /usr/local/bin/acceptance-entrypoint.sh
 
 # Each suite resolves its own graph; a multi-module suite (a testing/ reactor whose provider
-# module depends on a sibling core module) also needs that sibling installed, which
-# go-offline does not do, so the reactor is installed without running its tests first.
+# module depends on a sibling core module) also needs that sibling installed, so the reactor is
+# installed first. -DskipITs as well as -DskipTests, because a failsafe execution that sets its
+# own <skipTests> ignores the user property. resolve, not go-offline: go-offline also fetches
+# conflict losers and unevaluated classifiers the mediated build never uses.
 RUN set -eu; \
     SETTINGS=""; \
     if [ -f /suite/.mvn/community-maven.settings.xml ]; then SETTINGS="--settings /suite/.mvn/community-maven.settings.xml"; fi; \
     for dir in ${SUITE_DIRS:?SUITE_DIRS build-arg is required}; do \
       echo "==> prewarming $dir"; \
       if grep -q "<modules>" "/suite/$dir/pom.xml"; then \
-        mvn -B -q --no-transfer-progress $SETTINGS -f "/suite/$dir/pom.xml" install -DskipTests; \
+        mvn -B -q --no-transfer-progress $SETTINGS -f "/suite/$dir/pom.xml" install -DskipTests -DskipITs; \
       fi; \
-      mvn -B --no-transfer-progress $SETTINGS -f "/suite/$dir/pom.xml" dependency:go-offline; \
+      mvn -B --no-transfer-progress $SETTINGS -f "/suite/$dir/pom.xml" dependency:resolve dependency:resolve-plugins; \
     done
 
 # Arguments are Maven argv tokens, never a shell string.
