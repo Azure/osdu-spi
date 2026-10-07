@@ -328,7 +328,7 @@ jobs:
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
 
       - name: "Acceptance Image"
-        # Proves every suite's go-offline build before the trusted lane bakes it; skips when no suite exists.
+        # Proves every suite's prewarm build before the trusted lane bakes it; skips when no suite exists.
         uses: ./.github/actions/acceptance-image
         with:
           push: 'false'
