@@ -1,0 +1,32 @@
+name: 'Setup Maven'
+description: 'Installs the template-pinned Apache Maven (checksum-verified, cached in the runner tool cache) and puts it first on PATH, so a runner image update cannot change Maven or its default plugin versions'
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Install pinned Maven"
+      shell: bash
+      env:
+        # The single template constant. 3.9.16 is what every fork's current release was built with;
+        # moving to 3.10.x is a deliberate change proven on a service lane.
+        MAVEN_VERSION: '3.9.16'
+        MAVEN_SHA512: '831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6'
+      run: |
+        set -euo pipefail
+        TOOL_ROOT="${RUNNER_TOOL_CACHE:-$HOME/.cache/tool-cache}/maven/${MAVEN_VERSION}/x64"
+        MAVEN_HOME_DIR="$TOOL_ROOT/apache-maven-${MAVEN_VERSION}"
+
+        if [ ! -x "$MAVEN_HOME_DIR/bin/mvn" ]; then
+          TMP_DIR="$(mktemp -d)"
+          ARCHIVE="$TMP_DIR/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+          curl -fsSL --retry 3 -o "$ARCHIVE" \
+            "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+          echo "${MAVEN_SHA512}  ${ARCHIVE}" | sha512sum -c -
+          mkdir -p "$TOOL_ROOT"
+          tar -xzf "$ARCHIVE" -C "$TOOL_ROOT"
+          rm -rf "$TMP_DIR"
+        fi
+
+        echo "$MAVEN_HOME_DIR/bin" >> "$GITHUB_PATH"
+        echo "M2_HOME=$MAVEN_HOME_DIR" >> "$GITHUB_ENV"
+        "$MAVEN_HOME_DIR/bin/mvn" -v
