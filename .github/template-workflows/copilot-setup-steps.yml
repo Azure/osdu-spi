@@ -28,6 +28,9 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
+      - name: Setup pinned Maven
+        uses: ./.github/actions/setup-maven
+
       - name: Install Maven dependencies
         continue-on-error: true
         env:

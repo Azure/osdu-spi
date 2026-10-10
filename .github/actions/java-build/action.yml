@@ -63,11 +63,17 @@ runs:
         cache: 'maven'
         cache-dependency-path: '**/pom.xml'
 
+    - name: "Setup Maven"
+      if: steps.check_pom.outputs.has_pom == 'true'
+      uses: ./.github/actions/setup-maven
+
     - name: "Build and Test"
       if: steps.check_pom.outputs.has_pom == 'true'
       id: build
       shell: bash
       run: |
+        mvn -v
+
         # GITHUB_REF_NAME is "<n>/merge" on pull_request events; '/' is invalid in a Maven version.
         SAFE_REF="${GITHUB_REF_NAME//\//-}"
         MAVEN_CLI_OPTS="--batch-mode -Drevision=${SAFE_REF}-SNAPSHOT"
