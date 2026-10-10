@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.1](https://github.com/Azure/osdu-spi/compare/v1.2.0...v1.2.1) (2026-10-10)
+
+
+### 🐛 Bug Fixes
+
+* **acceptance:** Prewarm with dependency:resolve, not go-offline ([ddfd9ff](https://github.com/Azure/osdu-spi/commit/ddfd9ff376b1f49a2f41b7a9f55e9541796cba45))
+* **acceptance:** Prewarm with dependency:resolve, not go-offline ([8f3c4cf](https://github.com/Azure/osdu-spi/commit/8f3c4cf633ace388c1c6b7ba22c8e3195c1d7f9c))
+
+
+### 🔧 Miscellaneous
+
+* **deps:** Bump openjdk/jdk from `ab77e25` to `df29dac` in /build in the docker group ([7382f95](https://github.com/Azure/osdu-spi/commit/7382f9522e5654e0cdb6419b2d7a6745fda32ede))
+* **deps:** Bump openjdk/jdk from `df29dac` to `fe3dae3` in /build in the docker group ([bb49a03](https://github.com/Azure/osdu-spi/commit/bb49a034a3dcdaa922a1905e708ec66bde930888))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([b2a5913](https://github.com/Azure/osdu-spi/commit/b2a59134080671c924b738675cfb09a9ab6d4d2d))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([f39f99b](https://github.com/Azure/osdu-spi/commit/f39f99bd3cba3cbf88cd810c66ce758fa0b2629f))
+* **deps:** Bump urllib3 from 2.7.0 to 2.8.0 in /doc ([ab84d2a](https://github.com/Azure/osdu-spi/commit/ab84d2a74cece663666452bc61b27e43273b99ca))
+* **deps:** Bump urllib3 from 2.7.0 to 2.8.0 in /doc ([7e3d598](https://github.com/Azure/osdu-spi/commit/7e3d598079aced4a83c4c17a09f2591162934107))
+
 ## [1.2.0](https://github.com/Azure/osdu-spi/compare/v1.1.0...v1.2.0) (2026-10-05)
 
 
