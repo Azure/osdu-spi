@@ -695,15 +695,30 @@ mkdir -p "$REF_H1"
 expect_halt "empty listed tree halts" SEED_SOURCE_MISSING "$TMP/ref-h1.json" \
   engine --mode seed --config "$REF_CFG" --checkout "$REF_H1" --seed-source "$REF_EMPTY" --report "$TMP/ref-h1.json"
 
-note "halt: fork_owned names a provider tree upstream does not carry"
-REF_PFX="$TMP/ref-pfx.yml"
-cp "$REF_CFG" "$REF_PFX"
-replace_in_file "$REF_PFX" "  - provider/demo-azure" "  - provider/other-azure"
-REF_H2="$TMP/ref-h2"
-rm -rf "$REF_H2"
-cp -R "$REF_FIX" "$REF_H2"
-expect_halt "unknown listed provider tree halts" MODULE_PREFIX_MISMATCH "$TMP/ref-h2.json" \
-  engine --mode generate --config "$REF_PFX" --checkout "$REF_H2" --report "$TMP/ref-h2.json"
+note "generate: upstream deletes one of two listed provider trees"
+TWO_CFG="$TMP/two-provider.yml"
+cp "$REF_CFG" "$TWO_CFG"
+replace_in_file "$TWO_CFG" "  - provider/demo-azure" "  - provider/demo-azure
+  - provider/demo-extra-azure"
+TWO_UP="$TMP/two-provider-upstream"
+rm -rf "$TWO_UP"
+cp -R "$REF_FIX" "$TWO_UP"
+mv "$TWO_UP/provider/demo-azure" "$TWO_UP/provider/demo-extra-azure"
+engine --mode generate --config "$TWO_CFG" --checkout "$TWO_UP" --report "$TMP/two-provider.json" > /dev/null \
+  || die "a listed provider tree deleted upstream halted generation"
+ok "generation continues while the fork keeps the deleted tree"
+
+note "seed-source: a listed path upstream never carried fails at initialization"
+TYPO_REPO="$TMP/typo-repo"
+rm -rf "$TYPO_REPO"
+cp -R "$REF_FIX" "$TYPO_REPO"
+git -C "$TYPO_REPO" init -q
+git -C "$TYPO_REPO" -c user.name=harness -c user.email=harness@local add -A -f
+git -C "$TYPO_REPO" -c user.name=harness -c user.email=harness@local commit -qm upstream
+TYPO_ERR=$( (cd "$TYPO_REPO" && RUNNER_TEMP="$TMP/typo-scratch" bash "$(dirname "$ENGINE")/seed-source.sh" HEAD "$TMP/typo.env" \
+  provider/demo-azure provider/other-azure) 2>&1 ) && die "seed-source accepted a path upstream never carried"
+grep -q "provider/other-azure never existed in the history of HEAD" <<<"$TYPO_ERR" || die "seed-source error does not name the path: $TYPO_ERR"
+ok "seed-source names the path that never existed"
 
 note "halt: a testing reactor with a fork verdict still needs its injection"
 REF_H3="$TMP/ref-h3"

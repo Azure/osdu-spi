@@ -432,26 +432,19 @@ def filter_fossa(path, fossa_cfg, checkout):
 def check_module_prefix(checkout, cfg):
     # provider/ is discarded wholesale, so this is the only point where a wrong
     # prefix can be caught before seeding fails on a path that never existed.
+    # An explicit list names its trees outright and upstream may delete them one
+    # at a time; seed-source.sh checks those paths against history instead.
+    if "fork_owned" in cfg:
+        return
     provider = os.path.join(checkout, "provider")
     if not os.path.isdir(provider):
         return
-    azure = sorted(e for e in os.listdir(provider) if e.endswith("-azure"))
-    if "fork_owned" in cfg:
-        wanted = [p.split("/", 1)[1] for p in cfg["fork_owned"] if p.startswith("provider/")]
-        missing = [name for name in wanted if name not in azure]
-        if azure and missing:
-            raise Halt(
-                "MODULE_PREFIX_MISMATCH",
-                f"fork_owned names provider/{', provider/'.join(missing)}, which upstream does not carry "
-                f"(found: {', '.join(azure)})",
-            )
-        return
-    prefixes = [e[: -len("-azure")] for e in azure]
-    if prefixes and cfg["service"] not in prefixes:
+    azure = sorted(e[: -len("-azure")] for e in os.listdir(provider) if e.endswith("-azure"))
+    if azure and cfg["service"] not in azure:
         raise Halt(
             "MODULE_PREFIX_MISMATCH",
             f"provider/{cfg['service']}-azure does not exist upstream; "
-            f"set 'service' to the module prefix (found: {', '.join(prefixes)})",
+            f"set 'service' to the module prefix (found: {', '.join(azure)})",
         )
 
 
