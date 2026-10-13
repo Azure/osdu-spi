@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.3.0](https://github.com/Azure/osdu-spi/compare/v1.2.0...v1.3.0) (2026-10-13)
+
+
+### ✨ Features
+
+* **java:** Resolve Java release from the root pom ([e768fa0](https://github.com/Azure/osdu-spi/commit/e768fa09c845b6b133c157db565c1101c4613e1a))
+* **java:** Resolve the Java release from the root pom ([5769f25](https://github.com/Azure/osdu-spi/commit/5769f25864ae035e968bc86984fe4aa0562ca57f))
+* **upstream-filter:** Explicit fork_owned tree list ([d060e87](https://github.com/Azure/osdu-spi/commit/d060e871734610fed6d2676b7642560722718e8f))
+* **upstream-filter:** Support explicit fork_owned tree list ([b7acddf](https://github.com/Azure/osdu-spi/commit/b7acddffca0bb0f39a08268166e5c7aee300c1ab))
+
+
+### 🐛 Bug Fixes
+
+* **acceptance:** Prewarm with dependency:resolve, not go-offline ([ddfd9ff](https://github.com/Azure/osdu-spi/commit/ddfd9ff376b1f49a2f41b7a9f55e9541796cba45))
+* **acceptance:** Prewarm with dependency:resolve, not go-offline ([8f3c4cf](https://github.com/Azure/osdu-spi/commit/8f3c4cf633ace388c1c6b7ba22c8e3195c1d7f9c))
+* **ci:** Apply JAR_FILE and JAVA_VERSION after caller build args ([3458584](https://github.com/Azure/osdu-spi/commit/34585842d320f47f38c8dee16ef40bda059c0d7e))
+* **ci:** Read Java version from root pom.xml in image actions ([35f293f](https://github.com/Azure/osdu-spi/commit/35f293f5f9bdf429022906ba981c6bf54b27974c))
+* **upstream-filter:** Skip module prefix check with fork_owned ([2c07a39](https://github.com/Azure/osdu-spi/commit/2c07a39c9edbeec778f619a14811393812a4212d))
+
+
+### 📚 Documentation
+
+* Update JaCoCo plugin version to 0.8.14 ([7166f08](https://github.com/Azure/osdu-spi/commit/7166f08862533c910b2d7ecb36bf55e52cc5e8e2))
+
+
+### 🔧 Miscellaneous
+
+* **deps:** Bump openjdk/jdk from `ab77e25` to `df29dac` in /build in the docker group ([7382f95](https://github.com/Azure/osdu-spi/commit/7382f9522e5654e0cdb6419b2d7a6745fda32ede))
+* **deps:** Bump openjdk/jdk from `df29dac` to `fe3dae3` in /build in the docker group ([bb49a03](https://github.com/Azure/osdu-spi/commit/bb49a034a3dcdaa922a1905e708ec66bde930888))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([b2a5913](https://github.com/Azure/osdu-spi/commit/b2a59134080671c924b738675cfb09a9ab6d4d2d))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([f39f99b](https://github.com/Azure/osdu-spi/commit/f39f99bd3cba3cbf88cd810c66ce758fa0b2629f))
+* **deps:** Bump the docker group across 1 directory with 2 updates ([de6d23b](https://github.com/Azure/osdu-spi/commit/de6d23b8dc51bb7c27288298a3a7ddaef5f9f144))
+* **deps:** Bump the docker group across 1 directory with 2 updates ([844b2f9](https://github.com/Azure/osdu-spi/commit/844b2f9a67ea64014286caaa85d0ee32d0f8762e))
+* **deps:** Bump urllib3 from 2.7.0 to 2.8.0 in /doc ([ab84d2a](https://github.com/Azure/osdu-spi/commit/ab84d2a74cece663666452bc61b27e43273b99ca))
+* **deps:** Bump urllib3 from 2.7.0 to 2.8.0 in /doc ([7e3d598](https://github.com/Azure/osdu-spi/commit/7e3d598079aced4a83c4c17a09f2591162934107))
+
+
+### 🔨 Build System
+
+* **ci:** Bump jacoco-maven-plugin from 0.8.11 to 0.8.14 ([2994a56](https://github.com/Azure/osdu-spi/commit/2994a56892c517f71d4a6dde032467a11c390d0d))
+
+
+### ⚙️ Continuous Integration
+
+* **upstream-filter:** Make checkout optional for paths mode ([ac9fc11](https://github.com/Azure/osdu-spi/commit/ac9fc11bc6bb422d89f9e5b8bec976543b0d6bfe))
+
 ## [1.2.0](https://github.com/Azure/osdu-spi/compare/v1.1.0...v1.2.0) (2026-10-05)
 
 
