@@ -31,7 +31,7 @@ Both goal paths run the lifecycle through `verify`: `clean verify` with coverage
 
 ### Coverage
 
-JaCoCo is invoked as `org.jacoco:jacoco-maven-plugin:0.8.11:report` from the action and the HTML report is uploaded as an artifact and summarised in the job log. No coverage threshold is enforced; the report is informational.
+JaCoCo is invoked as `org.jacoco:jacoco-maven-plugin:0.8.14:report` from the action and the HTML report is uploaded as an artifact and summarised in the job log. No coverage threshold is enforced; the report is informational.
 
 ### Community repository access
 

@@ -73,7 +73,7 @@ mvn test -Dtest=TestClassName#testMethodName
 ### Improve Coverage
 ```bash
 # Generate coverage report locally
-mvn clean test -P core,azure org.jacoco:jacoco-maven-plugin:0.8.11:report
+mvn clean test -P core,azure org.jacoco:jacoco-maven-plugin:0.8.14:report
 
 # View coverage report
 open target/site/jacoco/index.html
