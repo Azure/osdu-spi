@@ -139,6 +139,28 @@ when the config has one, otherwise `provider/<service>-azure` and
 `testing/<service>-test-azure`. Reads no checkout. Initialization's seed and
 survival check and the cascade's survival assertion iterate this list.
 
+## Fork resources from `fork_owned`
+
+`fork_resources.py` renders the planted files that name fork-owned paths from the
+same list. Without `fork_owned`, or without a config, it passes each template
+through byte for byte, so a conventional fork plants exactly what it did before.
+
+| Kind | Renders | From |
+| --- | --- | --- |
+| `dependabot` | The Maven `directories`: each listed tree with a root `pom.xml`, and for a tree without one, its modules one level down that have their own. A test suite with no pom contributes nothing. | `fork-resources/dependabot.yml` |
+| `codeowners` | One ownership line per listed tree, in the owners column, in place of the `provider/<service>-azure/` and `testing/<service>-test-azure/` lines. | `fork-resources/CODEOWNERS` |
+| `contributing` | The listed trees in the ownership row. | `fork-resources/CONTRIBUTING.md` |
+
+`explicit` exits 0 when the config lists `fork_owned` and 1 when it does not.
+Exit 2 is a config or template error, including a template that no longer
+carries the default lines. Exit 3 means no listed tree holds a pom, so there is
+no Maven directory to watch; initialization then plants no `dependabot.yml` and
+template sync removes it.
+
+Initialization renders all three. Template sync renders `dependabot.yml` on
+every sync for a fork with `fork_owned`, so the directories follow the fork's
+trees, and renders CODEOWNERS and CONTRIBUTING.md when it plants a missing one.
+
 ## Halt codes
 
 | Code | Raised when |

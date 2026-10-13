@@ -106,6 +106,7 @@ On success the setup issue is closed and the repository is ready for its first s
 | `UPSTREAM_REPO_URL` | Variable, set during initialization | Repository to synchronize |
 | `INITIALIZATION_COMPLETE` | Variable, set during initialization | Enables fork workflows |
 | `MAVEN_PROFILE` | Optional variable | Overrides the `core,azure` default |
+| `BUILD_ENV` | Optional variable | `KEY=VALUE` lines exported before every Maven build |
 | `SERVICE_NAME` | Optional variable | Overrides the repository-name image/service slug |
 | `SERVICE_TARGET_JAR` | Optional variable | Disambiguates repositories that build multiple Azure JARs |
 | `GITHUB_TOKEN` | Automatic secret | Normal GitHub API and package operations |

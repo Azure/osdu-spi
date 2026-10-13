@@ -73,6 +73,8 @@ jobs:
       - name: "Run Java Build"
         id: build
         uses: ./.github/actions/java-build
+        with:
+          build_env: ${{ vars.BUILD_ENV }}
 
   code-coverage:
     name: "📊 Code Coverage"
@@ -104,6 +106,12 @@ jobs:
             ~/.m2/repository
             !~/.m2/repository/org/opengroup/osdu
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+
+      - name: "Export build environment"
+        if: vars.BUILD_ENV != ''
+        env:
+          BUILD_ENV: ${{ vars.BUILD_ENV }}
+        run: bash .github/actions/java-build/build-env.sh
 
       - name: "Generate Coverage Report"
         env:

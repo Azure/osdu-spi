@@ -302,6 +302,7 @@ jobs:
           # fork_upstream builds core only: its azure profile points at fork-owned directories that
           # exist only after the cascade merge. Mirror-mode fork_upstream carries provider/ (ADR-039).
           maven_profile: ${{ ((github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && vars.SYNC_MODE != 'mirror') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
+          build_env: ${{ vars.BUILD_ENV }}
 
   docker-build:
     # Validate-only build of both images; the trusted push is docker-push and the required check

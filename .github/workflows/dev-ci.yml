@@ -42,6 +42,9 @@ jobs:
       - name: Run upstream-owned files harness
         run: bash .github/local-actions/upstream-owned-files-tests/run-tests.sh
 
+      - name: Run fork resources and build env harness
+        run: bash .github/local-actions/fork-resources-tests/run-tests.sh
+
       - name: Run java release harness
         run: bash .github/local-actions/java-release-tests/run-tests.sh
 
