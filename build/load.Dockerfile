@@ -10,7 +10,7 @@
 # narrowed to the payload and the three loader files by build/load.Dockerfile.dockerignore,
 # so the provider folders under deployments/scripts/ never reach the build. The loader
 # resolves the payload relative to its own file, so the deployments/ layout is preserved.
-FROM docker.io/library/python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9
+FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
