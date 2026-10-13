@@ -7,7 +7,7 @@
 # the fork's root pom declares (java-release action); one stage per release keeps each digest on
 # a FROM line where Dependabot bumps it in the template, and template-sync carries it to the forks.
 ARG JAVA_VERSION=17
-FROM mcr.microsoft.com/openjdk/jdk:17-azurelinux@sha256:fe3dae30eca535c630a72b0cef773daa0f7fc02bba584a973ad8f0e9258ad9e2 AS runtime-17
+FROM mcr.microsoft.com/openjdk/jdk:17-azurelinux@sha256:1f04a6226859fc1525ecfb6c096c4ef7d64120a1498a1a23c781bf8c87eda87a AS runtime-17
 FROM mcr.microsoft.com/openjdk/jdk:25-azurelinux@sha256:9c3b6e495e05d71f9db65e54d2946c92773baf71b550e26f8fd2ac25d2235831 AS runtime-25
 FROM runtime-${JAVA_VERSION}
 
