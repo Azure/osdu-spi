@@ -9,6 +9,10 @@ inputs:
   maven_profile:
     description: 'Optional Maven profile(s) to restrict the build (e.g. core,azure — a comma-separated list is allowed). When empty, no -P is passed; validate.yml supplies the core,azure default (ADR-035).'
     required: false
+  build_env:
+    description: 'The fork''s BUILD_ENV variable: KEY=VALUE lines exported before Maven runs, with $GITHUB_WORKSPACE expanded. Empty exports nothing.'
+    required: false
+    default: ''
 
 outputs:
   is_java_project:
@@ -74,6 +78,13 @@ runs:
     - name: "Setup Maven"
       if: steps.check_pom.outputs.has_pom == 'true'
       uses: ./.github/actions/setup-maven
+
+    - name: "Export build environment"
+      if: steps.check_pom.outputs.has_pom == 'true' && inputs.build_env != ''
+      shell: bash
+      env:
+        BUILD_ENV: ${{ inputs.build_env }}
+      run: bash "$GITHUB_ACTION_PATH/build-env.sh"
 
     - name: "Build and Test"
       if: steps.check_pom.outputs.has_pom == 'true'

@@ -125,6 +125,7 @@ jobs:
         with:
           generate_coverage: true
           maven_profile: ${{ vars.MAVEN_PROFILE || 'core,azure' }}
+          build_env: ${{ vars.BUILD_ENV }}
 
   docker-build:
     # The name must differ from validate.yml's "Docker Build", which also reports on these

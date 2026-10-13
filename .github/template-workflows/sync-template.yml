@@ -62,6 +62,23 @@ jobs:
             echo "CODEOWNERS is missing and the variable is set; planting it counts as an update"
           fi
           
+          # A fork_owned fork whose Maven modules no longer match its rendered Dependabot
+          # directories needs a re-render, so a difference counts as an update by itself.
+          RECONCILE_DEPENDABOT=false
+          RENDER=".github/actions/upstream-filter/fork_resources.py"
+          if [ -f ".github/upstream-filter.yml" ] && [ -f "$RENDER" ] \
+             && python3 "$RENDER" explicit --config .github/upstream-filter.yml 2>/dev/null \
+             && git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" > "$RUNNER_TEMP/dependabot-template.yml" 2>/dev/null; then
+            DEPENDABOT_RC=0
+            python3 "$RENDER" dependabot --config .github/upstream-filter.yml --checkout . \
+              < "$RUNNER_TEMP/dependabot-template.yml" > "$RUNNER_TEMP/dependabot-desired.yml" 2>/dev/null || DEPENDABOT_RC=$?
+            if { [ "$DEPENDABOT_RC" = "0" ] && ! cmp -s "$RUNNER_TEMP/dependabot-desired.yml" .github/dependabot.yml; } \
+               || { [ "$DEPENDABOT_RC" = "3" ] && [ -f .github/dependabot.yml ]; }; then
+              RECONCILE_DEPENDABOT=true
+              echo "Dependabot directories differ from the fork_owned trees; re-rendering counts as an update"
+            fi
+          fi
+
           LAST_SYNC_FILE=".github/.template-sync-commit"
           if [ -f "$LAST_SYNC_FILE" ]; then
             LAST_SYNC_COMMIT=$(cat "$LAST_SYNC_FILE" 2>/dev/null || echo "")
@@ -99,7 +116,7 @@ jobs:
             exit 1
           fi
           
-          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ] && [ "$PLANT_CODEOWNERS" = "false" ]; then
+          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ]; then
             echo "No template updates found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
             exit 0
@@ -144,7 +161,7 @@ jobs:
             fi
           done
           
-          if [ -z "$GITHUB_CHANGES" ] && [ "$PLANT_CODEOWNERS" = "false" ]; then
+          if [ -z "$GITHUB_CHANGES" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ]; then
             echo "No syncable file changes found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
           else
@@ -372,6 +389,52 @@ jobs:
             fi
           fi
 
+          # An explicit fork_owned list in the filter config names the fork-owned paths that the
+          # Dependabot, CODEOWNERS and CONTRIBUTING.md templates otherwise assume.
+          RENDER=".github/actions/upstream-filter/fork_resources.py"
+          FORK_OWNED_EXPLICIT=false
+          FORK_OWNED_UNREADABLE=false
+          if [ -f ".github/upstream-filter.yml" ] && [ -f "$RENDER" ]; then
+            EXPLICIT_RC=0
+            python3 "$RENDER" explicit --config .github/upstream-filter.yml || EXPLICIT_RC=$?
+            case "$EXPLICIT_RC" in
+              0) FORK_OWNED_EXPLICIT=true ;;
+              1) ;;
+              *)
+                FORK_OWNED_UNREADABLE=true
+                echo "::warning::.github/upstream-filter.yml could not be read for fork_owned; Dependabot, CODEOWNERS and CONTRIBUTING.md stay as planted"
+                if git cat-file -e HEAD:.github/dependabot.yml 2>/dev/null; then
+                  git checkout HEAD -- .github/dependabot.yml
+                else
+                  git rm -q --cached --ignore-unmatch .github/dependabot.yml
+                  rm -f .github/dependabot.yml
+                fi
+                ;;
+            esac
+          fi
+
+          # Every sync, not only when fork-resources changed: the directories follow the fork's own
+          # trees, and a fork that adds a module gets it watched on the next sync.
+          if [ "$FORK_OWNED_EXPLICIT" = "true" ] && git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" >/dev/null 2>&1; then
+            DEPENDABOT_RC=0
+            git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" > "$RUNNER_TEMP/dependabot-template.yml"
+            python3 "$RENDER" dependabot --config .github/upstream-filter.yml --checkout . \
+              < "$RUNNER_TEMP/dependabot-template.yml" > "$RUNNER_TEMP/dependabot.yml" || DEPENDABOT_RC=$?
+            case "$DEPENDABOT_RC" in
+              0)
+                cp "$RUNNER_TEMP/dependabot.yml" ".github/dependabot.yml"
+                git add ".github/dependabot.yml"
+                ;;
+              3)
+                echo "::warning::No fork_owned tree holds a pom.xml, so Dependabot has no Maven directory to watch; removing .github/dependabot.yml"
+                if [ -f ".github/dependabot.yml" ]; then
+                  git rm -q -f ".github/dependabot.yml"
+                fi
+                ;;
+              *) echo "::error::Rendering .github/dependabot.yml from fork_owned failed"; exit 1 ;;
+            esac
+          fi
+
           # Plant the filter config only when missing, and outside the changed-guard: the
           # file is fork-owned once planted, so a sync must never overwrite it, but a fork
           # without one should receive it whatever changed this cycle.
@@ -391,9 +454,14 @@ jobs:
           fi
 
           # Same create-if-missing rule for the contributing guide.
-          if [ ! -f "CONTRIBUTING.md" ] && git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" >/dev/null 2>&1; then
+          if [ "$FORK_OWNED_UNREADABLE" = "false" ] && [ ! -f "CONTRIBUTING.md" ] && git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" >/dev/null 2>&1; then
             echo "Planting fork contributing guide"
-            git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" > "CONTRIBUTING.md"
+            git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" > "$RUNNER_TEMP/CONTRIBUTING.md"
+            if [ "$FORK_OWNED_EXPLICIT" = "true" ]; then
+              python3 "$RENDER" contributing --config .github/upstream-filter.yml < "$RUNNER_TEMP/CONTRIBUTING.md" > "CONTRIBUTING.md"
+            else
+              cp "$RUNNER_TEMP/CONTRIBUTING.md" "CONTRIBUTING.md"
+            fi
             git add "CONTRIBUTING.md"
           fi
 
@@ -401,7 +469,7 @@ jobs:
           # anywhere (ADR-018), and a plantable file is itself an update in check-updates above.
           # The fork's own Azure module names the prefix to protect; the filter's service key is
           # the fallback, since a filter this run planted from the URL slug is not authoritative.
-          if [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
+          if [ "$FORK_OWNED_UNREADABLE" = "false" ] && [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
             CODEOWNERS_SERVICE=""
             azure_dirs=(provider/*-azure/)
             if [ ${#azure_dirs[@]} -eq 1 ] && [ -d "${azure_dirs[0]}" ]; then
@@ -410,17 +478,21 @@ jobs:
             if ! printf '%s' "$CODEOWNERS_SERVICE" | grep -qE '^[a-z0-9][a-z0-9-]*$' && [ "$FILTER_PLANTED" = "false" ]; then
               CODEOWNERS_SERVICE=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)
             fi
+            git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" > "$RUNNER_TEMP/CODEOWNERS"
+            if [ "$FORK_OWNED_EXPLICIT" = "true" ]; then
+              python3 "$RENDER" codeowners --config .github/upstream-filter.yml < "$RUNNER_TEMP/CODEOWNERS" > "$RUNNER_TEMP/CODEOWNERS.rendered"
+              mv "$RUNNER_TEMP/CODEOWNERS.rendered" "$RUNNER_TEMP/CODEOWNERS"
+            fi
             if [ -z "$CODEOWNERS_VAR" ]; then
               echo "::notice::No .github/CODEOWNERS and no CODEOWNERS variable; set the variable to have the next sync plant it"
             elif [ "${CODEOWNERS_VAR#@}" = "$CODEOWNERS_VAR" ]; then
               echo "::warning::CODEOWNERS not planted: owners must be @user or @org/team handles"
-            elif [ -z "$CODEOWNERS_SERVICE" ]; then
+            elif [ -z "$CODEOWNERS_SERVICE" ] && grep -v '^#' "$RUNNER_TEMP/CODEOWNERS" | grep -q "<service>"; then
               echo "::warning::CODEOWNERS not planted: no provider/<service>-azure module and no valid service key in .github/upstream-filter.yml"
             else
-              echo "Planting CODEOWNERS for $CODEOWNERS_SERVICE owned by $CODEOWNERS_VAR"
+              echo "Planting CODEOWNERS owned by $CODEOWNERS_VAR"
               OWNERS_ESCAPED=${CODEOWNERS_VAR//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
-              git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" | \
-                sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" > ".github/CODEOWNERS"
+              sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" "$RUNNER_TEMP/CODEOWNERS" > ".github/CODEOWNERS"
               git add ".github/CODEOWNERS"
             fi
           fi

@@ -25,6 +25,31 @@ set -euo pipefail
 
 echo "Deploying fork-specific resources..."
 
+# An explicit fork_owned list in the filter config names the fork-owned paths the
+# Dependabot, CODEOWNERS and CONTRIBUTING.md templates otherwise assume.
+FILTER_CONFIG=".github/upstream-filter.yml"
+RENDER=".github/actions/upstream-filter/fork_resources.py"
+FORK_OWNED_EXPLICIT=false
+if [[ -f "$FILTER_CONFIG" && -f "$RENDER" ]]; then
+  explicit_rc=0
+  python3 "$RENDER" explicit --config "$FILTER_CONFIG" || explicit_rc=$?
+  case "$explicit_rc" in
+    0) FORK_OWNED_EXPLICIT=true; echo "Fork-owned paths come from fork_owned in $FILTER_CONFIG" ;;
+    1) ;;
+    *) echo "ERROR: $FILTER_CONFIG could not be read for fork_owned"; exit 1 ;;
+  esac
+fi
+
+# Renders a fork resource from stdin to stdout; passes it through when fork_owned is unset.
+render() {
+  local kind="$1"
+  if [[ "$FORK_OWNED_EXPLICIT" == "true" ]]; then
+    python3 "$RENDER" "$kind" --config "$FILTER_CONFIG" --checkout .
+  else
+    cat
+  fi
+}
+
 if [[ -f ".github/fork-resources/copilot-instructions.md" ]]; then
   echo "Installing fork-specific copilot instructions..."
   cp ".github/fork-resources/copilot-instructions.md" ".github/copilot-instructions.md"
@@ -49,8 +74,16 @@ if [[ -f ".github/fork-resources/dependabot.yml" ]]; then
   fi
 
   SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
-  sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/dependabot.yml" > ".github/dependabot.yml"
-  git add ".github/dependabot.yml"
+  dependabot_rc=0
+  sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/dependabot.yml" | render dependabot > ".github/dependabot.yml" || dependabot_rc=$?
+  case "$dependabot_rc" in
+    0) git add ".github/dependabot.yml" ;;
+    3)
+      echo "::warning::No fork_owned tree holds a pom.xml, so Dependabot has no Maven directory to watch; .github/dependabot.yml not planted"
+      rm -f ".github/dependabot.yml"
+      ;;
+    *) echo "ERROR: rendering .github/dependabot.yml failed"; exit 1 ;;
+  esac
 fi
 
 if [[ -f ".github/fork-resources/copilot-firewall-config.json" ]]; then
@@ -69,7 +102,7 @@ fi
 # Replaces the template's own guide at init; sync-template only plants it when missing.
 if [[ -f ".github/fork-resources/CONTRIBUTING.md" ]]; then
   echo "Installing fork contributing guide..."
-  cp ".github/fork-resources/CONTRIBUTING.md" "CONTRIBUTING.md"
+  render contributing < ".github/fork-resources/CONTRIBUTING.md" > "CONTRIBUTING.md"
   git add "CONTRIBUTING.md"
 fi
 
@@ -101,16 +134,18 @@ if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" 
   if [[ ! "$CODEOWNERS_SERVICE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
     CODEOWNERS_SERVICE="$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9][a-z0-9-]*\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$/\1/p" .github/upstream-filter.yml 2>/dev/null | head -1 || true)"
   fi
-  if [[ -z "$CODEOWNERS_SERVICE" ]]; then
+  CODEOWNERS_TEMPLATE="$(mktemp)"
+  render codeowners < ".github/fork-resources/CODEOWNERS" > "$CODEOWNERS_TEMPLATE"
+  if [[ -z "$CODEOWNERS_SERVICE" ]] && grep -v '^#' "$CODEOWNERS_TEMPLATE" | grep -q "<service>"; then
     echo "::warning::CODEOWNERS not planted: no provider/<service>-azure module and no valid service key in .github/upstream-filter.yml"
   elif [[ -z "$OWNERS" ]]; then
     echo "::warning::CODEOWNERS not planted: set the CODEOWNERS repository variable to a team with write access and the next template sync plants it"
   elif [[ "$OWNERS" != @* ]]; then
     echo "::warning::CODEOWNERS not planted: owners must be @user or @org/team handles, got '$OWNERS'"
   else
-    echo "Installing CODEOWNERS for $CODEOWNERS_SERVICE owned by $OWNERS..."
+    echo "Installing CODEOWNERS owned by $OWNERS..."
     OWNERS_ESCAPED=${OWNERS//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
-    sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" ".github/fork-resources/CODEOWNERS" > ".github/CODEOWNERS"
+    sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" "$CODEOWNERS_TEMPLATE" > ".github/CODEOWNERS"
     git add ".github/CODEOWNERS"
   fi
 fi

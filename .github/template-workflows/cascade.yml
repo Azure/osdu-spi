@@ -391,6 +391,12 @@ jobs:
             echo "📝 No custom Maven settings found, using defaults"
           fi
 
+      - name: Export build environment
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false' && vars.BUILD_ENV != ''
+        env:
+          BUILD_ENV: ${{ vars.BUILD_ENV }}
+        run: bash .github/actions/java-build/build-env.sh
+
       - name: Validate integration
         id: validate
         if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
