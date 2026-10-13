@@ -147,7 +147,7 @@ through byte for byte, so a conventional fork plants exactly what it did before.
 
 | Kind | Renders | From |
 | --- | --- | --- |
-| `dependabot` | The Maven `directories`: each listed tree with a root `pom.xml`, and for a tree without one, its modules one level down that have their own. A test suite with no pom contributes nothing. | `fork-resources/dependabot.yml` |
+| `dependabot` | The Maven `directories`: each listed tree with a root `pom.xml`, and for a tree without one, its modules one level down that have their own. A discovered module whose name is not letters, digits, `.`, `_` and `-` is skipped with a warning. A test suite with no pom contributes nothing. | `fork-resources/dependabot.yml` |
 | `codeowners` | One ownership line per listed tree, in the owners column, in place of the `provider/<service>-azure/` and `testing/<service>-test-azure/` lines. | `fork-resources/CODEOWNERS` |
 | `contributing` | The listed trees in the ownership row. | `fork-resources/CONTRIBUTING.md` |
 

@@ -79,8 +79,12 @@ def maven_directories(paths, checkout):
             continue
         if os.path.isdir(root):
             for child in sorted(os.listdir(root)):
-                if os.path.isfile(os.path.join(root, child, "pom.xml")):
-                    dirs.append(f"/{path}/{child}")
+                if not os.path.isfile(os.path.join(root, child, "pom.xml")):
+                    continue
+                if not RENDER_SAFE_PATH.match(child):
+                    print(f"warning: skipping module {path}/{child}: name is not letters, digits, '.', '_' and '-'", file=sys.stderr)
+                    continue
+                dirs.append(f"/{path}/{child}")
     return dirs
 
 
