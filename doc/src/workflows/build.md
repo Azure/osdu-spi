@@ -98,7 +98,7 @@ Some upstream tests read an environment variable that upstream CI sets for every
 SIS_DATA=$GITHUB_WORKSPACE/apachesis_setup/SIS_DATA
 ```
 
-A malformed line, or a name the runner or the build owns (`PATH`, `HOME`, `JAVA_HOME`, `MAVEN_OPTS`, and anything starting with `GITHUB_`, `RUNNER_` or `ACTIONS_`), fails the build with an error naming the line. Unset, nothing is exported.
+A malformed line, or a name the runner or the build owns (`PATH`, `HOME`, `SHELL`, `ENV`, `BASH_ENV`, `CI`, `JAVA_HOME`, `MAVEN_OPTS`, `NODE_OPTIONS`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, and anything starting with `GITHUB_`, `RUNNER_` or `ACTIONS_`), fails the build with an error naming the line. Unset, nothing is exported.
 
 ### Community Repository Access
 

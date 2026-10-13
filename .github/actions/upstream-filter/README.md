@@ -160,6 +160,10 @@ template sync removes it.
 Initialization renders all three. Template sync renders `dependabot.yml` on
 every sync for a fork with `fork_owned`, so the directories follow the fork's
 trees, and renders CODEOWNERS and CONTRIBUTING.md when it plants a missing one.
+A rendered `dependabot.yml` that no longer matches the fork's trees counts as an
+update by itself, so a module added or removed opens a sync PR without waiting
+for a template change. A fork that drops `fork_owned` returns to the template's
+`dependabot.yml` on the next template change to `fork-resources/`.
 
 ## Halt codes
 

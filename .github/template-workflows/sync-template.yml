@@ -62,6 +62,23 @@ jobs:
             echo "CODEOWNERS is missing and the variable is set; planting it counts as an update"
           fi
           
+          # A fork_owned fork whose Maven modules no longer match its rendered Dependabot
+          # directories needs a re-render, so a difference counts as an update by itself.
+          RECONCILE_DEPENDABOT=false
+          RENDER=".github/actions/upstream-filter/fork_resources.py"
+          if [ -f ".github/upstream-filter.yml" ] && [ -f "$RENDER" ] \
+             && python3 "$RENDER" explicit --config .github/upstream-filter.yml 2>/dev/null \
+             && git show refs/remotes/template/main:".github/fork-resources/dependabot.yml" > "$RUNNER_TEMP/dependabot-template.yml" 2>/dev/null; then
+            DEPENDABOT_RC=0
+            python3 "$RENDER" dependabot --config .github/upstream-filter.yml --checkout . \
+              < "$RUNNER_TEMP/dependabot-template.yml" > "$RUNNER_TEMP/dependabot-desired.yml" 2>/dev/null || DEPENDABOT_RC=$?
+            if { [ "$DEPENDABOT_RC" = "0" ] && ! cmp -s "$RUNNER_TEMP/dependabot-desired.yml" .github/dependabot.yml; } \
+               || { [ "$DEPENDABOT_RC" = "3" ] && [ -f .github/dependabot.yml ]; }; then
+              RECONCILE_DEPENDABOT=true
+              echo "Dependabot directories differ from the fork_owned trees; re-rendering counts as an update"
+            fi
+          fi
+
           LAST_SYNC_FILE=".github/.template-sync-commit"
           if [ -f "$LAST_SYNC_FILE" ]; then
             LAST_SYNC_COMMIT=$(cat "$LAST_SYNC_FILE" 2>/dev/null || echo "")
@@ -99,7 +116,7 @@ jobs:
             exit 1
           fi
           
-          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ] && [ "$PLANT_CODEOWNERS" = "false" ]; then
+          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ]; then
             echo "No template updates found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
             exit 0
@@ -144,7 +161,7 @@ jobs:
             fi
           done
           
-          if [ -z "$GITHUB_CHANGES" ] && [ "$PLANT_CODEOWNERS" = "false" ]; then
+          if [ -z "$GITHUB_CHANGES" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ]; then
             echo "No syncable file changes found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
           else
