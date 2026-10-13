@@ -216,8 +216,8 @@ run_build_env() {
   : > "$TMP/github_env"
   BUILD_ENV="$1" GITHUB_WORKSPACE=/work GITHUB_ENV="$TMP/github_env" bash "$BUILD_ENV_SH" > "$TMP/build-env.out" 2>&1
 }
-run_build_env $'SIS_DATA=$GITHUB_WORKSPACE/apachesis_setup/SIS_DATA\r\n\n# a comment\nOTHER=${GITHUB_WORKSPACE}/x=y\nPLAIN=$HOME'
-[ "$(cat "$TMP/github_env")" = $'SIS_DATA=/work/apachesis_setup/SIS_DATA\nOTHER=/work/x=y\nPLAIN=$HOME' ] \
+run_build_env $'SIS_DATA=$GITHUB_WORKSPACE/apachesis_setup/SIS_DATA\r\n\n# a comment\nOTHER=${GITHUB_WORKSPACE}/x=y\nPLAIN=$HOME\nPREFIX=$GITHUB_WORKSPACE_SUFFIX:$GITHUB_WORKSPACE:${GITHUB_WORKSPACE}x:$GITHUB_WORKSPACE'
+[ "$(cat "$TMP/github_env")" = $'SIS_DATA=/work/apachesis_setup/SIS_DATA\nOTHER=/work/x=y\nPLAIN=$HOME\nPREFIX=$GITHUB_WORKSPACE_SUFFIX:/work:/workx:/work' ] \
   || die "unexpected GITHUB_ENV: $(cat "$TMP/github_env")"
 run_build_env ""
 [ ! -s "$TMP/github_env" ] || die "an empty BUILD_ENV wrote to GITHUB_ENV"

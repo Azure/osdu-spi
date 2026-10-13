@@ -33,6 +33,10 @@ fi
 # Names the runner, the toolchain setup or the build steps own.
 RESERVED='^(GITHUB_|RUNNER_|ACTIONS_)|^(PATH|HOME|SHELL|ENV|BASH_ENV|CI|JAVA_HOME|MAVEN_OPTS|NODE_OPTIONS|LD_PRELOAD|LD_LIBRARY_PATH)$'
 
+# Unbraced $GITHUB_WORKSPACE not followed by a name character, so $GITHUB_WORKSPACE_X stays literal.
+# shellcheck disable=SC2016
+WORKSPACE_TOKEN='^(.*)\$GITHUB_WORKSPACE([^A-Za-z0-9_].*)?$'
+
 exported=()
 lineno=0
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -52,7 +56,12 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   fi
   value="${line#*=}"
   value="${value//\$\{GITHUB_WORKSPACE\}/$GITHUB_WORKSPACE}"
-  value="${value//\$GITHUB_WORKSPACE/$GITHUB_WORKSPACE}"
+  expanded=""
+  while [[ "$value" =~ $WORKSPACE_TOKEN ]]; do
+    expanded="$GITHUB_WORKSPACE${BASH_REMATCH[2]}$expanded"
+    value="${BASH_REMATCH[1]}"
+  done
+  value="$value$expanded"
   printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
   exported+=("$key")
 done <<< "$BUILD_ENV"
