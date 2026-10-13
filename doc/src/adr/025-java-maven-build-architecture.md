@@ -1,7 +1,7 @@
 # ADR-025: Java/Maven Build Architecture
 
 ## Status
-**Accepted** - 2025-10-01; amended 2026-08-30 to reflect public Maven read access
+**Accepted** - 2025-10-01; amended 2026-08-30 to reflect public Maven read access, and 2026-10-13 to take the Java release from the pom
 
 ## Context
 
@@ -11,7 +11,7 @@ OSDU services are Java projects built with Maven. Forks created from this templa
 
 Java/Maven is the build architecture:
 
-1. **Java 17 Temurin** as the runtime
+1. **Temurin** at the Java release the root pom declares (17 or 25, resolved by the `java-release` action)
 2. **Maven** as the build tool
 3. **JaCoCo** for coverage reporting
 4. **GitLab community Maven repository** for OSDU dependencies, read anonymously
@@ -31,7 +31,7 @@ Both goal paths run the lifecycle through `verify`: `clean verify` with coverage
 
 ### Coverage
 
-JaCoCo is invoked as `org.jacoco:jacoco-maven-plugin:0.8.11:report` from the action and the HTML report is uploaded as an artifact and summarised in the job log. No coverage threshold is enforced; the report is informational.
+JaCoCo is invoked as `org.jacoco:jacoco-maven-plugin:0.8.14:report` from the action and the HTML report is uploaded as an artifact and summarised in the job log. No coverage threshold is enforced; the report is informational.
 
 ### Community repository access
 

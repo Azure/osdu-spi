@@ -42,6 +42,9 @@ jobs:
       - name: Run upstream-owned files harness
         run: bash .github/local-actions/upstream-owned-files-tests/run-tests.sh
 
+      - name: Run java release harness
+        run: bash .github/local-actions/java-release-tests/run-tests.sh
+
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
@@ -187,7 +190,7 @@ jobs:
           # so both goal paths of the action run the lifecycle through verify.
           JAVA_BUILD=".github/actions/java-build/action.yml"
           BUILD_RUN=$(yq -r '.runs.steps[] | select(.id == "build") | .run' "$JAVA_BUILD")
-          assert_contains "$BUILD_RUN" 'mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.11:report' \
+          assert_contains "$BUILD_RUN" 'mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.14:report' \
             "The coverage path must run through verify and still produce the JaCoCo report"
           assert_contains "$BUILD_RUN" 'mvn $MAVEN_CLI_OPTS clean install' \
             "The non-coverage path must run clean install, which includes verify"

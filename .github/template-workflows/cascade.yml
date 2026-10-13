@@ -353,11 +353,16 @@ jobs:
           git push origin fork_integration
           echo "✅ Integration branch updated successfully"
 
+      - name: Resolve Java release
+        id: java
+        if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
+        uses: ./.github/actions/java-release
+
       - name: Set up JDK for validation
         if: steps.check_state.outputs.integration_in_process == 'false' && steps.merge_upstream.outputs.conflicts == 'false'
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
         with:
-          java-version: '17'
+          java-version: ${{ steps.java.outputs.version }}
           distribution: 'temurin'
           cache: 'maven'
           cache-dependency-path: '**/pom.xml'

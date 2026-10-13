@@ -35,7 +35,7 @@ java-build (uploads build-artifacts) → docker-build (this action)
 | `org` | No | _(repo owner)_ | Registry org/owner; falls back to the workflow `github.repository_owner` at runtime when omitted |
 | `jar_artifact_name` | No | `build-artifacts` | Name of the artifact containing the built JARs |
 | `jar_file` | No | — | Conventional path/glob of the service Spring Boot JAR (`validate.yml` passes `provider/<SERVICE_NAME>-azure/target/*-spring-boot.jar`, from `SERVICE_TARGET_JAR` or `SERVICE_NAME`). If it matches no file the action auto-discovers the Azure JAR (deviant modules like `entitlements-v2-azure`); `SERVICE_TARGET_JAR` only disambiguates a service that builds more than one |
-| `build_args` | No | — | Optional extra `--build-arg` values (newline-separated `KEY=VALUE`). The JAR is passed via `jar_file` (resolved), not here. **Never pass `GITHUB_TOKEN` here.** |
+| `build_args` | No | — | Optional extra `--build-arg` values (newline-separated `KEY=VALUE`). The JAR is passed via `jar_file` (resolved) and `JAVA_VERSION` comes from the root pom through the `java-release` resolver; both are applied after these values, so neither can be overridden here. **Never pass `GITHUB_TOKEN` here.** |
 | `push` | No | `'true'` | `'true'` logs in, pushes, tags, and flips visibility; `'false'` builds only |
 | `github_token` | No | — | Token for GHCR login + visibility flip. Consumed only on the push path |
 

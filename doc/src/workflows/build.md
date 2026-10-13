@@ -29,7 +29,7 @@ The run is green when the Maven build and tests pass, and red when compilation, 
 
 ### Supported Project Types
 - **Java/Maven only** - Detects Maven-based projects with `pom.xml` files
-- **Java 17 runtime** - Uses Temurin distribution for consistent builds
+- **Java release from the pom** - Temurin at the release the root pom declares (`maven.compiler.release`, then `java.version`, default 17); 17 and 25 are supported
 - **Community Maven repositories** - Supports GitLab-hosted OSDU dependencies
 - **Azure profile in protected-branch validation** - Builds `core,azure` by default, with `MAVEN_PROFILE` available for exceptional repository layouts
 
@@ -73,7 +73,7 @@ mvn test -Dtest=TestClassName#testMethodName
 ### Improve Coverage
 ```bash
 # Generate coverage report locally
-mvn clean test -P core,azure org.jacoco:jacoco-maven-plugin:0.8.11:report
+mvn clean test -P core,azure org.jacoco:jacoco-maven-plugin:0.8.14:report
 
 # View coverage report
 open target/site/jacoco/index.html

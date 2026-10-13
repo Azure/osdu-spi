@@ -88,6 +88,15 @@ runs:
         ORG: ${{ inputs.org || github.repository_owner }}
         IMAGE_NAME: ${{ inputs.image_name }}-acceptance
 
+    - name: "Resolve Java release"
+      id: java
+      if: ${{ steps.suite.outputs.buildable == 'true' }}
+      shell: bash
+      run: |
+        # The fork's root pom, as java-build reads it, whatever the Docker context.
+        VERSION=$(python3 "$GITHUB_ACTION_PATH/../java-release/resolve.py" pom.xml)
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
     - name: "Compute image tags"
       id: tags
       if: ${{ steps.suite.outputs.buildable == 'true' }}
@@ -127,6 +136,7 @@ runs:
         tags: ${{ steps.tags.outputs.docker_tags }}
         build-args: |
           SUITE_DIRS=${{ steps.suite.outputs.suite_dirs }}
+          JAVA_VERSION=${{ steps.java.outputs.version }}
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
         # Own cache scope: the suite layers share nothing with the service image.

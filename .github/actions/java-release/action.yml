@@ -1,0 +1,25 @@
+name: 'Java Release'
+description: 'Resolves the Java release the root pom declares (maven.compiler.release, then java.version, default 17) and fails on one the build images do not carry'
+
+inputs:
+  pom:
+    description: 'Path to the root pom'
+    required: false
+    default: 'pom.xml'
+
+outputs:
+  version:
+    description: 'The Java release, e.g. 17 or 25'
+    value: ${{ steps.resolve.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Resolve Java release"
+      id: resolve
+      shell: bash
+      run: |
+        VERSION=$(python3 "$GITHUB_ACTION_PATH/resolve.py" "$POM")
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      env:
+        POM: ${{ inputs.pom }}
