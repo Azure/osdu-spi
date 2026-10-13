@@ -1,16 +1,17 @@
 name: 'Upstream Filter'
-description: 'Runs the upstream filter engine: generate, verify, stamp, or seed over a checkout directory'
+description: 'Runs the upstream filter engine: generate, verify, stamp, or seed over a checkout directory, or lists the fork-owned trees'
 
 inputs:
   mode:
-    description: 'Engine mode: generate | verify | stamp | seed'
+    description: 'Engine mode: generate | verify | stamp | seed | paths'
     required: true
   config:
     description: 'Path to the per-service upstream-filter.yml'
     required: true
   checkout:
-    description: 'Directory the engine transforms or inspects'
-    required: true
+    description: 'Directory the engine transforms or inspects; required by every mode but paths'
+    required: false
+    default: ''
   seed_source:
     description: 'Seed mode only: checkout of the newest upstream commit still containing the Azure trees'
     required: false
@@ -43,7 +44,10 @@ runs:
         if [ -z "$REPORT" ]; then
           REPORT="$RUNNER_TEMP/upstream-filter-report.json"
         fi
-        ARGS=(--mode "$FILTER_MODE" --config "$FILTER_CONFIG" --checkout "$FILTER_CHECKOUT" --report "$REPORT")
+        ARGS=(--mode "$FILTER_MODE" --config "$FILTER_CONFIG" --report "$REPORT")
+        if [ -n "$FILTER_CHECKOUT" ]; then
+          ARGS+=(--checkout "$FILTER_CHECKOUT")
+        fi
         if [ -n "$FILTER_SEED_SOURCE" ]; then
           ARGS+=(--seed-source "$FILTER_SEED_SOURCE")
         fi

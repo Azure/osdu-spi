@@ -32,7 +32,7 @@ import shutil
 import sys
 import xml.etree.ElementTree as ET
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.1.0"
 REPORT_SCHEMA = 1
 
 WHOLESALE_DIRS = ("provider", "devops")
@@ -52,6 +52,9 @@ REQUIRED_KEYS = {
     "expected_absent": list,
     "inject_root_pom_azure_profile": str,
     "inject_testing_pom_azure_module": str,
+}
+OPTIONAL_KEYS = {
+    "fork_owned": list,
 }
 
 
@@ -148,7 +151,7 @@ def parse_config(text):
                     entries_map[name] = _unquote(_strip_inline_comment(mm.group(2)).strip())
                 i += 1
             if kind is None:
-                data[key] = [] if REQUIRED_KEYS.get(key) is list else {}
+                data[key] = [] if {**REQUIRED_KEYS, **OPTIONAL_KEYS}.get(key) is list else {}
             else:
                 data[key] = entries_list if kind == "list" else entries_map
         else:
@@ -167,6 +170,9 @@ def load_config(path):
             raise Halt("CONFIG_INVALID", f"missing required key '{key}'")
         if not isinstance(cfg[key], expected_type):
             raise Halt("CONFIG_INVALID", f"key '{key}' has the wrong shape")
+    for key, expected_type in OPTIONAL_KEYS.items():
+        if key in cfg and not isinstance(cfg[key], expected_type):
+            raise Halt("CONFIG_INVALID", f"key '{key}' has the wrong shape")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", cfg["service"]):
         raise Halt("CONFIG_INVALID", f"service '{cfg['service']}' is not a valid slug")
     for section, allowed in VERDICTS.items():
@@ -181,12 +187,47 @@ def load_config(path):
     if cfg["inject_root_pom_azure_profile"].strip() and not injects:
         raise Halt("CONFIG_INVALID", "inject_root_pom_azure_profile is set but no profile declares an inject verdict")
     forks = [name for name, verdict in cfg["testing"].items() if verdict == "fork"]
-    if forks and not cfg["inject_testing_pom_azure_module"].strip():
+    # An explicit fork_owned list may describe a testing/ without a reactor pom; generate
+    # checks the injection against the tree instead.
+    if forks and "fork_owned" not in cfg and not cfg["inject_testing_pom_azure_module"].strip():
         raise Halt("CONFIG_INVALID", "testing declares a fork verdict but inject_testing_pom_azure_module is empty")
     if cfg["inject_testing_pom_azure_module"].strip() and not forks:
         raise Halt("CONFIG_INVALID", "inject_testing_pom_azure_module is set but no testing entry declares a fork verdict")
+    if "fork_owned" in cfg:
+        validate_fork_owned(cfg, forks)
     cfg["_sha256"] = hashlib.sha256(raw).hexdigest()
     return cfg
+
+
+def validate_fork_owned(cfg, forks):
+    paths = cfg["fork_owned"]
+    if not paths:
+        raise Halt("CONFIG_INVALID", "fork_owned is empty; omit the key for the conventional pair")
+    if len(set(paths)) != len(paths):
+        raise Halt("CONFIG_INVALID", "fork_owned lists a path twice")
+    for path in paths:
+        parts = path.split("/")
+        if len(parts) > 2 or any(part in ("", ".", "..") for part in parts):
+            raise Halt("CONFIG_INVALID", f"fork_owned path '{path}' must be <entry>, provider/<entry>, or testing/<entry>")
+        if len(parts) == 2:
+            if parts[0] == "testing" and cfg["testing"].get(parts[1]) != "fork":
+                raise Halt("CONFIG_INVALID", f"fork_owned path '{path}' needs a fork verdict under testing")
+            if parts[0] not in ("provider", "testing"):
+                raise Halt("CONFIG_INVALID", f"fork_owned path '{path}' must be <entry>, provider/<entry>, or testing/<entry>")
+        elif path in WHOLESALE_DIRS or path == "testing" or cfg["top_level"].get(path) != "strip":
+            raise Halt("CONFIG_INVALID", f"fork_owned top-level entry '{path}' needs a strip verdict under top_level")
+    missing = [name for name in forks if f"testing/{name}" not in paths]
+    if missing:
+        raise Halt("CONFIG_INVALID", f"testing fork verdicts missing from fork_owned: {', '.join(missing)}")
+
+
+def fork_owned_paths(cfg):
+    """The fork-owned trees: the explicit list, or the conventional pair the
+    service key derives."""
+    if "fork_owned" in cfg:
+        return list(cfg["fork_owned"])
+    svc = cfg["service"]
+    return [f"provider/{svc}-azure", f"testing/{svc}-test-azure"]
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +432,10 @@ def filter_fossa(path, fossa_cfg, checkout):
 def check_module_prefix(checkout, cfg):
     # provider/ is discarded wholesale, so this is the only point where a wrong
     # prefix can be caught before seeding fails on a path that never existed.
+    # An explicit list names its trees outright and upstream may delete them one
+    # at a time; seed-source.sh checks those paths against history instead.
+    if "fork_owned" in cfg:
+        return
     provider = os.path.join(checkout, "provider")
     if not os.path.isdir(provider):
         return
@@ -455,6 +500,9 @@ def generate(checkout, cfg, report):
 
     testing_pom = os.path.join(testing_dir, "pom.xml")
     if os.path.isfile(testing_pom):
+        if any(v == "fork" for v in cfg["testing"].values()) and not cfg["inject_testing_pom_azure_module"].strip():
+            raise Halt("CONFIG_INVALID", "testing/pom.xml is a reactor and testing declares a fork verdict, "
+                                         "but inject_testing_pom_azure_module is empty")
         prune_dangling_modules(testing_pom, exempt=set())
         if cfg["inject_testing_pom_azure_module"].strip():
             inject_into_region(testing_pom, "modules", cfg["inject_testing_pom_azure_module"],
@@ -597,24 +645,36 @@ def _version_site(value):
 
 def stamp(checkout, cfg, report):
     svc = cfg["service"]
-    root_version = _reference_version(checkout, "pom.xml")
-    testing_version = _reference_version(checkout, os.path.join("testing", "pom.xml"))
-    testcore_version = _reference_version(checkout, os.path.join("testing", f"{svc}-test-core", "pom.xml"))
+    reference_poms = {
+        "root": "pom.xml",
+        "testing": os.path.join("testing", "pom.xml"),
+        "test_core": os.path.join("testing", f"{svc}-test-core", "pom.xml"),
+    }
+    references = {}
 
-    targets = [
-        (os.path.join("provider", f"{svc}-azure"), root_version),
-        (os.path.join("testing", f"{svc}-test-azure"), testing_version),
-    ]
+    def reference(name):
+        if name not in references:
+            references[name] = _reference_version(checkout, reference_poms[name])
+        return references[name]
+
+    # The conventional pair always reads all three; an explicit list reads only what its
+    # trees reference, since a layout without a testing reactor has no testing pom.
+    if "fork_owned" not in cfg:
+        for name in reference_poms:
+            reference(name)
+
+    trees = fork_owned_paths(cfg)
     rewrites, survivors = [], []
     total_poms = 0
 
-    # One mapping per tree: the provider tree follows the root pom version and the
-    # testing tree follows the testing pom version, which may legitimately differ.
-    for tree, tree_version in targets:
+    # One mapping per tree: trees under testing/ follow the testing pom version and the
+    # rest follow the root pom version, which may legitimately differ.
+    for tree in trees:
         poms = _fork_poms(checkout, tree)
         total_poms += len(poms)
         if not poms:
             continue
+        tree_version = reference("testing" if tree.startswith("testing/") else "root")
         mapping = {}
 
         def add(old, new):
@@ -644,7 +704,7 @@ def stamp(checkout, cfg, report):
                     version = _pom_child(dep, "version")
                     if artifact is not None and artifact.text and artifact.text.strip() == f"{svc}-test-core" \
                             and version is not None and version.text:
-                        add(version.text.strip(), testcore_version)
+                        add(version.text.strip(), reference("test_core"))
 
         for pom in poms:
             text = read_text(pom)
@@ -669,26 +729,28 @@ def stamp(checkout, cfg, report):
                     survivors.append(f"{os.path.relpath(pom, checkout)} still carries {old}")
 
     if total_poms == 0:
-        raise Halt("STAMP_NO_FORK_POMS", f"no fork-owned poms found under {' or '.join(t for t, _v in targets)}")
+        raise Halt("STAMP_NO_FORK_POMS", f"no fork-owned poms found under {' or '.join(trees)}")
     if survivors:
         raise Halt("STAMP_INCOMPLETE", "; ".join(survivors))
 
-    report["stamp"] = {
-        "references": {"root": root_version, "testing": testing_version, "test_core": testcore_version},
-        "rewrites": rewrites,
-    }
+    report["stamp"] = {"references": references, "rewrites": rewrites}
 
 
 # ---------------------------------------------------------------------------
 # Seed
 
 def seed(checkout, cfg, seed_source, report):
-    svc = cfg["service"]
+    explicit = "fork_owned" in cfg
     seeded = []
-    for tree in (os.path.join("provider", f"{svc}-azure"), os.path.join("testing", f"{svc}-test-azure")):
+    for tree in fork_owned_paths(cfg):
         src = os.path.join(seed_source, tree)
         dst = os.path.join(checkout, tree)
-        if not os.path.isdir(src) or not os.path.isfile(os.path.join(src, "pom.xml")):
+        # A listed tree may be a nested reactor or a non-Maven test suite, so it only has to
+        # carry files; the conventional pair keeps its root pom.xml check.
+        if explicit:
+            if not os.path.isdir(src) or count_files(src) == 0:
+                raise Halt("SEED_SOURCE_MISSING", f"seed source lacks {tree} (or it is empty)")
+        elif not os.path.isdir(src) or not os.path.isfile(os.path.join(src, "pom.xml")):
             raise Halt("SEED_SOURCE_MISSING", f"seed source lacks {tree} (or its pom.xml)")
         if os.path.exists(dst):
             raise Halt("SEED_TARGET_EXISTS", f"seed target already exists: {tree}")
@@ -711,9 +773,9 @@ class _ArgumentParser(argparse.ArgumentParser):
 
 def main(argv=None):
     parser = _ArgumentParser(description="Upstream filter engine")
-    parser.add_argument("--mode", required=True, choices=["generate", "verify", "stamp", "seed"])
+    parser.add_argument("--mode", required=True, choices=["generate", "verify", "stamp", "seed", "paths"])
     parser.add_argument("--config", required=True)
-    parser.add_argument("--checkout", required=True)
+    parser.add_argument("--checkout")
     parser.add_argument("--seed-source")
     parser.add_argument("--report")
     args = parser.parse_args(argv)
@@ -734,7 +796,10 @@ def main(argv=None):
         return code
 
     try:
-        if not os.path.isdir(args.checkout):
+        if args.mode != "paths" and not args.checkout:
+            print("error: --checkout is required for this mode", file=sys.stderr)
+            return 1
+        if args.checkout and not os.path.isdir(args.checkout):
             print(f"error: checkout directory not found: {args.checkout}", file=sys.stderr)
             return 1
         if args.mode == "seed" and not args.seed_source:
@@ -754,6 +819,8 @@ def main(argv=None):
             stamp(args.checkout, cfg, report)
         elif args.mode == "seed":
             seed(args.checkout, cfg, args.seed_source, report)
+        elif args.mode == "paths":
+            report["fork_owned"] = fork_owned_paths(cfg)
         report["ok"] = True
         return emit(0)
     except Halt as halt:

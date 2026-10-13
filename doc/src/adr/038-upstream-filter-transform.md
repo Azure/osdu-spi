@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-25)
+Accepted (2026-08-25); amended 2026-10-13 with the optional `fork_owned` list
 
 ## Context
 
@@ -47,6 +47,8 @@ The existing branch topology and release flow remain unchanged. Sync now generat
 | Upstream-owned | Regenerated into `fork_upstream` from the upstream tip on every sync | `<svc>-core`, `<svc>-acceptance-test`, `testing/<svc>-test-core`, `pom.xml`, `testing/pom.xml`, `docs`, `NOTICE`, `LICENSE`, `.mvn` |
 | Removed | Excluded from the generated branch, never on `fork_upstream` | Non-Azure providers, `<svc>-core-plus`, all of `devops/`, non-Azure `testing/` modules, `.gitlab-ci.yml` |
 | Fork-owned | Seeded once at init, then maintained through the fork's normal PR process on `fork_integration` and `main` | `provider/<svc>-azure`, `testing/<svc>-test-azure`, `.github/`, `build/` |
+
+The Azure trees default to the pair the config's `service` key derives. A service laid out differently (a non-Maven test suite under `testing/`, Azure modules at the top level) lists its trees in the config's optional `fork_owned` key, and seeding, stamping, and the survival assertions iterate that list instead. The engine README is the contract.
 
 Fork ownership needs no new machinery. It is how `.github/` and `build/` already survive every cascade. A three-way merge only touches paths that differ between the merge base and one of its sides. A path absent from both the merge base and `fork_upstream` is invisible to the cascade merge, so the fork's copy survives untouched. New forks get this for free because the Azure trees never exist on their `fork_upstream`. The existing fork gets it from the first post-cutover merge base onward. Upstream's eventual deletion of its Azure trees becomes a non-event.
 
