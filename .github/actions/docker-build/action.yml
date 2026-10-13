@@ -90,6 +90,15 @@ runs:
         IMAGE_NAME: ${{ inputs.image_name }}
         BUILD_CONTEXT: ${{ inputs.build_context }}
 
+    - name: "Resolve Java release"
+      id: java
+      shell: bash
+      run: |
+        VERSION=$(python3 "$GITHUB_ACTION_PATH/../java-release/resolve.py" "$BUILD_CONTEXT/pom.xml")
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      env:
+        BUILD_CONTEXT: ${{ inputs.build_context }}
+
     - name: "Compute image tags"
       id: tags
       shell: bash
@@ -132,6 +141,7 @@ runs:
         tags: ${{ steps.tags.outputs.docker_tags }}
         build-args: |
           JAR_FILE=${{ steps.jar.outputs.jar_file }}
+          JAVA_VERSION=${{ steps.java.outputs.version }}
           ${{ inputs.build_args }}
         # Links the package to its repo in the GHCR UI; this inherits permissions, not visibility.
         labels: |
