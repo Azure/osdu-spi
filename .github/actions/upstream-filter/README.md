@@ -153,7 +153,8 @@ through byte for byte, so a conventional fork plants exactly what it did before.
 
 `explicit` exits 0 when the config lists `fork_owned` and 1 when it does not.
 Exit 2 is a config or template error, including a template that no longer
-carries the default lines. Exit 3 means no listed tree holds a pom, so there is
+carries the default lines and a listed path with characters other than letters,
+digits, `.`, `_`, `-` and `/`, which the three files can't carry unescaped. Exit 3 means no listed tree holds a pom, so there is
 no Maven directory to watch; initialization then plants no `dependabot.yml` and
 template sync removes it.
 

@@ -47,6 +47,8 @@ CODEOWNERS_DEFAULTS = (
     re.compile(r"^/testing/<service>-test-azure/\s+<owners>\s*$"),
 )
 CONTRIBUTING_DEFAULT = "`provider/*-azure/`, `testing/*-test-azure/`"
+# Paths go unescaped into YAML strings, CODEOWNERS patterns and Markdown cells.
+RENDER_SAFE_PATH = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$")
 
 
 class TemplateError(Exception):
@@ -57,7 +59,13 @@ def explicit_paths(config):
     if not config or not os.path.isfile(config):
         return None
     cfg = load_config(config)
-    return list(cfg["fork_owned"]) if "fork_owned" in cfg else None
+    if "fork_owned" not in cfg:
+        return None
+    paths = list(cfg["fork_owned"])
+    unsafe = [p for p in paths if not RENDER_SAFE_PATH.match(p)]
+    if unsafe:
+        raise Halt("CONFIG_INVALID", f"fork_owned paths must be letters, digits, '.', '_', '-' and '/': {', '.join(unsafe)}")
+    return paths
 
 
 def maven_directories(paths, checkout):

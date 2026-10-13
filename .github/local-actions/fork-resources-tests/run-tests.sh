@@ -107,7 +107,13 @@ expect_rc 1 render explicit --config "$TMP/absent.yml"
 expect_rc 1 render explicit
 printf 'service: demo\n' > "$TMP/broken.yml"
 expect_rc 2 render explicit --config "$TMP/broken.yml"
-ok "explicit list detected; conventional, absent and broken configs are not"
+for bad in 'demo azure' 'demo|azure' 'demo"azure'; do
+  sed "s/demo-azure-enqueue/$bad/" "$TOP_CFG" > "$TMP/unsafe.yml"
+  expect_rc 2 render explicit --config "$TMP/unsafe.yml"
+  grep -q "fork_owned paths must be" "$TMP/err" || die "fork_owned '$bad' refused for another reason: $(cat "$TMP/err")"
+  expect_rc 2 render codeowners --config "$TMP/unsafe.yml" < "$RESOURCES/CODEOWNERS"
+done
+ok "explicit list detected; conventional, absent and broken configs are not; unrenderable paths refused"
 
 note "without fork_owned every template passes through byte for byte"
 for kind in dependabot codeowners contributing; do
