@@ -102,7 +102,7 @@ runs:
 
         if [[ "$GENERATE_COVERAGE" == "true" ]]; then
           # verify, not package: a check the pom binds to verify must gate the pull request too.
-          mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.11:report
+          mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.14:report
           
           echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "## Summary" >> $GITHUB_STEP_SUMMARY
