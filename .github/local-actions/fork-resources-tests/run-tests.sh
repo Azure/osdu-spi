@@ -221,7 +221,7 @@ run_build_env $'SIS_DATA=$GITHUB_WORKSPACE/apachesis_setup/SIS_DATA\r\n\n# a com
   || die "unexpected GITHUB_ENV: $(cat "$TMP/github_env")"
 run_build_env ""
 [ ! -s "$TMP/github_env" ] || die "an empty BUILD_ENV wrote to GITHUB_ENV"
-for bad in "NOEQUALS" "1BAD=x" "SPACE KEY=x" "PATH=/tmp" "GITHUB_TOKEN=x" "MAVEN_OPTS=-X"; do
+for bad in "NOEQUALS" "1BAD=x" "SPACE KEY=x" "PATH=/tmp" "GITHUB_TOKEN=x" "MAVEN_OPTS=-X" "M2_HOME=/x"; do
   if run_build_env "$bad"; then die "BUILD_ENV '$bad' was accepted"; fi
   grep -q "::error::" "$TMP/build-env.out" || die "BUILD_ENV '$bad' failed without an error annotation"
 done

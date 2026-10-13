@@ -393,13 +393,23 @@ jobs:
           # Dependabot, CODEOWNERS and CONTRIBUTING.md templates otherwise assume.
           RENDER=".github/actions/upstream-filter/fork_resources.py"
           FORK_OWNED_EXPLICIT=false
+          FORK_OWNED_UNREADABLE=false
           if [ -f ".github/upstream-filter.yml" ] && [ -f "$RENDER" ]; then
             EXPLICIT_RC=0
             python3 "$RENDER" explicit --config .github/upstream-filter.yml || EXPLICIT_RC=$?
             case "$EXPLICIT_RC" in
               0) FORK_OWNED_EXPLICIT=true ;;
               1) ;;
-              *) echo "::warning::.github/upstream-filter.yml could not be read for fork_owned; the fork-owned paths stay as planted" ;;
+              *)
+                FORK_OWNED_UNREADABLE=true
+                echo "::warning::.github/upstream-filter.yml could not be read for fork_owned; Dependabot, CODEOWNERS and CONTRIBUTING.md stay as planted"
+                if git cat-file -e HEAD:.github/dependabot.yml 2>/dev/null; then
+                  git checkout HEAD -- .github/dependabot.yml
+                else
+                  git rm -q --cached --ignore-unmatch .github/dependabot.yml
+                  rm -f .github/dependabot.yml
+                fi
+                ;;
             esac
           fi
 
@@ -444,7 +454,7 @@ jobs:
           fi
 
           # Same create-if-missing rule for the contributing guide.
-          if [ ! -f "CONTRIBUTING.md" ] && git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" >/dev/null 2>&1; then
+          if [ "$FORK_OWNED_UNREADABLE" = "false" ] && [ ! -f "CONTRIBUTING.md" ] && git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" >/dev/null 2>&1; then
             echo "Planting fork contributing guide"
             git show refs/remotes/template/main:".github/fork-resources/CONTRIBUTING.md" > "$RUNNER_TEMP/CONTRIBUTING.md"
             if [ "$FORK_OWNED_EXPLICIT" = "true" ]; then
@@ -459,7 +469,7 @@ jobs:
           # anywhere (ADR-018), and a plantable file is itself an update in check-updates above.
           # The fork's own Azure module names the prefix to protect; the filter's service key is
           # the fallback, since a filter this run planted from the URL slug is not authoritative.
-          if [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
+          if [ "$FORK_OWNED_UNREADABLE" = "false" ] && [ ! -f ".github/CODEOWNERS" ] && git show refs/remotes/template/main:".github/fork-resources/CODEOWNERS" >/dev/null 2>&1; then
             CODEOWNERS_SERVICE=""
             azure_dirs=(provider/*-azure/)
             if [ ${#azure_dirs[@]} -eq 1 ] && [ -d "${azure_dirs[0]}" ]; then
