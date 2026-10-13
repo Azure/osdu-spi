@@ -577,13 +577,14 @@ TIP_SHA=$(git -C "$SSR" rev-parse HEAD)
 # The trap seed-source.sh exists for: simplified history hides the deletion.
 [ -z "$(git -C "$SSR" rev-list -1 "$TIP_SHA" -- provider/demo-azure)" ] || die "expected simplified history to return nothing for the merge-deleted tree"
 SS_OUT="$TMP/seed-source.env"
-(cd "$SSR" && RUNNER_TEMP="$TMP/seed-source-scratch" bash "$(dirname "$ENGINE")/seed-source.sh" HEAD demo "$SS_OUT")
+(cd "$SSR" && RUNNER_TEMP="$TMP/seed-source-scratch" bash "$(dirname "$ENGINE")/seed-source.sh" HEAD "$SS_OUT" \
+  provider/demo-azure testing/demo-test-azure)
 # shellcheck disable=SC1090
 . "$SS_OUT"
 [ -f "$seed_dir/provider/demo-azure/pom.xml" ] || die "provider tree missing from the seed source"
 [ -f "$seed_dir/testing/demo-test-azure/pom.xml" ] || die "testing tree missing from the seed source"
-[ "$provider_sha" = "$SIDE_SHA" ] || die "provider tree not taken from the deletion commit's surviving parent"
-[ "$testing_sha" = "$TIP_SHA" ] || die "testing tree not taken from the tip"
+grep -qx "Seeded-From: provider/demo-azure $SIDE_SHA" "$trailers" || die "provider tree not taken from the deletion commit's surviving parent"
+grep -qx "Seeded-From: testing/demo-test-azure $TIP_SHA" "$trailers" || die "testing tree not taken from the tip"
 ok "merge-deleted tree resolved via the deletion commit's parents; split sources composed"
 
 note "template config: substituted for demo, generates the fixture cleanly"
@@ -613,5 +614,156 @@ engine --mode seed --config "$CONFIG" --checkout "$HAM" --seed-source "$FIXTURE"
 replace_in_file "$HAM/testing/demo-test-core/pom.xml" "0.31.0-SNAPSHOT" "0.32.0-SNAPSHOT"
 expect_halt "identity collision halts instead of silently rewriting" STAMP_AMBIGUOUS "$TMP/h11.json" \
   engine --mode stamp --config "$CONFIG" --checkout "$HAM" --report "$TMP/h11.json"
+
+note "paths: the conventional pair derives from the service key"
+engine --mode paths --config "$CONFIG" --report "$TMP/paths.json" > /dev/null
+[ "$(report_field "$TMP/paths.json" "' '.join(r['fork_owned'])")" = "provider/demo-azure testing/demo-test-azure" ] \
+  || die "paths mode did not derive the conventional pair"
+ok "paths mode lists provider/demo-azure and testing/demo-test-azure"
+
+# A reference-service layout: the Azure provider is a nested reactor with no root pom,
+# testing/ has no reactor pom, and the Azure test suite is not Maven at all.
+REF_FIX="$TMP/ref-fixture"
+rm -rf "$REF_FIX"
+cp -R "$FIXTURE" "$REF_FIX"
+mkdir -p "$REF_FIX/provider/demo-azure/demo-aks"
+mv "$REF_FIX/provider/demo-azure/pom.xml" "$REF_FIX/provider/demo-azure/src" "$REF_FIX/provider/demo-azure/demo-aks/"
+replace_in_file "$REF_FIX/pom.xml" "<module>provider/demo-azure</module>" "<module>provider/demo-azure/demo-aks</module>"
+rm -rf "$REF_FIX/testing"
+mkdir -p "$REF_FIX/testing/demo_test_azure" "$REF_FIX/testing/demo_test_core"
+echo "print('azure')" > "$REF_FIX/testing/demo_test_azure/run_test.py"
+echo "print('core')" > "$REF_FIX/testing/demo_test_core/test_demo.py"
+REF_CFG="$TMP/ref-config.yml"
+cp "$CONFIG" "$REF_CFG"
+replace_in_file "$REF_CFG" "service: demo" "service: demo
+
+fork_owned:
+  - provider/demo-azure
+  - testing/demo_test_azure"
+replace_in_file "$REF_CFG" "  pom.xml: keep
+  demo-test-core: keep
+  demo-test-azure: fork
+  demo-test-aws: strip" "  demo_test_core: keep
+  demo_test_azure: fork"
+replace_in_file "$REF_CFG" "  - testing/demo-test-core" "  - testing/demo_test_core"
+replace_in_file "$REF_CFG" "                  <module>provider/demo-azure</module>" "                  <module>provider/demo-azure/demo-aks</module>"
+python3 - "$REF_CFG" <<'EOF'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+head, _sep, _tail = text.partition("inject_testing_pom_azure_module: |")
+open(path, "w").write(head + "inject_testing_pom_azure_module: |\n")
+EOF
+
+note "generate: an explicit fork_owned list with no testing reactor"
+REF_GEN="$TMP/ref-gen"
+rm -rf "$REF_GEN"
+cp -R "$REF_FIX" "$REF_GEN"
+engine --mode generate --config "$REF_CFG" --checkout "$REF_GEN" --report "$TMP/ref-gen.json" > /dev/null
+[ ! -e "$REF_GEN/provider" ] || die "explicit list kept provider/"
+[ ! -e "$REF_GEN/testing/demo_test_azure" ] || die "fork-owned testing tree survived generation"
+[ -f "$REF_GEN/testing/demo_test_core/test_demo.py" ] || die "kept testing tree lost"
+grep -q "<module>provider/demo-azure/demo-aks</module>" "$REF_GEN/pom.xml" || die "nested azure module not injected"
+[ "$(report_field "$TMP/ref-gen.json" "r['engine_version']")" = "1.1.0" ] || die "engine version not reported"
+ok "generated without a testing injection; nested provider module injected"
+
+note "paths: an explicit list is returned verbatim"
+engine --mode paths --config "$REF_CFG" --report "$TMP/ref-paths.json" > /dev/null
+[ "$(report_field "$TMP/ref-paths.json" "' '.join(r['fork_owned'])")" = "provider/demo-azure testing/demo_test_azure" ] \
+  || die "paths mode did not return the explicit list"
+ok "paths mode lists the explicit trees"
+
+note "seed and stamp: nested provider pom and a non-Maven test tree"
+engine --mode seed --config "$REF_CFG" --checkout "$REF_GEN" --seed-source "$REF_FIX" --report "$TMP/ref-seed.json" > /dev/null
+[ -f "$REF_GEN/provider/demo-azure/demo-aks/pom.xml" ] || die "nested provider tree not seeded"
+[ -f "$REF_GEN/testing/demo_test_azure/run_test.py" ] || die "non-Maven test tree not seeded"
+replace_in_file "$REF_GEN/pom.xml" "<version>0.31.0-SNAPSHOT</version>" "<version>0.32.0-SNAPSHOT</version>"
+engine --mode stamp --config "$REF_CFG" --checkout "$REF_GEN" --report "$TMP/ref-stamp.json" > /dev/null
+! grep -q "0.31.0-SNAPSHOT" "$REF_GEN/provider/demo-azure/demo-aks/pom.xml" || die "nested provider pom not stamped"
+[ "$(report_field "$TMP/ref-stamp.json" "sorted(r['stamp']['references'])")" = "['root']" ] \
+  || die "stamp read references the trees do not need"
+ok "seeded both trees; stamp followed the root pom alone"
+
+note "halt: an explicit tree that is missing or empty in the seed source"
+REF_EMPTY="$TMP/ref-empty-source"
+rm -rf "$REF_EMPTY"
+cp -R "$REF_FIX" "$REF_EMPTY"
+rm -f "$REF_EMPTY/testing/demo_test_azure/run_test.py"
+REF_H1="$TMP/ref-h1"
+rm -rf "$REF_H1"
+mkdir -p "$REF_H1"
+expect_halt "empty listed tree halts" SEED_SOURCE_MISSING "$TMP/ref-h1.json" \
+  engine --mode seed --config "$REF_CFG" --checkout "$REF_H1" --seed-source "$REF_EMPTY" --report "$TMP/ref-h1.json"
+
+note "halt: fork_owned names a provider tree upstream does not carry"
+REF_PFX="$TMP/ref-pfx.yml"
+cp "$REF_CFG" "$REF_PFX"
+replace_in_file "$REF_PFX" "  - provider/demo-azure" "  - provider/other-azure"
+REF_H2="$TMP/ref-h2"
+rm -rf "$REF_H2"
+cp -R "$REF_FIX" "$REF_H2"
+expect_halt "unknown listed provider tree halts" MODULE_PREFIX_MISMATCH "$TMP/ref-h2.json" \
+  engine --mode generate --config "$REF_PFX" --checkout "$REF_H2" --report "$TMP/ref-h2.json"
+
+note "halt: a testing reactor with a fork verdict still needs its injection"
+REF_H3="$TMP/ref-h3"
+rm -rf "$REF_H3"
+cp -R "$REF_FIX" "$REF_H3"
+cp "$FIXTURE/testing/pom.xml" "$REF_H3/testing/pom.xml"
+REF_RX="$TMP/ref-rx.yml"
+cp "$REF_CFG" "$REF_RX"
+replace_in_file "$REF_RX" "  demo_test_core: keep" "  pom.xml: keep
+  demo_test_core: keep"
+expect_halt "reactor without the testing injection halts" CONFIG_INVALID "$TMP/ref-h3.json" \
+  engine --mode generate --config "$REF_RX" --checkout "$REF_H3" --report "$TMP/ref-h3.json"
+
+note "halt: malformed fork_owned lists"
+bad_fork_owned() {
+  local desc="$1" from="$2" to="$3" n="$4"
+  cp "$REF_CFG" "$TMP/bad-$n.yml"
+  replace_in_file "$TMP/bad-$n.yml" "$from" "$to"
+  expect_halt "$desc" CONFIG_INVALID "$TMP/bad-$n.json" \
+    engine --mode paths --config "$TMP/bad-$n.yml" --report "$TMP/bad-$n.json"
+}
+bad_fork_owned "empty list" "  - provider/demo-azure
+  - testing/demo_test_azure" "" 1
+bad_fork_owned "testing path without a fork verdict" "  - testing/demo_test_azure" "  - testing/demo_test_azure
+  - testing/demo_test_core" 2
+bad_fork_owned "fork verdict missing from the list" "  - testing/demo_test_azure" "" 3
+bad_fork_owned "top-level entry without a strip verdict" "  - provider/demo-azure" "  - provider/demo-azure
+  - demo-core" 4
+bad_fork_owned "path deeper than one entry" "  - provider/demo-azure" "  - provider/demo-azure/demo-aks" 5
+bad_fork_owned "path outside provider/ and testing/" "  - provider/demo-azure" "  - docs/demo-azure" 6
+
+# Azure modules at the top level beside other providers, listed in the default modules.
+TOP_FIX="$TMP/top-fixture"
+rm -rf "$TOP_FIX"
+cp -R "$FIXTURE" "$TOP_FIX"
+mv "$TOP_FIX/provider/demo-azure" "$TOP_FIX/demo-azure-enqueue"
+replace_in_file "$TOP_FIX/pom.xml" "<module>provider/demo-azure</module>" "<module>demo-azure-enqueue</module>"
+TOP_CFG="$TMP/top-config.yml"
+cp "$CONFIG" "$TOP_CFG"
+replace_in_file "$TOP_CFG" "service: demo" "service: demo
+
+fork_owned:
+  - demo-azure-enqueue
+  - testing/demo-test-azure"
+replace_in_file "$TOP_CFG" "  docs: keep" "  docs: keep
+  demo-azure-enqueue: strip"
+replace_in_file "$TOP_CFG" "                  <module>provider/demo-azure</module>" "                  <module>demo-azure-enqueue</module>"
+
+note "generate, seed, stamp: a fork-owned module at the top level"
+TOP_GEN="$TMP/top-gen"
+rm -rf "$TOP_GEN"
+cp -R "$TOP_FIX" "$TOP_GEN"
+engine --mode generate --config "$TOP_CFG" --checkout "$TOP_GEN" > /dev/null
+[ ! -e "$TOP_GEN/demo-azure-enqueue" ] || die "top-level fork-owned module survived generation"
+engine --mode seed --config "$TOP_CFG" --checkout "$TOP_GEN" --seed-source "$TOP_FIX" --report "$TMP/top-seed.json" > /dev/null
+[ -f "$TOP_GEN/demo-azure-enqueue/pom.xml" ] || die "top-level module not seeded"
+[ "$(report_field "$TMP/top-seed.json" "' '.join(r['seeded'])")" = "demo-azure-enqueue testing/demo-test-azure" ] || die "seed report wrong"
+replace_in_file "$TOP_GEN/pom.xml" "<version>0.31.0-SNAPSHOT</version>" "<version>0.32.0-SNAPSHOT</version>"
+engine --mode stamp --config "$TOP_CFG" --checkout "$TOP_GEN" > /dev/null
+grep -q "0.32.0-SNAPSHOT" "$TOP_GEN/demo-azure-enqueue/pom.xml" || die "top-level module not stamped to the root version"
+ok "top-level module stripped, seeded, and stamped"
 
 printf '\nAll upstream-filter harness checks passed.\n'

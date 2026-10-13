@@ -265,14 +265,18 @@ jobs:
         run: |
           # HEAD is fork_integration. Seeded trees enter history after the branch point that
           # becomes the cascade merge base, so upstream merges never see them (ADR-038).
-          SERVICE_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" "$FILTER_CONFIG" | head -1)
-          if [ -z "$SERVICE_SLUG" ]; then
-            echo "::error::Could not read the service key from the filter config"
+          PATHS_REPORT=$(python3 .github/actions/upstream-filter/upstream_filter.py --mode paths --config "$FILTER_CONFIG")
+          mapfile -t FORK_OWNED < <(python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["fork_owned"]))' <<<"$PATHS_REPORT")
+          if [ "${#FORK_OWNED[@]}" -eq 0 ]; then
+            echo "::error::The filter config names no fork-owned trees"
             exit 1
           fi
 
-          if git ls-files -- "provider/${SERVICE_SLUG}-azure" | grep -q . \
-            && git ls-files -- "testing/${SERVICE_SLUG}-test-azure" | grep -q .; then
+          ALL_PRESENT=true
+          for path in "${FORK_OWNED[@]}"; do
+            git ls-files -- "$path" | grep -q . || ALL_PRESENT=false
+          done
+          if [ "$ALL_PRESENT" = "true" ]; then
             echo "::notice::Fork-owned trees already present; skipping seed"
             # A resumed run can have the trees but not the config; the assertion below needs all three.
             cp "$FILTER_CONFIG" .github/upstream-filter.yml
@@ -282,7 +286,7 @@ jobs:
             fi
           else
             bash .github/actions/upstream-filter/seed-source.sh \
-              "upstream/$DEFAULT_BRANCH" "$SERVICE_SLUG" "$RUNNER_TEMP/seed-source.env"
+              "upstream/$DEFAULT_BRANCH" "$RUNNER_TEMP/seed-source.env" "${FORK_OWNED[@]}"
             . "$RUNNER_TEMP/seed-source.env"
 
             python3 .github/actions/upstream-filter/upstream_filter.py \
@@ -298,12 +302,11 @@ jobs:
             cp "$FILTER_CONFIG" .github/upstream-filter.yml
 
             git add -A
-            git commit -m "chore: seed fork-owned azure trees" \
-              -m $'Seeded-From-Provider: '"$provider_sha"$'\nSeeded-From-Testing: '"$testing_sha"
+            git commit -m "chore: seed fork-owned azure trees" -m "$(cat "$trailers")"
           fi
 
           # Same survival assertion the cascade runs after every merge.
-          for path in "provider/${SERVICE_SLUG}-azure" "testing/${SERVICE_SLUG}-test-azure" ".github/upstream-filter.yml"; do
+          for path in "${FORK_OWNED[@]}" ".github/upstream-filter.yml"; do
             if ! git ls-files -- "$path" | grep -q .; then
               echo "::error::$path is missing from the index after seeding"
               exit 1

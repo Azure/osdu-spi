@@ -311,15 +311,15 @@ jobs:
       - name: Assert fork-owned paths survived the merge
         if: steps.filter-config.outputs.exists == 'true'
         run: |
-          # The config's service key names the module prefix, which can differ from
-          # the repository name (e.g. repo entitlements, modules entitlements-v2-*).
-          SERVICE_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" .github/upstream-filter.yml | head -1)
-          if [ -z "$SERVICE_SLUG" ]; then
-            echo "::error::Could not read the service key from .github/upstream-filter.yml"
+          # The engine lists the trees: an explicit fork_owned, or the pair the service key derives.
+          PATHS_REPORT=$(python3 .github/actions/upstream-filter/upstream_filter.py --mode paths --config .github/upstream-filter.yml)
+          mapfile -t FORK_OWNED < <(python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["fork_owned"]))' <<<"$PATHS_REPORT")
+          if [ "${#FORK_OWNED[@]}" -eq 0 ]; then
+            echo "::error::.github/upstream-filter.yml names no fork-owned trees"
             exit 1
           fi
           # Index-based on purpose: a filesystem glob still passes over an unmerged file.
-          for path in "provider/${SERVICE_SLUG}-azure" "testing/${SERVICE_SLUG}-test-azure"; do
+          for path in "${FORK_OWNED[@]}"; do
             if ! git ls-files -- "$path" | grep -q .; then
               echo "::error::Fork-owned path $path is missing from the index after the merge"
               exit 1

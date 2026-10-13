@@ -3,7 +3,7 @@ description: 'Runs the upstream filter engine: generate, verify, stamp, or seed 
 
 inputs:
   mode:
-    description: 'Engine mode: generate | verify | stamp | seed'
+    description: 'Engine mode: generate | verify | stamp | seed | paths'
     required: true
   config:
     description: 'Path to the per-service upstream-filter.yml'
