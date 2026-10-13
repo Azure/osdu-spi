@@ -19,7 +19,8 @@
 # REQUESTED_JAR is the conventional provider/<service>-azure/target/*-spring-boot.jar
 # or a SERVICE_TARGET_JAR override. A fork whose Azure module name deviates from the
 # repository name (entitlements -> entitlements-v2-azure) matches nothing, so the
-# script then discovers the Azure Spring Boot JAR and a fresh fork builds with no
+# script then discovers the Azure Spring Boot JAR, directly under the Azure tree or
+# one module down (provider/unit-azure/unit-aks), and a fresh fork builds with no
 # manual variable. SERVICE_TARGET_JAR is only needed to disambiguate a service that
 # builds more than one Azure Spring Boot JAR.
 #
@@ -59,7 +60,7 @@ if [[ ${#requested_matches[@]} -ge 1 ]]; then
   fi
 else
   # 2. Discover the Azure Spring Boot JAR the build produced.
-  discovered=( provider/*-azure/target/*-spring-boot.jar )
+  discovered=( provider/*-azure/target/*-spring-boot.jar provider/*-azure/*/target/*-spring-boot.jar )
   if [[ ${#discovered[@]} -eq 1 ]]; then
     resolved="${discovered[0]}"
     echo "'$REQUESTED_JAR' matched no file; discovered Azure JAR: $resolved"
@@ -77,7 +78,7 @@ else
       exit 1
     fi
   else
-    echo "::error::No Spring Boot JAR matched '$REQUESTED_JAR' or provider/*-azure/target/*-spring-boot.jar. Confirm the java-build artifact downloaded, or set SERVICE_TARGET_JAR."
+    echo "::error::No Spring Boot JAR matched '$REQUESTED_JAR' or provider/*-azure/[*/]target/*-spring-boot.jar. Confirm the java-build artifact downloaded, or set SERVICE_TARGET_JAR."
     exit 1
   fi
 fi
