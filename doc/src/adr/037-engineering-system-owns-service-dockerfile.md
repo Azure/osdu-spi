@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-06-04)
+Accepted (2026-06-04); amended 2026-10-13 so the base follows the declared Java release
 
 ## Context
 
@@ -16,7 +16,7 @@ Accepted (2026-06-04)
 - The engineering system owns one canonical Java service Dockerfile at `build/Dockerfile`, synced to every fork through the `build` directory entry in `sync-config.json`. Service forks do not supply their own Dockerfile for CI; the `docker-build` action defaults `dockerfile_path` to `build/Dockerfile`.
 - The recipe mirrors the OSDU community `service-base-image/java/Dockerfile`: `COPY ${JAR_FILE} /app.jar` into a base image, with the JVM, AppInsights, and MSI environment the community image expects. No Maven runs inside the image build.
 - The `docker-build` action selects the JAR. The caller passes `jar_file`, defaulting to `provider/<SERVICE_NAME>-azure/target/*-spring-boot.jar` with `SERVICE_NAME` defaulting to the repository name, and the action supplies the resolved path as the `JAR_FILE` build-arg. When that path matches nothing (for example `entitlements` builds `provider/entitlements-v2-azure`), the action discovers the Azure Spring Boot JAR itself, so a fresh fork builds with no per-service variable. `SERVICE_TARGET_JAR` is needed only to disambiguate a service that builds more than one Azure JAR, and `SERVICE_NAME` only when the repository name is not the Maven service slug; it also names the image.
-- The base is the Microsoft Build of OpenJDK 17 on Azure Linux, `mcr.microsoft.com/openjdk/jdk:17-azurelinux`, pinned by digest on `FROM`. It is multi-arch, so release images pull natively on arm64 and amd64, and MCR is anonymously pullable from runners. Dependabot's `docker` ecosystem runs only in the template (`directory: /build`) and opens the digest-bump PR there; template sync carries the updated Dockerfile to every fork, and forks carry no `docker` ecosystem. The ref sits on `FROM` rather than behind an `ARG` because Dependabot does not reliably follow `FROM ${ARG}`.
+- The base is the Microsoft Build of OpenJDK on Azure Linux, `mcr.microsoft.com/openjdk/jdk:<release>-azurelinux`, at the Java release the fork's root pom declares: `maven.compiler.release`, then `java.version`, defaulting to 17. The `java-release` action resolves it, fails on a release the images do not carry (17 and 25), and the same value drives `setup-java` and the `JAVA_VERSION` build-arg. Each supported release is its own `FROM` stage pinned by digest (`runtime-17`, `runtime-25`) and the final stage is `FROM runtime-${JAVA_VERSION}`, so every digest stays on a literal `FROM` line; Dependabot does not reliably follow `FROM ${ARG}` to an image. The images are multi-arch, so release images pull natively on arm64 and amd64, and MCR is anonymously pullable from runners. Dependabot's `docker` ecosystem runs only in the template (`directory: /build`) and opens the digest-bump PR there; template sync carries the updated Dockerfile to every fork, and forks carry no `docker` ecosystem. `build/acceptance.Dockerfile` selects its Maven image the same way.
 - The Application Insights Java agent is fetched with `ADD --checksum` (version and sha256 pinned, no `RUN` so the arm64 leg needs no emulation) to `/opt/agents/`, where OSDU's base image kept it. `build/docker-entrypoint.sh` attaches it with `-javaagent` only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set to something other than the image default `dummy`. Dependabot tracks `FROM` refs, not `ADD` URLs, so agent bumps are a manual edit of the version and checksum.
 
 ## Consequences
@@ -34,6 +34,7 @@ Accepted (2026-06-04)
 
 ### Neutral
 
+- Supporting a new Java release is a template change: a stage in each Dockerfile and an entry in the `java-release` action's supported set.
 - Stale in-repo Dockerfiles in service forks are unused by CI. They may be removed upstream later but do not block the pipeline.
 
 ## Alternatives Considered

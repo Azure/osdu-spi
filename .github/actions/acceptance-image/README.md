@@ -106,6 +106,7 @@ SERVICE_NAME=partition GITHUB_OUTPUT=/dev/stdout \
 
 # Full image build (space-separated suite paths, the first is the run-time default):
 docker build -f build/acceptance.Dockerfile --build-arg "SUITE_DIRS=partition-acceptance-test testing" -t partition-acceptance:dev .
+# A fork whose pom declares Java 25 adds --build-arg JAVA_VERSION=25 (the default is 17).
 ```
 
 The regression harness lives at

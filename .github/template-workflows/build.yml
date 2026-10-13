@@ -82,10 +82,14 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
+      - name: "Resolve Java release"
+        id: java
+        uses: ./.github/actions/java-release
+
       - name: "Setup Java Environment"
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
         with:
-          java-version: '17'
+          java-version: ${{ steps.java.outputs.version }}
           distribution: 'temurin'
           cache: 'maven'
           cache-dependency-path: '**/pom.xml'
@@ -111,7 +115,7 @@ jobs:
             MAVEN_CLI_OPTS="$MAVEN_CLI_OPTS --settings=.mvn/community-maven.settings.xml"
           fi
           
-          mvn $MAVEN_CLI_OPTS clean test org.jacoco:jacoco-maven-plugin:0.8.11:report
+          mvn $MAVEN_CLI_OPTS clean test org.jacoco:jacoco-maven-plugin:0.8.14:report
           echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "## Summary" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

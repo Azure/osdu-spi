@@ -54,11 +54,19 @@ runs:
           echo "has_pom=false" >> $GITHUB_OUTPUT
         fi
 
+    - name: "Resolve Java release"
+      if: steps.check_pom.outputs.has_pom == 'true'
+      id: java
+      shell: bash
+      run: |
+        VERSION=$(python3 "$GITHUB_ACTION_PATH/../java-release/resolve.py" pom.xml)
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
     - name: "Setup Java Environment"
       if: steps.check_pom.outputs.has_pom == 'true'
       uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
       with:
-        java-version: '17'
+        java-version: ${{ steps.java.outputs.version }}
         distribution: 'temurin'
         cache: 'maven'
         cache-dependency-path: '**/pom.xml'
@@ -94,7 +102,7 @@ runs:
 
         if [[ "$GENERATE_COVERAGE" == "true" ]]; then
           # verify, not package: a check the pom binds to verify must gate the pull request too.
-          mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.11:report
+          mvn $MAVEN_CLI_OPTS clean verify org.jacoco:jacoco-maven-plugin:0.8.14:report
           
           echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "## Summary" >> $GITHUB_STEP_SUMMARY

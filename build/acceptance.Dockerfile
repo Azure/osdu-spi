@@ -17,6 +17,7 @@
 #
 # amd64 only: this build runs Maven, and under QEMU arm64 emulation that costs minutes per push
 # with no consumer. CI runners are amd64 and Apple Silicon runs the amd64 image emulated.
+ARG JAVA_VERSION=17
 FROM docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS select
 # Space-separated suite paths; the first is the run-time default.
 ARG SUITE_DIRS
@@ -29,7 +30,10 @@ RUN set -eu; mkdir -p /suite; \
     if [ -d /src/.spi ]; then cp -R /src/.spi /suite/.spi; fi; \
     printf '%s' "${SUITE_DIRS%% *}" > /suite/.default-suite-dir
 
-FROM docker.io/library/maven:3.9-eclipse-temurin-17@sha256:1a352420f7aba21f5ad08df31bab55f74c013fb491f1ae8ab1dd7ff9ed698584
+# JAVA_VERSION is the release the fork's root pom declares, one stage per release as in build/Dockerfile.
+FROM docker.io/library/maven:3.9-eclipse-temurin-17@sha256:1a352420f7aba21f5ad08df31bab55f74c013fb491f1ae8ab1dd7ff9ed698584 AS maven-17
+FROM docker.io/library/maven:3.9-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 AS maven-25
+FROM maven-${JAVA_VERSION}
 
 ARG SUITE_DIRS
 WORKDIR /suite

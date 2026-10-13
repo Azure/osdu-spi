@@ -66,7 +66,7 @@ Example: `agent/123-fix-sync-conflict`
 mvn clean install
 
 # Run tests with coverage
-mvn clean test org.jacoco:jacoco-maven-plugin:0.8.11:report
+mvn clean test org.jacoco:jacoco-maven-plugin:0.8.14:report
 
 # Run specific test
 mvn test -Dtest=TestClassName#testMethodName
