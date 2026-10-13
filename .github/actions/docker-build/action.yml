@@ -138,10 +138,11 @@ runs:
         platforms: ${{ inputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
         provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}
+        # Caller arguments first: a later duplicate wins, and the resolved JAR and release must.
         build-args: |
+          ${{ inputs.build_args }}
           JAR_FILE=${{ steps.jar.outputs.jar_file }}
           JAVA_VERSION=${{ steps.java.outputs.version }}
-          ${{ inputs.build_args }}
         # Links the package to its repo in the GHCR UI; this inherits permissions, not visibility.
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
