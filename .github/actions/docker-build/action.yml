@@ -94,10 +94,9 @@ runs:
       id: java
       shell: bash
       run: |
-        VERSION=$(python3 "$GITHUB_ACTION_PATH/../java-release/resolve.py" "$BUILD_CONTEXT/pom.xml")
+        # The fork's root pom, as java-build reads it, whatever the Docker context.
+        VERSION=$(python3 "$GITHUB_ACTION_PATH/../java-release/resolve.py" pom.xml)
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      env:
-        BUILD_CONTEXT: ${{ inputs.build_context }}
 
     - name: "Compute image tags"
       id: tags
