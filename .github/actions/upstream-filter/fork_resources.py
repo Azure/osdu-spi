@@ -62,7 +62,7 @@ def explicit_paths(config):
     if "fork_owned" not in cfg:
         return None
     paths = list(cfg["fork_owned"])
-    unsafe = [p for p in paths if not RENDER_SAFE_PATH.match(p)]
+    unsafe = [p for p in paths if not RENDER_SAFE_PATH.fullmatch(p)]
     if unsafe:
         raise Halt("CONFIG_INVALID", f"fork_owned paths must be letters, digits, '.', '_', '-' and '/': {', '.join(unsafe)}")
     return paths
@@ -81,7 +81,7 @@ def maven_directories(paths, checkout):
             for child in sorted(os.listdir(root)):
                 if not os.path.isfile(os.path.join(root, child, "pom.xml")):
                     continue
-                if not RENDER_SAFE_PATH.match(child):
+                if not RENDER_SAFE_PATH.fullmatch(child):
                     print(f"warning: skipping module {path}/{child}: name is not letters, digits, '.', '_' and '-'", file=sys.stderr)
                     continue
                 dirs.append(f"/{path}/{child}")

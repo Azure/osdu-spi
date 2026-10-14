@@ -419,6 +419,7 @@ jobs:
       run: ${{ steps.decide.outputs.run }}
       reason: ${{ steps.decide.outputs.reason }}
       service: ${{ steps.decide.outputs.service }}
+      deploy_only: ${{ steps.decide.outputs.deploy_only }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
@@ -470,6 +471,8 @@ jobs:
           # A deploy-only descriptor (empty tests map) has no acceptance image and still borrows.
           [ -n "$reason" ] || [ "$suites" = "0" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="the descriptor declares suites but no acceptance image was built"
           echo "service=$service" >> "$GITHUB_OUTPUT"
+          deploy_only=false; [ -z "$service" ] || [ "$suites" != "0" ] || deploy_only=true
+          echo "deploy_only=$deploy_only" >> "$GITHUB_OUTPUT"
           if [ -n "$reason" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"
             echo "::notice title=Deploy and Test skipped::$reason"
@@ -618,13 +621,17 @@ jobs:
             if [[ "$refusal" != *"retry once 'spi status' reports deployable"* ]] && jq -e '.deployable == true' status.json > /dev/null 2>&1; then
               echo "::error::pin refused while the environment is deployable"; exit 1
             fi
-            reason=$(jq -r '.reason.message // "pin reported the environment not ready"' status.json)
+            if jq -e '.deployable == true' status.json > /dev/null 2>&1; then
+              reason="the pin refused for readiness while status reports deployable"
+            else
+              reason="environment not deployable, $(jq -r '.reason.message // "no reason given"' status.json)"
+            fi
             if [ $SECONDS -ge $deadline ]; then
-              echo "::error::environment is not deployable after 10 minutes: $reason"
-              echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::pin still refused after 10 minutes: $reason"
+              echo "Deploy and Test: pin still refused after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
-            echo "::notice::pin refused, environment not deployable ($reason); retrying"
+            echo "::notice::pin refused ($reason); retrying"
             sleep 20
           done
 
@@ -640,6 +647,7 @@ jobs:
           done
 
       - name: "Mint test callers"
+        if: needs.deploy-gate.outputs.deploy_only != 'true'
         # The deploy identity's own bearer, for the audience the facts publish, then the
         # member and no-access identities' bearers for the same audience. All three
         # exchanges request a fresh OIDC token from the run and go straight to Entra, so
@@ -681,6 +689,7 @@ jobs:
           mint no-access "$NO_ACCESS_CLIENT_ID" RESOLVER_NO_ACCESS_TOKEN noAccessToken
 
       - name: "Log in to GHCR"
+        if: needs.deploy-gate.outputs.deploy_only != 'true'
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
         with:
           registry: ghcr.io
@@ -739,7 +748,7 @@ jobs:
           [ -z "$failed" ] || { echo "::error::failed suites:$failed"; exit 1; }
 
       - name: "Upload suite reports"
-        if: always() && steps.prove.outcome != 'skipped'
+        if: always() && steps.prove.outcome != 'skipped' && needs.deploy-gate.outputs.deploy_only != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: suite-reports
