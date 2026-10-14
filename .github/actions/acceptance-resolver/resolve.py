@@ -422,6 +422,14 @@ def validate_descriptor(data, suite="acceptance"):
     tests = data["tests"]
     if not isinstance(tests, dict):
         raise Halt("DESCRIPTOR_INVALID", "descriptor.tests must be a mapping")
+    if not tests:
+        # Deploy only: the lane borrows, verifies the rollout and restores with no suite to run.
+        return {
+            "service": service["name"], "suite": None, "suites": {}, "test_type": None,
+            "test_dir": None, "maven_arguments": [], "bindings": {}, "sources": {},
+            "key_vault_bindings": {}, "requires": {"loads": [], "groups": []},
+            "dependencies": [], "timeout_minutes": None,
+        }
     if "acceptance" not in tests:
         raise Halt("MISSING_KEY", "descriptor.tests.acceptance is required")
     suites = {}
@@ -882,8 +890,11 @@ def main(argv=None):
             report = build_report(args.mode, contract, {}, {}, [], [])
             write_report(args.report, report)
             print(f"contract validated for service '{contract['service']}' "
-                  f"(suite: {contract['test_dir']})")
+                  f"(suite: {contract['test_dir'] or 'none, deploy only'})")
             return 0
+        if not contract["suites"]:
+            raise Halt("DESCRIPTOR_INVALID",
+                       "descriptor.tests is empty (deploy only); there is no suite to resolve")
         facts = load_facts(args.facts)
         secrets = load_secrets(args.secrets)
         agreement = check_agreement(facts, args.expect_gateway, args.expect_partition)

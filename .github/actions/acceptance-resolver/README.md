@@ -182,7 +182,7 @@ follows the category.
 # .spi/service.yaml — fork-owned, reviewed with the code, survives any stack rehome
 schemaVersion: 3
 service: { name: partition, archetype: java-maven-azure }
-tests:                                  # named suites of one shape; acceptance is required
+tests:                                  # named suites of one shape; acceptance is required unless the map is empty (deploy only)
   acceptance:
     type: maven
     path: partition-acceptance-test     # upstream-maintained module, kept by the filter

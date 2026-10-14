@@ -456,16 +456,19 @@ jobs:
           # Resolved before the push checks: a rejected descriptor already failed docker-build, and
           # the gate names the rejection rather than the missing image it caused.
           service=""
+          suites=0
           if [ -z "$reason" ]; then
             if python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
                 --descriptor .spi/service.yaml --report contract.json > /dev/null 2>&1; then
               service=$(jq -r '.service // empty' contract.json)
+              suites=$(jq -r '.contract.suites | length' contract.json)
             else
               reason=$(jq -r '.error | "descriptor rejected, \(.code): \(.detail)"' contract.json 2>/dev/null || echo "descriptor rejected by the resolver")
             fi
           fi
           [ -n "$reason" ] || [ "$PUSH_RESULT" = "success" ] || reason="no image was pushed (docker-push: $PUSH_RESULT)"
-          [ -n "$reason" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="descriptor declares no test suite"
+          # A deploy-only descriptor (empty tests map) has no acceptance image and still borrows.
+          [ -n "$reason" ] || [ "$suites" = "0" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="the descriptor declares suites but no acceptance image was built"
           echo "service=$service" >> "$GITHUB_OUTPUT"
           if [ -n "$reason" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"
@@ -473,7 +476,8 @@ jobs:
             echo "Deploy and Test: skipped, $reason" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "reason=" >> "$GITHUB_OUTPUT"
-            echo "Deploy and Test: borrowing $CLUSTER for $service with the pushed image" >> "$GITHUB_STEP_SUMMARY"
+            scope="with the pushed image"; [ "$suites" != "0" ] || scope="with the pushed image, deploy only"
+            echo "Deploy and Test: borrowing $CLUSTER for $service $scope" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy-test:
@@ -696,6 +700,10 @@ jobs:
           trap '{ echo "verdicts<<EOF"; printf "%s" "$verdicts"; echo "EOF"; } >> "$GITHUB_OUTPUT"' EXIT
           python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
             --descriptor .spi/service.yaml --report suites.json > /dev/null
+          if [ "$(jq -r '.contract.suites | length' suites.json)" = "0" ]; then
+            verdicts="✅ deploy only: the pushed image rolled out and verified, no suite declared"$'\n'
+            echo "${verdicts%$'\n'}" >> "$GITHUB_STEP_SUMMARY"
+          fi
           for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
             echo "::group::suite $suite"
             report="$suite-report.json"

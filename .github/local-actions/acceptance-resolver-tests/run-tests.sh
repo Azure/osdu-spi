@@ -643,4 +643,34 @@ PY
 done
 ok "published examples are valid schema v3"
 
+note "deploy only: an empty tests map validates with no suite and refuses resolution"
+cat > "$TMP/deploy-only.yaml" <<'EOF'
+schemaVersion: 3
+service:
+  name: demo
+  archetype: java-maven-azure
+tests: {}
+EOF
+engine --contract-only --descriptor "$TMP/deploy-only.yaml" --report "$TMP/deploy-only.json" > /dev/null \
+  || die "deploy-only descriptor rejected"
+[ "$(report_field "$TMP/deploy-only.json" "r['contract']['suites']")" = "{}" ] || die "deploy-only contract reports suites"
+[ "$(report_field "$TMP/deploy-only.json" "r['service']")" = "demo" ] || die "deploy-only contract lost the service name"
+expect_fail "deploy-only run" 2 "deploy only" "DESCRIPTOR_INVALID" \
+  engine --mode run --descriptor "$TMP/deploy-only.yaml" --facts "$FACTS" --env-file "$TMP/deploy-only.env"
+[ ! -e "$TMP/deploy-only.env" ] || die "deploy-only run wrote an env file"
+python3 - "$DESCRIPTOR" "$TMP/no-acceptance.yaml" <<'PY'
+import sys
+text = open(sys.argv[1]).read()
+assert "\n  acceptance:\n" in text
+open(sys.argv[2], "w").write(text.replace("\n  acceptance:\n", "\n  integration:\n", 1))
+PY
+expect_fail "suites without acceptance" 2 "tests.acceptance is required" "MISSING_KEY" \
+  engine --contract-only --descriptor "$TMP/no-acceptance.yaml"
+python3 -c "
+import json
+tests = json.load(open('$SCHEMA'))['properties']['tests']
+assert 'required' not in tests and {'maxProperties': 0} in tests['anyOf'] and {'required': ['acceptance']} in tests['anyOf']
+"
+ok "schema allows an empty tests map and otherwise requires acceptance"
+
 printf '\nAll acceptance resolver harness checks passed.\n'

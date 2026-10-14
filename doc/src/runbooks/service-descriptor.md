@@ -45,7 +45,7 @@ tests:
 
 `service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. The deploy lane pins, verifies, and restores under this name. It is independent of the image and GHCR package name, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise, so `Azure/osdu-spi-partition` and `danielscholl-osdu/partition` both declare `partition`. `archetype` is always `java-maven-azure`.
 
-`tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
+`tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. A fork whose suite isn't ready yet can declare `tests: {}`: the lane is then deploy only. It builds no acceptance image, borrows the environment with the pushed image, waits for the rollout to verify and restores, and the summary reads "deploy only". Add `acceptance` when the suite can run. Suite names are lowercase slugs. Every suite has the same fields:
 
 | Field | Meaning |
 |---|---|

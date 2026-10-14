@@ -103,6 +103,19 @@ resolve_suite "$WS3" "$TMP/out3.txt" SERVICE_NAME=demo >/dev/null
 output_value "$TMP/out3.txt" reason | grep -q "demo-acceptance-test" || die "skip reason must name the directory"
 ok "clean skip with reason"
 
+note "clean skip: a deploy-only descriptor builds no acceptance image"
+WS3D="$TMP/ws-deploy-only"
+mkdir -p "$WS3D/.spi"
+cat > "$WS3D/.spi/service.yaml" <<'EOF'
+schemaVersion: 3
+service: { name: demo, archetype: java-maven-azure }
+tests: {}
+EOF
+resolve_suite "$WS3D" "$TMP/out3d.txt" SERVICE_NAME=demo >/dev/null
+[ "$(output_value "$TMP/out3d.txt" buildable)" = "false" ] || die "deploy-only descriptor must not be buildable"
+output_value "$TMP/out3d.txt" reason | grep -q "deploy only" || die "skip reason must say deploy only"
+ok "deploy-only skip with reason"
+
 note "halt: a descriptor naming an absent suite is a typo, not an empty fork"
 WS3B="$TMP/ws-descriptor-absent"
 mkdir -p "$WS3B/.spi" "$WS3B/demo-acceptance-test"

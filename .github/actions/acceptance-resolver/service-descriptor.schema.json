@@ -33,7 +33,7 @@
     },
     "tests": {
       "type": "object",
-      "required": ["acceptance"],
+      "anyOf": [{"maxProperties": 0}, {"required": ["acceptance"]}],
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9-]{0,31}$"
       },
@@ -45,7 +45,7 @@
           "$ref": "#/$defs/suite"
         }
       },
-      "description": "Named suites of one shape. acceptance is required and is the upstream <svc>-acceptance-test by default; a fork adds others, for example integration for its provider suite. The acceptance image bakes every declared suite path."
+      "description": "Named suites of one shape. An empty map declares a deploy-only lane: the image is borrowed, verified and restored with no suite. Otherwise acceptance is required and is the upstream <svc>-acceptance-test by default; a fork adds others, for example integration for its provider suite. The acceptance image bakes every declared suite path."
     }
   },
   "$defs": {
