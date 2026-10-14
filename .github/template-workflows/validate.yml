@@ -596,22 +596,25 @@ jobs:
 
       - name: "Borrow"
         # The pin write refuses when the environment is not deployable, and another service's
-        # lane can borrow between the gate and this step. A refusal while status reads not
-        # deployable is that race, and is retried; a refusal while deployable is an error.
+        # lane can borrow between the gate and this step. A readiness refusal from the pin itself
+        # is that race even when status has converged by the time it is read, and is retried; any
+        # other refusal while status reads deployable is an error.
         run: |
           set -uo pipefail
           deadline=$((SECONDS + 10 * 60))
-          until spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
+          until { spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
               --ephemeral --run-id "$GITHUB_RUN_ID" \
               --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
-              --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; do
+              --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > pin.out 2>&1; rc=$?; cat pin.out; [ "$rc" -eq 0 ]; }; do
+            # spi wraps its console output, so the refusal is matched with whitespace collapsed.
+            refusal=$(tr -s '[:space:]' ' ' < pin.out)
             spi status --json > status.json || true
             jq -e 'type == "object"' status.json > /dev/null 2>&1 \
               || { echo "::error::pin refused and spi status --json produced no JSON"; cat status.json; exit 1; }
-            if jq -e '.deployable == true' status.json > /dev/null 2>&1; then
+            if [[ "$refusal" != *"retry once 'spi status' reports deployable"* ]] && jq -e '.deployable == true' status.json > /dev/null 2>&1; then
               echo "::error::pin refused while the environment is deployable"; exit 1
             fi
-            reason=$(jq -r '.reason.message // "unknown"' status.json)
+            reason=$(jq -r '.reason.message // "pin reported the environment not ready"' status.json)
             if [ $SECONDS -ge $deadline ]; then
               echo "::error::environment is not deployable after 10 minutes: $reason"
               echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"

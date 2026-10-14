@@ -668,13 +668,15 @@ def stamp(checkout, cfg, report):
     total_poms = 0
 
     # One mapping per tree: trees under testing/ follow the testing pom version and the
-    # rest follow the root pom version, which may legitimately differ.
+    # rest follow the root pom version, which may legitimately differ. A testing tree in a
+    # layout with no testing reactor follows the root.
+    has_testing_reactor = os.path.isfile(os.path.join(checkout, reference_poms["testing"]))
     for tree in trees:
         poms = _fork_poms(checkout, tree)
         total_poms += len(poms)
         if not poms:
             continue
-        tree_version = reference("testing" if tree.startswith("testing/") else "root")
+        tree_version = reference("testing" if tree.startswith("testing/") and has_testing_reactor else "root")
         mapping = {}
 
         def add(old, new):

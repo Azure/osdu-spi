@@ -102,8 +102,9 @@ bump and the fork-owned poms first coexist. Reference versions are read from the
 merged upstream-owned poms: the root `pom.xml` version, the `testing/pom.xml`
 version, and `testing/<service>-test-core`'s own version. Every upstream-derived
 version string in the poms under the fork-owned trees is rewritten to its
-reference value: trees under `testing/` follow the testing pom, every other tree
-follows the root pom, and a `<service>-test-core` dependency follows test-core.
+reference value: trees under `testing/` follow the testing pom (or the root pom
+when there is no testing reactor), every other tree follows the root pom, and a
+`<service>-test-core` dependency follows test-core.
 With the conventional pair all three references are read; with an explicit
 `fork_owned` list only the ones its poms need, so a layout without a testing
 reactor does not halt on a missing `testing/pom.xml`.
