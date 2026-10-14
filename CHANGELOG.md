@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.4.0](https://github.com/Azure/osdu-spi/compare/v1.3.0...v1.4.0) (2026-10-14)
+
+
+### ✨ Features
+
+* **ci:** Deploy-only lane, with build env and stamping follow-ups to [#258](https://github.com/Azure/osdu-spi/issues/258) ([0461fcd](https://github.com/Azure/osdu-spi/commit/0461fcdf967892b060b1b7448eeeb461512ae8da))
+* **ci:** Fork_owned paths for planted resources and a per-fork BUILD_ENV ([592f6e6](https://github.com/Azure/osdu-spi/commit/592f6e623af67866f62606bda704b6277f46ce3e))
+* **ci:** Render fork resources from fork_owned and export BUILD_ENV ([5038c51](https://github.com/Azure/osdu-spi/commit/5038c51a522d7fa016054b9849f51fb1745b8c0e))
+* **ci:** Support deploy-only descriptors with empty tests map ([f2fdd21](https://github.com/Azure/osdu-spi/commit/f2fdd2120092d11cb5335ee3f4b7c021a6efa3ea))
+* **ci:** Sync template when dependabot dirs drift from fork trees ([7a1e2d2](https://github.com/Azure/osdu-spi/commit/7a1e2d23e36eaff0c72565fd13d07fde849db6e7))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** Escape rejected names in fork_resources logs ([8b34036](https://github.com/Azure/osdu-spi/commit/8b34036e355b3c98938a0df701df288951ced04e))
+* **ci:** Keep $GITHUB_WORKSPACE_X literal in build-env ([0582bde](https://github.com/Azure/osdu-spi/commit/0582bde24c6485a6f780b134dbfec53e3c99f75e))
+* **ci:** Reject unrenderable fork_owned paths ([0ff60b4](https://github.com/Azure/osdu-spi/commit/0ff60b4faa714d79e6c7c2434a311e9d689571f8))
+* **ci:** Reserve M2_HOME and MAVEN_HOME in BUILD_ENV ([d1fb13a](https://github.com/Azure/osdu-spi/commit/d1fb13a69d38debd1b890c49765b3f7590b0981a))
+* **ci:** Skip test-caller steps on deploy-only runs ([f018725](https://github.com/Azure/osdu-spi/commit/f0187253ba8c390eaabd250f1f1a526541a75b55))
+* **ci:** Skip unsafe module names and reserve build vars ([81e3b3e](https://github.com/Azure/osdu-spi/commit/81e3b3ebe72ece48575e84f8f4fb84822351b531))
+* **ci:** Stamp test trees to root pom without testing reactor ([d5ec956](https://github.com/Azure/osdu-spi/commit/d5ec956010fdd733c02e093979142121ed5164d7))
+
 ## [1.3.0](https://github.com/Azure/osdu-spi/compare/v1.2.0...v1.3.0) (2026-10-13)
 
 
