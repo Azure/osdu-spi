@@ -1,0 +1,343 @@
+/* OSDU SPI Fork Management Custom Styles */
+
+:root > * {
+    /* OSDU-inspired color palette with fork management accent */
+    --md-typeset-a-color: #0d47a1;
+    --md-footer-fg-color: hsla(0, 0%, 100%, 1);
+    --md-footer-fg-color--light: hsla(0, 0%, 100%, 0.7);
+    --md-footer-fg-color--lighter: hsla(0, 0%, 100%, 0.3);
+    --md-footer-bg-color: #1565c0;
+    --md-primary-fg-color: #1976d2;
+    --md-accent-fg-color: #2196f3;
+}
+
+/* Light theme colors */
+[data-md-color-scheme="default"] {
+    --md-primary-fg-color: #1976d2;      /* Deep blue for OSDU professional look */
+    --md-accent-fg-color: #2196f3;       /* Lighter blue for accents */
+    --md-footer-bg-color: #1565c0;       /* Slightly darker blue for footer */
+    --md-typeset-a-color: #0d47a1;       /* Dark blue for links */
+}
+
+/* Dark theme colors */
+[data-md-color-scheme="slate"] {
+    --md-primary-fg-color: #1e3a8a;      /* Darker blue for dark theme */
+    --md-accent-fg-color: #3b82f6;       /* Bright blue for dark theme accents */
+    --md-footer-bg-color: #1e40af;       /* Dark blue footer */
+    --md-typeset-a-color: #60a5fa;       /* Light blue links for dark theme */
+}
+
+/* Navigation section headers styling */
+li.md-nav__item--section > label.md-nav__link > span.md-ellipsis {
+    color: #1976d2;
+    font-weight: 600;
+}
+
+/* Footer styling */
+.md-footer-meta {
+    background-color: var(--md-footer-bg-color);
+}
+
+/* Custom styling for ADR status badges */
+.adr-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.adr-status.accepted {
+    background-color: #4caf50;
+    color: white;
+}
+
+.adr-status.proposed {
+    background-color: #ff9800;
+    color: white;
+}
+
+.adr-status.deprecated {
+    background-color: #f44336;
+    color: white;
+}
+
+/* Workflow status indicators */
+.workflow-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.9em;
+}
+
+.workflow-status .material-icons {
+    font-size: 1.2em;
+}
+
+/* Enhanced code block styling */
+.highlight pre {
+    border-left: 4px solid var(--md-accent-fg-color);
+    border-radius: 4px;
+}
+
+/* Table styling improvements */
+.md-typeset table:not([class]) {
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+    background-color: var(--md-primary-fg-color);
+    color: white;
+    font-weight: 600;
+}
+
+.md-typeset table:not([class]) tr:hover {
+    background-color: var(--md-default-fg-color--lightest);
+}
+
+/* Mermaid diagram styling */
+.mermaid {
+    text-align: center;
+    margin: 1em 0;
+}
+
+/* Decision impact indicators */
+.impact-critical {
+    color: #d32f2f;
+    font-weight: 600;
+}
+
+.impact-high {
+    color: #f57c00;
+    font-weight: 600;
+}
+
+.impact-medium {
+    color: #1976d2;
+    font-weight: 500;
+}
+
+.impact-low {
+    color: #388e3c;
+    font-weight: 500;
+}
+
+/* Custom admonition styling for workflow notes */
+.md-typeset .admonition.workflow {
+    border-color: var(--md-accent-fg-color);
+}
+
+.md-typeset .admonition.workflow > .admonition-title {
+    background-color: var(--md-accent-fg-color);
+    color: white;
+}
+
+/* Enhanced button styling */
+.md-button {
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.md-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Table of Contents styling */
+.md-sidebar--secondary {
+    border-left: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-nav--secondary .md-nav__title {
+    color: var(--md-default-fg-color--light);
+    font-weight: 500;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.md-nav--secondary .md-nav__list {
+    padding: 0;
+}
+
+.md-nav--secondary .md-nav__item {
+    margin: 0;
+}
+
+.md-nav--secondary .md-nav__link {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 4px;
+    margin: 0.1rem 0;
+    transition: all 0.2s ease;
+    color: var(--md-default-fg-color--light);
+}
+
+.md-nav--secondary .md-nav__link:hover {
+    background-color: rgba(25, 118, 210, 0.08);
+    color: var(--md-primary-fg-color);
+}
+
+.md-nav--secondary .md-nav__link--active {
+    background-color: rgba(25, 118, 210, 0.12);
+    color: var(--md-primary-fg-color);
+    font-weight: 500;
+    border-left: 3px solid var(--md-primary-fg-color);
+    padding-left: 0.6rem;
+}
+
+/* Improve spacing for nested TOC items */
+.md-nav--secondary .md-nav__item .md-nav__item {
+    margin-left: 0.5rem;
+}
+
+.md-nav--secondary .md-nav__item .md-nav__item .md-nav__link {
+    font-size: 0.7rem;
+    opacity: 0.8;
+    padding: 0.2rem 0.75rem;
+}
+
+.md-nav--secondary .md-nav__item .md-nav__item .md-nav__link--active {
+    border-left: 2px solid var(--md-primary-fg-color);
+    padding-left: 0.65rem;
+}
+
+/* Hero section styling */
+.hero-section {
+    text-align: center;
+    padding: 3rem 2rem 2.5rem 2rem;
+    background: #ffffff;
+    border: none;
+    margin: -1.5rem -1.5rem 2.5rem -1.5rem;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.hero-content {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.hero-logo {
+    max-width: 180px;
+    height: auto;
+    margin-bottom: 0.5rem;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.1));
+    border: none;
+    outline: none;
+    box-shadow: none;
+}
+
+.hero-title {
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin: 0.5rem 0 0.8rem 0;
+    color: #1565c0 !important;
+    letter-spacing: -0.025em;
+}
+
+.hero-subtitle {
+    font-size: 1rem;
+    line-height: 1.5;
+    margin: 0;
+    color: #546e7a;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    font-weight: 400;
+}
+
+/* Solution cards styling */
+.solution-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.solution-card {
+    background: #f8fafe;
+    border: 1px solid #e1f5fe;
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.solution-card:hover {
+    background: #f0f8ff;
+    border-color: #bbdefb;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(25, 118, 210, 0.1);
+}
+
+.solution-card p:first-child {
+    margin-top: 0;
+    font-size: 0.95rem;
+    color: var(--md-primary-fg-color);
+    margin-bottom: 1rem;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.solution-card p:not(:first-child) {
+    color: #546e7a;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 0;
+}
+
+.solution-card .twemoji {
+    font-size: 1.2rem;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+/* Mobile responsiveness improvements */
+@media screen and (max-width: 768px) {
+    .solution-cards {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .solution-card {
+        padding: 1.2rem;
+    }
+    .md-typeset table:not([class]) {
+        font-size: 0.8rem;
+    }
+    
+    .workflow-status {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .hero-section {
+        padding: 2rem 1rem 1.5rem 1rem;
+        margin: -1rem -1rem 1.5rem -1rem;
+    }
+    
+    .hero-logo {
+        max-width: 140px;
+        margin-bottom: 0.8rem;
+    }
+    
+    .hero-title {
+        font-size: 1.5rem;
+        margin: 0.5rem 0 0.6rem 0;
+    }
+    
+    .hero-subtitle {
+        font-size: 0.9rem;
+        line-height: 1.4;
+    }
+}
