@@ -34,7 +34,7 @@ inputs:
 
 outputs:
   skipped:
-    description: '"true" when no acceptance suite directory exists and the image build was skipped'
+    description: '"true" when the image build was skipped: no default suite directory, or a deploy-only descriptor with no suite'
     value: ${{ steps.suite.outputs.buildable != 'true' }}
   suite_dir:
     description: 'Acceptance suite directory, the image''s run-time default'

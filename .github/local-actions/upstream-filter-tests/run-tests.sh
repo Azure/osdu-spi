@@ -684,6 +684,25 @@ engine --mode stamp --config "$REF_CFG" --checkout "$REF_GEN" --report "$TMP/ref
   || die "stamp read references the trees do not need"
 ok "seeded both trees; stamp followed the root pom alone"
 
+note "stamp: a Maven test tree with no testing reactor follows the root pom"
+REF_MVN="$TMP/ref-mvn-test"
+rm -rf "$REF_MVN"
+cp -R "$REF_GEN" "$REF_MVN"
+cat > "$REF_MVN/testing/demo_test_azure/pom.xml" <<'EOF'
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.opengroup.osdu</groupId>
+  <artifactId>demo-test-azure</artifactId>
+  <version>0.31.0-SNAPSHOT</version>
+</project>
+EOF
+[ ! -e "$REF_MVN/testing/pom.xml" ] || die "fixture unexpectedly has a testing reactor"
+engine --mode stamp --config "$REF_CFG" --checkout "$REF_MVN" --report "$TMP/ref-mvn-stamp.json" > /dev/null
+grep -q "<version>0.32.0-SNAPSHOT</version>" "$REF_MVN/testing/demo_test_azure/pom.xml" || die "test tree not stamped to the root version"
+[ "$(report_field "$TMP/ref-mvn-stamp.json" "sorted(r['stamp']['references'])")" = "['root']" ] \
+  || die "stamp read a testing reference that does not exist"
+ok "test tree stamped to the root version without halting"
+
 note "halt: an explicit tree that is missing or empty in the seed source"
 REF_EMPTY="$TMP/ref-empty-source"
 rm -rf "$REF_EMPTY"

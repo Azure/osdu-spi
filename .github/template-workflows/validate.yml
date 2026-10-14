@@ -419,6 +419,7 @@ jobs:
       run: ${{ steps.decide.outputs.run }}
       reason: ${{ steps.decide.outputs.reason }}
       service: ${{ steps.decide.outputs.service }}
+      deploy_only: ${{ steps.decide.outputs.deploy_only }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
@@ -456,24 +457,30 @@ jobs:
           # Resolved before the push checks: a rejected descriptor already failed docker-build, and
           # the gate names the rejection rather than the missing image it caused.
           service=""
+          suites=0
           if [ -z "$reason" ]; then
             if python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
                 --descriptor .spi/service.yaml --report contract.json > /dev/null 2>&1; then
               service=$(jq -r '.service // empty' contract.json)
+              suites=$(jq -r '.contract.suites | length' contract.json)
             else
               reason=$(jq -r '.error | "descriptor rejected, \(.code): \(.detail)"' contract.json 2>/dev/null || echo "descriptor rejected by the resolver")
             fi
           fi
           [ -n "$reason" ] || [ "$PUSH_RESULT" = "success" ] || reason="no image was pushed (docker-push: $PUSH_RESULT)"
-          [ -n "$reason" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="descriptor declares no test suite"
+          # A deploy-only descriptor (empty tests map) has no acceptance image and still borrows.
+          [ -n "$reason" ] || [ "$suites" = "0" ] || [ "$ACCEPTANCE_SKIPPED" != "true" ] || reason="the descriptor declares suites but no acceptance image was built"
           echo "service=$service" >> "$GITHUB_OUTPUT"
+          deploy_only=false; [ -z "$service" ] || [ "$suites" != "0" ] || deploy_only=true
+          echo "deploy_only=$deploy_only" >> "$GITHUB_OUTPUT"
           if [ -n "$reason" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"
             echo "::notice title=Deploy and Test skipped::$reason"
             echo "Deploy and Test: skipped, $reason" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "reason=" >> "$GITHUB_OUTPUT"
-            echo "Deploy and Test: borrowing $CLUSTER for $service with the pushed image" >> "$GITHUB_STEP_SUMMARY"
+            scope="with the pushed image"; [ "$suites" != "0" ] || scope="with the pushed image, deploy only"
+            echo "Deploy and Test: borrowing $CLUSTER for $service $scope" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy-test:
@@ -596,28 +603,35 @@ jobs:
 
       - name: "Borrow"
         # The pin write refuses when the environment is not deployable, and another service's
-        # lane can borrow between the gate and this step. A refusal while status reads not
-        # deployable is that race, and is retried; a refusal while deployable is an error.
+        # lane can borrow between the gate and this step. A readiness refusal from the pin itself
+        # is that race even when status has converged by the time it is read, and is retried; any
+        # other refusal while status reads deployable is an error.
         run: |
           set -uo pipefail
           deadline=$((SECONDS + 10 * 60))
-          until spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
+          until { spi service pin "$SERVICE" --image "$SERVICE_IMAGE" \
               --ephemeral --run-id "$GITHUB_RUN_ID" \
               --source-repo "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
-              --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; do
+              --source-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > pin.out 2>&1; rc=$?; cat pin.out; [ "$rc" -eq 0 ]; }; do
+            # spi wraps its console output, so the refusal is matched with whitespace collapsed.
+            refusal=$(tr -s '[:space:]' ' ' < pin.out)
             spi status --json > status.json || true
             jq -e 'type == "object"' status.json > /dev/null 2>&1 \
               || { echo "::error::pin refused and spi status --json produced no JSON"; cat status.json; exit 1; }
-            if jq -e '.deployable == true' status.json > /dev/null 2>&1; then
+            if [[ "$refusal" != *"retry once 'spi status' reports deployable"* ]] && jq -e '.deployable == true' status.json > /dev/null 2>&1; then
               echo "::error::pin refused while the environment is deployable"; exit 1
             fi
-            reason=$(jq -r '.reason.message // "unknown"' status.json)
+            if jq -e '.deployable == true' status.json > /dev/null 2>&1; then
+              reason="the pin refused for readiness while status reports deployable"
+            else
+              reason="environment not deployable, $(jq -r '.reason.message // "no reason given"' status.json)"
+            fi
             if [ $SECONDS -ge $deadline ]; then
-              echo "::error::environment is not deployable after 10 minutes: $reason"
-              echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::pin still refused after 10 minutes: $reason"
+              echo "Deploy and Test: pin still refused after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
-            echo "::notice::pin refused, environment not deployable ($reason); retrying"
+            echo "::notice::pin refused ($reason); retrying"
             sleep 20
           done
 
@@ -633,6 +647,7 @@ jobs:
           done
 
       - name: "Mint test callers"
+        if: needs.deploy-gate.outputs.deploy_only != 'true'
         # The deploy identity's own bearer, for the audience the facts publish, then the
         # member and no-access identities' bearers for the same audience. All three
         # exchanges request a fresh OIDC token from the run and go straight to Entra, so
@@ -674,6 +689,7 @@ jobs:
           mint no-access "$NO_ACCESS_CLIENT_ID" RESOLVER_NO_ACCESS_TOKEN noAccessToken
 
       - name: "Log in to GHCR"
+        if: needs.deploy-gate.outputs.deploy_only != 'true'
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
         with:
           registry: ghcr.io
@@ -693,6 +709,10 @@ jobs:
           trap '{ echo "verdicts<<EOF"; printf "%s" "$verdicts"; echo "EOF"; } >> "$GITHUB_OUTPUT"' EXIT
           python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
             --descriptor .spi/service.yaml --report suites.json > /dev/null
+          if [ "$(jq -r '.contract.suites | length' suites.json)" = "0" ]; then
+            verdicts="✅ deploy only: the pushed image rolled out and verified, no suite declared"$'\n'
+            echo "${verdicts%$'\n'}" >> "$GITHUB_STEP_SUMMARY"
+          fi
           for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
             echo "::group::suite $suite"
             report="$suite-report.json"
@@ -728,7 +748,7 @@ jobs:
           [ -z "$failed" ] || { echo "::error::failed suites:$failed"; exit 1; }
 
       - name: "Upload suite reports"
-        if: always() && steps.prove.outcome != 'skipped'
+        if: always() && steps.prove.outcome != 'skipped' && needs.deploy-gate.outputs.deploy_only != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: suite-reports

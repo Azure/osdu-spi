@@ -17,9 +17,10 @@
 # Decides which suite modules the acceptance image bakes and whether it can build
 # at all: every tests.<name>.path the descriptor declares when .spi/service.yaml
 # exists (ADR-040), else the upstream default <service>-acceptance-test. A missing
-# default suite is a clean skip; a broken descriptor, or one naming a suite that
-# is not there, halts with exit 2 rather than guessing. suite_dir is the
-# acceptance suite (the image's run-time default); suite_dirs lists them all.
+# default suite, or a descriptor whose tests map is empty (deploy only), is a clean
+# skip; a broken descriptor, or one naming a suite that is not there, halts with
+# exit 2 rather than guessing. suite_dir is the acceptance suite (the image's
+# run-time default); suite_dirs lists them all.
 #
 # Env: SERVICE_NAME (required), DESCRIPTOR_PATH (default .spi/service.yaml),
 #      RESOLVER (path to the acceptance resolver engine)
@@ -42,6 +43,16 @@ if [[ -f "$DESCRIPTOR_PATH" ]]; then
   REPORT="$(mktemp)"
   trap 'rm -f "$REPORT"' EXIT
   python3 "$RESOLVER" --contract-only --descriptor "$DESCRIPTOR_PATH" --report "$REPORT" > /dev/null
+  if [[ "$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['contract']['suites']))" "$REPORT")" == "0" ]]; then
+    {
+      echo "suite_dir="
+      echo "suite_dirs="
+      echo "buildable=false"
+      echo "reason=${DESCRIPTOR_PATH} declares no suite (deploy only)"
+    } >> "${GITHUB_OUTPUT:-/dev/stdout}"
+    echo "ℹ acceptance image skipped: ${DESCRIPTOR_PATH} declares no suite (deploy only)"
+    exit 0
+  fi
   SUITE_DIR="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['contract']['test_dir'])" "$REPORT")"
   # The acceptance suite leads so it is the image's run-time default.
   SUITE_DIRS="$(python3 -c "

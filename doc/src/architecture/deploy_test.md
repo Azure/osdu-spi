@@ -82,7 +82,7 @@ The same three-owner split subgroup-core proved: the environment owns its facts,
 # .spi/service.yaml: fork-owned, reviewed with the code, survives any stack rehome
 schemaVersion: 3
 service: { name: partition, archetype: java-maven-azure }
-tests:                                  # named suites of one shape; acceptance is required
+tests:                                  # named suites of one shape; acceptance is required unless the map is empty (deploy only)
   acceptance:
     type: maven
     path: partition-acceptance-test     # upstream-maintained module, kept by the filter
@@ -140,7 +140,7 @@ verdict → validation-summary: one table; fails on any failed or cancelled buil
 - **Deploy is a lock write, not a kubectl mutation.** `spi service pin` updates the `osdu-image-lock` ConfigMap under compare-and-set; Flux re-renders the HelmRelease. GitOps stays alive the whole time: no suspended-Flux CI mode, no weekly first-deploy failure, no loss of self-healing (stack ADR-031: "a lock write is the whole deploy"). The pin returns at the lock write (the fork identity holds no Flux write; the lock's watch label triggers reconciliation), so the lane polls `spi service verify` until the digest is live or the borrow budget expires. A typed `lock_mismatch` from verify means the pin was replaced mid-borrow.
 - **Restore is ownership-checked.** `reset --if-run` restores the recorded canonical only while the live pin still belongs to this run, so a crashed run can't be "restored" over a newer sibling. The Restore step runs after eligible PR and push tests, including failures, once CLI installation succeeded. A failed runner can still strand a pin; restore is attempted, not guaranteed. Canonical advancement is separate from testing a push image.
 - **Not-onboarded is a visible skip.** When the pointer variables are absent, the gate reports "repository is not onboarded to a stack" and the lane does not run; the summary check stays green. The same ruleset serves every fork, onboarded or not.
-- **The gate replaces the sticky boolean.** `spi status` is consulted every run. The lane polls deployability every 20 seconds for up to ten minutes, reporting the status reason if the environment remains blocked, including maintenance. Borrow retries a pin refusal while status is not deployable on the same bounded schedule.
+- **The gate replaces the sticky boolean.** `spi status` is consulted every run. The lane polls deployability every 20 seconds for up to ten minutes, reporting the status reason if the environment remains blocked, including maintenance. Borrow retries a pin refusal on the same bounded schedule while status is not deployable, or when the pin itself refused for readiness and status converged before it was read.
 - **Verdicts carry attribution** (cimpl-test's taxonomy): env-not-ready, infra, and test-failure are distinct outcomes; a suite that collects zero tests is never a pass; an interrupted run is never a pass.
 
 ## §6 Answers that must be created: the seeding tiers

@@ -148,6 +148,23 @@ diff <(grep -v '^      - "/' "$RESOURCES/dependabot.yml") <(grep -v '^      - "/
   || die "dependabot rendering changed more than the directories"
 ok "nested provider pom found one module down; Python suite skipped; root poms kept"
 
+note "dependabot: a discovered module with an unrenderable name is skipped with a warning"
+cp -R "$REF_TREE" "$TMP/odd-tree"
+mkdir -p "$TMP/odd-tree/provider/demo-azure/bad\"module"
+echo "<project/>" > "$TMP/odd-tree/provider/demo-azure/bad\"module/pom.xml"
+expect_rc 0 render dependabot --config "$REF_CFG" --checkout "$TMP/odd-tree" < "$RESOURCES/dependabot.yml"
+cmp -s "$TMP/ref-dependabot.yml" "$TMP/out" || die "an unrenderable module name reached dependabot.yml"
+grep -q 'warning: skipping module provider/demo-azure/bad"module' "$TMP/err" || die "skipped module not reported: $(cat "$TMP/err")"
+cp -R "$REF_TREE" "$TMP/newline-tree"
+FORGED="bad"$'\n'"::error::forged"
+mkdir -p "$TMP/newline-tree/provider/demo-azure/$FORGED"
+echo "<project/>" > "$TMP/newline-tree/provider/demo-azure/$FORGED/pom.xml"
+expect_rc 0 render dependabot --config "$REF_CFG" --checkout "$TMP/newline-tree" < "$RESOURCES/dependabot.yml"
+cmp -s "$TMP/ref-dependabot.yml" "$TMP/out" || die "a module name with a newline reached dependabot.yml"
+! grep -q '^::' "$TMP/err" || die "a rejected module name opened a workflow command line: $(cat "$TMP/err")"
+grep -qF 'warning: skipping module provider/demo-azure/bad\n::error::forged' "$TMP/err" || die "newline module not reported escaped: $(cat "$TMP/err")"
+ok "unsafe modules left out and reported escaped, including a newline; safe sibling rendered as before"
+
 note "dependabot: no fork-owned pom exits 3"
 mkdir -p "$TMP/no-pom/provider/demo-azure" "$TMP/no-pom/testing/demo_test_azure"
 expect_rc 3 render dependabot --config "$REF_CFG" --checkout "$TMP/no-pom" < "$RESOURCES/dependabot.yml"
@@ -227,7 +244,7 @@ run_build_env $'SIS_DATA=$GITHUB_WORKSPACE/apachesis_setup/SIS_DATA\r\n\n# a com
   || die "unexpected GITHUB_ENV: $(cat "$TMP/github_env")"
 run_build_env ""
 [ ! -s "$TMP/github_env" ] || die "an empty BUILD_ENV wrote to GITHUB_ENV"
-for bad in "NOEQUALS" "1BAD=x" "SPACE KEY=x" "PATH=/tmp" "GITHUB_TOKEN=x" "MAVEN_OPTS=-X" "M2_HOME=/x"; do
+for bad in "NOEQUALS" "1BAD=x" "SPACE KEY=x" "PATH=/tmp" "GITHUB_TOKEN=x" "MAVEN_OPTS=-X" "M2_HOME=/x" "MAVEN_PROFILE=core" "GENERATE_COVERAGE=false"; do
   if run_build_env "$bad"; then die "BUILD_ENV '$bad' was accepted"; fi
   grep -q "::error::" "$TMP/build-env.out" || die "BUILD_ENV '$bad' failed without an error annotation"
 done

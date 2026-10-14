@@ -55,6 +55,11 @@ class TemplateError(Exception):
     pass
 
 
+def _printable(name):
+    # A rejected name goes to the log; escaped, it can't open a line that Actions reads as a command.
+    return name.encode("unicode_escape").decode("ascii")
+
+
 def explicit_paths(config):
     if not config or not os.path.isfile(config):
         return None
@@ -62,9 +67,9 @@ def explicit_paths(config):
     if "fork_owned" not in cfg:
         return None
     paths = list(cfg["fork_owned"])
-    unsafe = [p for p in paths if not RENDER_SAFE_PATH.match(p)]
+    unsafe = [p for p in paths if not RENDER_SAFE_PATH.fullmatch(p)]
     if unsafe:
-        raise Halt("CONFIG_INVALID", f"fork_owned paths must be letters, digits, '.', '_', '-' and '/': {', '.join(unsafe)}")
+        raise Halt("CONFIG_INVALID", f"fork_owned paths must be letters, digits, '.', '_', '-' and '/': {', '.join(_printable(p) for p in unsafe)}")
     return paths
 
 
@@ -79,8 +84,12 @@ def maven_directories(paths, checkout):
             continue
         if os.path.isdir(root):
             for child in sorted(os.listdir(root)):
-                if os.path.isfile(os.path.join(root, child, "pom.xml")):
-                    dirs.append(f"/{path}/{child}")
+                if not os.path.isfile(os.path.join(root, child, "pom.xml")):
+                    continue
+                if not RENDER_SAFE_PATH.fullmatch(child):
+                    print(f"warning: skipping module {path}/{_printable(child)}: name is not letters, digits, '.', '_' and '-'", file=sys.stderr)
+                    continue
+                dirs.append(f"/{path}/{child}")
     return dirs
 
 
