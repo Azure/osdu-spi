@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.1](https://github.com/Azure/osdu-spi/compare/v1.4.0...v1.4.1) (2026-10-20)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** Count dropped template files as sync updates ([06a8243](https://github.com/Azure/osdu-spi/commit/06a8243fcacf809d6d0cef6b3171ca9c40ca8b5c))
+* **ci:** Count dropped template files as sync updates ([40dd935](https://github.com/Azure/osdu-spi/commit/40dd9358ef6f220f353fdf76f6ba8db9d08d2cc1))
+* **ci:** Replace slashes in branch name for Maven revision ([f9d3b21](https://github.com/Azure/osdu-spi/commit/f9d3b21a0b14da11487b9fa91c451b1110b48b3e))
+* **ci:** Replace slashes in branch name for Maven revision ([a0ebd35](https://github.com/Azure/osdu-spi/commit/a0ebd35786dad4a60b5e29062fdd3196a8a67490))
+* **ci:** Sanitize branch name used as Maven revision ([8935867](https://github.com/Azure/osdu-spi/commit/8935867cc2129dc6cbc7415374fc712b917b2063))
+* **ci:** Sanitize branch name used as Maven revision ([ae931af](https://github.com/Azure/osdu-spi/commit/ae931af055e183302dcccf3ca7b8b8f280b7d84e))
+
+
+### 🔧 Miscellaneous
+
+* **deps:** Bump openjdk/jdk from `1f04a62` to `292f024` in /build in the docker group ([b828150](https://github.com/Azure/osdu-spi/commit/b8281504743af81f781ade67744f706b9f146cf0))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([13b9664](https://github.com/Azure/osdu-spi/commit/13b9664fccc9dc91195da7a969cad00d18a40036))
+
 ## [1.4.0](https://github.com/Azure/osdu-spi/compare/v1.3.0...v1.4.0) (2026-10-14)
 
 
