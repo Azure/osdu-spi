@@ -39,10 +39,6 @@
         "description": "Repository label definitions"
       },
       {
-        "path": ".github/branch-protection.json",
-        "description": "Retired; template sync removes it from forks. Delete this entry once forks have synced."
-      },
-      {
         "path": ".github/security-on.json",
         "description": "Security feature enablement configuration"
       },
