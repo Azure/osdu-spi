@@ -93,8 +93,8 @@ runs:
       run: |
         mvn -v
 
-        # GITHUB_REF_NAME is "<n>/merge" on pull_request events; '/' is invalid in a Maven version.
-        SAFE_REF="${GITHUB_REF_NAME//\//-}"
+        # flatten substitutes the version into pom comments, so keep it to [A-Za-z0-9._-] with no '--'.
+        SAFE_REF=$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._' '-' | tr -s '-')
         MAVEN_CLI_OPTS="--batch-mode -Drevision=${SAFE_REF}-SNAPSHOT"
         
         if [ -f ".mvn/community-maven.settings.xml" ]; then
