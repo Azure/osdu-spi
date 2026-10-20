@@ -117,7 +117,9 @@ jobs:
         env:
           MAVEN_OPTS: "-Dmaven.repo.local=$HOME/.m2/repository"
         run: |
-          MAVEN_CLI_OPTS="--batch-mode -Drevision=${GITHUB_REF_NAME}-SNAPSHOT"
+          # Branch names like fix/x carry '/', which is invalid in a Maven version.
+          SAFE_REF="${GITHUB_REF_NAME//\//-}"
+          MAVEN_CLI_OPTS="--batch-mode -Drevision=${SAFE_REF}-SNAPSHOT"
 
           if [ -f ".mvn/community-maven.settings.xml" ]; then
             MAVEN_CLI_OPTS="$MAVEN_CLI_OPTS --settings=.mvn/community-maven.settings.xml"
