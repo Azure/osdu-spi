@@ -18,7 +18,7 @@
 # amd64 only: this build runs Maven, and under QEMU arm64 emulation that costs minutes per push
 # with no consumer. CI runners are amd64 and Apple Silicon runs the amd64 image emulated.
 ARG JAVA_VERSION=17
-FROM docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 AS select
+FROM docker.io/library/alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f AS select
 # Space-separated suite paths; the first is the run-time default.
 ARG SUITE_DIRS
 COPY . /src/
