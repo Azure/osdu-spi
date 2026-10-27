@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r deployments/scripts/requirements.txt
 
 COPY deployments/scripts/DeploySharedSchemas.py deployments/scripts/Utility.py deployments/scripts/
 COPY deployments/shared-schemas/ deployments/shared-schemas/
+COPY LICENSE NOTICE NOTICE-OSDU-SPI /licenses/
 COPY --chmod=0755 build/load-entrypoint.sh /usr/local/bin/load-entrypoint.sh
 
 RUN groupadd --system loader && useradd --system --gid loader --home-dir /loader loader

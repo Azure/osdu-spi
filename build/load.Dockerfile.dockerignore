@@ -2,6 +2,9 @@
 # context is narrowed to exactly what the image copies, so the provider folders under
 # deployments/scripts/ and the service source never reach the build.
 *
+!LICENSE
+!NOTICE
+!NOTICE-OSDU-SPI
 !build/load-entrypoint.sh
 !deployments/scripts/DeploySharedSchemas.py
 !deployments/scripts/Utility.py
