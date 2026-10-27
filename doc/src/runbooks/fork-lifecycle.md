@@ -40,6 +40,8 @@ The reply starts the `Initialize Complete` workflow, which takes four to six min
 
 **Expected result:** the issue is closed, the repository has the `main`, `fork_upstream`, and `fork_integration` branches, `UPSTREAM_REPO_URL` names the upstream, `INITIALIZATION_COMPLETE` is `true`, and `.github/CODEOWNERS` names the `CODEOWNERS` value as the owner of every path. If the variable was not set, the file is absent and the Settings Apply run opens a human-required issue; set the variable and the next template sync plants it. The file is fork-owned after planting.
 
+`NOTICE-OSDU-SPI` at the root names the upstream project and the copyright holders found in its Java source headers. Read the holder list. A holder the renderer does not recognize is printed as written and the run shows a warning naming it; correct the line in a pull request if the spelling is wrong. The file is fork-owned after planting.
+
 ```bash
 gh api repos/<org>/<service>/branches --jq '.[].name'
 gh variable list --repo <org>/<service>

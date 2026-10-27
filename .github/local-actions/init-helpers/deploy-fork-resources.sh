@@ -40,6 +40,8 @@ if [[ -f "$FILTER_CONFIG" && -f "$RENDER" ]]; then
   esac
 fi
 
+UPSTREAM_URL="${UPSTREAM_REPO_URL:-$(gh variable get UPSTREAM_REPO_URL 2>/dev/null || true)}"
+
 # Renders a fork resource from stdin to stdout; passes it through when fork_owned is unset.
 render() {
   local kind="$1"
@@ -62,7 +64,6 @@ if [[ -f ".github/fork-resources/dependabot.yml" ]]; then
   # Derive the service slug from the upstream URL (e.g. partition), not the
   # checkout directory, which on a runner is the repository name (osdu-spi-partition).
   SERVICE_SLUG=""
-  UPSTREAM_URL="${UPSTREAM_REPO_URL:-$(gh variable get UPSTREAM_REPO_URL 2>/dev/null || true)}"
   if [[ -n "$UPSTREAM_URL" ]]; then
     SERVICE_SLUG=$(basename "${UPSTREAM_URL%.git}")
     echo "Derived service slug: $SERVICE_SLUG"
@@ -147,6 +148,27 @@ if [[ -f ".github/fork-resources/CODEOWNERS" ]] && [[ ! -f ".github/CODEOWNERS" 
     OWNERS_ESCAPED=${OWNERS//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
     sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" "$CODEOWNERS_TEMPLATE" > ".github/CODEOWNERS"
     git add ".github/CODEOWNERS"
+  fi
+fi
+
+# Fork-owned once planted, like CODEOWNERS; sync-template plants it when missing.
+if [[ -f ".github/fork-resources/NOTICE-OSDU-SPI" ]] && [[ ! -f "NOTICE-OSDU-SPI" ]]; then
+  if [[ -z "$UPSTREAM_URL" ]]; then
+    echo "::warning::NOTICE-OSDU-SPI not planted: UPSTREAM_REPO_URL is not available; the next template sync plants it"
+  else
+    NOTICE_RENDERED="$(mktemp)"
+    notice_rc=0
+    python3 "$RENDER" notice --upstream-url "$UPSTREAM_URL" --checkout . \
+      < ".github/fork-resources/NOTICE-OSDU-SPI" > "$NOTICE_RENDERED" 2> "$NOTICE_RENDERED.err" || notice_rc=$?
+    while IFS= read -r line; do
+      case "$line" in "warning: "*) echo "::warning::NOTICE-OSDU-SPI: ${line#warning: }" ;; *) echo "$line" ;; esac
+    done < "$NOTICE_RENDERED.err"
+    case "$notice_rc" in
+      0) echo "Installing NOTICE-OSDU-SPI..."; mv "$NOTICE_RENDERED" "NOTICE-OSDU-SPI"; git add "NOTICE-OSDU-SPI" ;;
+      4) echo "::warning::NOTICE-OSDU-SPI not planted: no Java source carries a copyright header" ;;
+      *) echo "::warning::NOTICE-OSDU-SPI not planted: rendering failed (exit $notice_rc); the next template sync retries" ;;
+    esac
+    rm -f "$NOTICE_RENDERED" "$NOTICE_RENDERED.err"
   fi
 fi
 
