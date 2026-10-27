@@ -199,6 +199,7 @@ java_file demo-core/src/C.java "// Copyright © SLB" "// Copyright 2021 Microsof
 java_file demo-core/src/D.java "/*" " *  Copyright © Amazon Web Services" " *  Copyright 2020 EPAM Systems, Inc." " */"
 java_file provider/demo-azure/src/E.java "// Copyright © Microsoft Corporation" 'class E { String s = "Copyright Contoso"; }'
 java_file provider/demo-azure/src/F.java "// Copyright © Azure"
+java_file provider/demo-azure/src/J.java "// Copyright 2024 Fabrikam Ltd"
 java_file demo-core/src/G.java $'\xef\xbb\xbf// Copyright 2020 Google LLC'
 java_file demo-core/src/H.java "/**" " ** Copyright 2020 SLB" " */"
 java_file demo-core/src/I.java $'// Copyright \xa9 Microsoft Corporation'
@@ -217,13 +218,13 @@ rm "$NOTICE_TREE/demo-core/src/Untracked.java"
 grep -qx "Component: OSDU demo" "$TMP/notice" || die "project not named from the URL"
 grep -qx "Source: https://example.test/osdu/demo" "$TMP/notice" || die "source not the URL without .git"
 grep -q "community project demo and carries" "$TMP/notice" || die "project not named in the prose"
-[ "$(grep '^  ' "$TMP/notice")" = "$(printf '  %s\n' "Microsoft Corporation" "SLB" "Google LLC" "Amazon.com, Inc. or its affiliates" "Azure" "EPAM Systems, Inc." "The Open Group")" ] \
+[ "$(grep '^  ' "$TMP/notice")" = "$(printf '  %s\n' "Microsoft Corporation" "SLB" "Google LLC" "Amazon.com, Inc. or its affiliates" "EPAM Systems, Inc." "Fabrikam Ltd" "The Open Group")" ] \
   || die "unexpected holders: $(grep '^  ' "$TMP/notice")"
 ! grep -q '<project>\|<upstream-url>\|<holders>\|Contoso' "$TMP/notice" || die "a placeholder or an uncounted holder survived"
 diff <(grep -v '<project>\|<upstream-url>\|<holders>' "$RESOURCES/NOTICE-OSDU-SPI") \
      <(grep -v 'OSDU demo\|community project demo\|^Source: \|^  ' "$TMP/notice") > /dev/null \
   || die "notice rendering changed more than the placeholders"
-[ "$(cat "$TMP/err")" = "warning: copyright holder kept as written: Azure" ] || die "unexpected stderr: $(cat "$TMP/err")"
+[ "$(cat "$TMP/err")" = "warning: copyright holder kept as written: Fabrikam Ltd" ] || die "unexpected stderr: $(cat "$TMP/err")"
 ok "aliases collapse, files count once per holder, most files first; BOM, Latin-1 and line-20 headers read; unknown holder kept with a warning"
 
 note "notice: refusals"
@@ -295,7 +296,7 @@ NOTICE_INIT="$TMP/notice-init"
 init_fork "$NOTICE_INIT" "$DEMO_CONFIG" "$NOTICE_TREE"
 cmp -s "$TMP/init-notice" "$NOTICE_INIT/NOTICE-OSDU-SPI" || die "init NOTICE-OSDU-SPI differs from the renderer's"
 git -C "$NOTICE_INIT" ls-files --error-unmatch NOTICE-OSDU-SPI > /dev/null 2>&1 || die "NOTICE-OSDU-SPI not staged"
-grep -q "::warning::NOTICE-OSDU-SPI: copyright holder kept as written: Azure" "$NOTICE_INIT.log" || die "unknown holder not annotated"
+grep -q "::warning::NOTICE-OSDU-SPI: copyright holder kept as written: Fabrikam Ltd" "$NOTICE_INIT.log" || die "unknown holder not annotated"
 [ ! -e "$NOTICE_INIT/.github/fork-resources" ] || die "fork-resources left behind"
 grep -q "::warning::NOTICE-OSDU-SPI not planted: no Java source" "$CONV.log" || die "a fork without headers was not warned"
 [ ! -e "$CONV/NOTICE-OSDU-SPI" ] || die "a fork without headers got a notice"
@@ -347,7 +348,7 @@ grep -qx "PLANT_NOTICE=false" "$TMP/sync.log" || die "counted as an update witho
 sync_notice "$TMP/plant-notice.sh" "https://example.test/demo.git" || die "plant block failed: $(cat "$TMP/sync.log")"
 cmp -s "$TMP/init-notice" "$SYNC_FORK/NOTICE-OSDU-SPI" || die "sync NOTICE-OSDU-SPI differs from the renderer's"
 git -C "$SYNC_FORK" diff --cached --quiet -- NOTICE-OSDU-SPI && die "NOTICE-OSDU-SPI not staged"
-grep -qx "::warning::NOTICE-OSDU-SPI: copyright holder kept as written: Azure" "$TMP/sync.log" || die "unknown holder not annotated"
+grep -qx "::warning::NOTICE-OSDU-SPI: copyright holder kept as written: Fabrikam Ltd" "$TMP/sync.log" || die "unknown holder not annotated"
 sync_notice "$TMP/check-notice.sh" "https://example.test/demo.git"
 grep -qx "PLANT_NOTICE=false" "$TMP/sync.log" || die "a planted notice still counts as an update"
 echo "edited by the fork" > "$SYNC_FORK/NOTICE-OSDU-SPI"

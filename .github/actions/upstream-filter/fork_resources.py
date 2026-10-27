@@ -58,7 +58,7 @@ RENDER_SAFE_PATH = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$")
 
 # Spellings of one holder collapse to the name the attribution prints; anything else is kept as written.
 NOTICE_HOLDERS = (
-    (re.compile(r"microsoft( corporation)?"), "Microsoft Corporation"),
+    (re.compile(r"microsoft( corporation)?|azure"), "Microsoft Corporation"),
     (re.compile(r"schlumberger|slb"), "SLB"),
     (re.compile(r"google( llc)?"), "Google LLC"),
     (re.compile(r"the open group"), "The Open Group"),
