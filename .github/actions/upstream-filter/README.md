@@ -173,7 +173,7 @@ for a template change. A fork that drops `fork_owned` returns to the template's
 `fork-resources/NOTICE-OSDU-SPI` (ADR-043). It reads no filter config. The
 project is the last segment of the URL, and the source is the URL without
 `.git`. The holders come from `Copyright` lines in the first 20 lines of each
-Java file `git ls-files` lists, one count per file, printed most files first.
+Java file `git ls-files` lists outside `.github/`, one count per file, printed most files first.
 Known spellings collapse to one name; an unknown holder is kept as written and
 reported on stderr as `warning: copyright holder kept as written: <name>`, which
 initialization and template sync raise as a workflow warning.

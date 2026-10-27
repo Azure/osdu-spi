@@ -166,7 +166,8 @@ def copyright_holder(rest):
 
 def copyright_holders(checkout):
     """Holders named in the Java source headers, most files first; each file counts once per holder."""
-    listing = subprocess.run(["git", "-C", checkout, "ls-files", "-z", "--", "*.java"],
+    # .github holds template fixtures at initialization, not service source.
+    listing = subprocess.run(["git", "-C", checkout, "ls-files", "-z", "--", "*.java", ":(exclude).github/"],
                              check=True, capture_output=True).stdout
     counts = Counter()
     for rel in filter(None, listing.decode("utf-8").split("\0")):

@@ -16,7 +16,7 @@ The attribution has to reach every existing fork through template sync and every
 
 ### Template and rendering
 
-`.github/fork-resources/NOTICE-OSDU-SPI` is the template. `fork_resources.py notice` fills it: the project name and source from `UPSTREAM_REPO_URL`, and the holders from the `Copyright` lines in the first 20 lines of each tracked Java file. Known spellings of one holder collapse to one name (Schlumberger and SLB print as SLB). An unrecognized holder is kept as written and reported as a warning. Holders print one per line, most files first, because several names contain commas.
+`.github/fork-resources/NOTICE-OSDU-SPI` is the template. `fork_resources.py notice` fills it: the project name and source from `UPSTREAM_REPO_URL`, and the holders from the `Copyright` lines in the first 20 lines of each tracked Java file outside `.github/`, which holds template fixtures at initialization. Known spellings of one holder collapse to one name (Schlumberger and SLB print as SLB). An unrecognized holder is kept as written and reported as a warning. Holders print one per line, most files first, because several names contain commas.
 
 The name has no extension so that upstream's `.dockerignore` admits it, and it sits beside `NOTICE` and `LICENSE`, which it points to for dependency notices and the license text.
 

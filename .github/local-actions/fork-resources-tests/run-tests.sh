@@ -189,7 +189,8 @@ expect_rc 2 render contributing --config "$REF_CFG" < "$TMP/drift.md"
 ok "a template without the default lines exits 2"
 
 # A checkout whose Java headers name holders in the spellings upstream uses, plus lines that
-# must not count: a body string, a header past line 20, a non-Java file and an untracked file.
+# must not count: a body string, a header past line 20, a non-Java file, an untracked file and
+# a template fixture under .github.
 NOTICE_TREE="$TMP/notice-tree"
 mkdir -p "$NOTICE_TREE/demo-core/src" "$NOTICE_TREE/provider/demo-azure/src"
 java_file() { printf '%s\n' "${@:2}" "package demo;" > "$NOTICE_TREE/$1"; }
@@ -205,6 +206,8 @@ java_file demo-core/src/H.java "/**" " ** Copyright 2020 SLB" " */"
 java_file demo-core/src/I.java $'// Copyright \xa9 Microsoft Corporation'
 { for _ in $(seq 1 19); do echo "// line"; done; echo "// Copyright The Open Group"; } > "$NOTICE_TREE/demo-core/src/Edge.java"
 ln -s Missing.java "$NOTICE_TREE/demo-core/src/Broken.java"
+mkdir -p "$NOTICE_TREE/.github/local-actions/fixtures"
+echo "// Copyright Contoso" > "$NOTICE_TREE/.github/local-actions/fixtures/Fixture.java"
 { for _ in $(seq 1 20); do echo "// line"; done; echo "// Copyright Contoso"; } > "$NOTICE_TREE/demo-core/src/Late.java"
 echo "Copyright Contoso" > "$NOTICE_TREE/demo-core/notes.md"
 git -C "$NOTICE_TREE" -c init.defaultBranch=main init -q
@@ -266,7 +269,8 @@ init_fork() {
 
 note "init: a conventional fork plants what it planted before"
 CONV="$TMP/conv"
-mkdir -p "$CONV/provider/demo-azure" "$CONV/testing/demo-test-azure"
+mkdir -p "$CONV/provider/demo-azure" "$CONV/testing/demo-test-azure" "$CONV/.github/local-actions/fixtures"
+echo "// Copyright © Microsoft Corporation" > "$CONV/.github/local-actions/fixtures/Main.java"
 init_fork "$CONV" "$DEMO_CONFIG" ""
 cmp -s "$RESOURCES/dependabot.yml" "$CONV/.github/dependabot.yml" || die "conventional dependabot.yml changed"
 cmp -s "$RESOURCES/CONTRIBUTING.md" "$CONV/CONTRIBUTING.md" || die "conventional CONTRIBUTING.md changed"
@@ -298,7 +302,7 @@ cmp -s "$TMP/init-notice" "$NOTICE_INIT/NOTICE-OSDU-SPI" || die "init NOTICE-OSD
 git -C "$NOTICE_INIT" ls-files --error-unmatch NOTICE-OSDU-SPI > /dev/null 2>&1 || die "NOTICE-OSDU-SPI not staged"
 grep -q "::warning::NOTICE-OSDU-SPI: copyright holder kept as written: Fabrikam Ltd" "$NOTICE_INIT.log" || die "unknown holder not annotated"
 [ ! -e "$NOTICE_INIT/.github/fork-resources" ] || die "fork-resources left behind"
-grep -q "::warning::NOTICE-OSDU-SPI not planted: no Java source" "$CONV.log" || die "a fork without headers was not warned"
+grep -q "::warning::NOTICE-OSDU-SPI not planted: no Java source" "$CONV.log" || die "a fork whose only header is a template fixture was not warned"
 [ ! -e "$CONV/NOTICE-OSDU-SPI" ] || die "a fork without headers got a notice"
 KEPT_TREE="$TMP/kept-tree"
 cp -R "$NOTICE_TREE" "$KEPT_TREE"
