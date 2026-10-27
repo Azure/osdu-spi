@@ -115,6 +115,7 @@ Decisions for propagating template updates to fork repositories:
 | [011](011-configuration-driven-template-sync.md) | **Configuration-Driven Sync** | :material-trending-up: High |
 | [012](012-template-update-propagation-strategy.md) | **Template Update Propagation** | :material-trending-up: High |
 | [018](018-fork-resources-staging-pattern.md) | **Fork-Resources Staging** | :material-minus: Medium |
+| [043](043-fork-source-attribution-notice.md) | **Fork Source Attribution Notice** | :material-minus: Medium |
 | [031](031-template-sync-duplicate-prevention.md) | **Template Sync Duplicate Prevention** | :material-minus: Medium |
 
 ### :material-cog-outline: Workflow Infrastructure & Patterns

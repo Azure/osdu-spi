@@ -16,7 +16,8 @@
 #
 # Fixture harness for the fork-owned resource renderer and the build environment
 # export: the Dependabot directories, CODEOWNERS and CONTRIBUTING.md rendered from
-# fork_owned, the init script end to end with a stubbed gh, and BUILD_ENV parsing.
+# fork_owned, NOTICE-OSDU-SPI rendered from source headers, the init script end to end
+# with a stubbed gh, and BUILD_ENV parsing.
 #
 # Usage:
 #   ./run-tests.sh
@@ -29,6 +30,7 @@ ROOT="$(cd "$HERE/../../.." && pwd)"
 RENDER="$ROOT/.github/actions/upstream-filter/fork_resources.py"
 BUILD_ENV_SH="$ROOT/.github/actions/java-build/build-env.sh"
 DEPLOY="$ROOT/.github/local-actions/init-helpers/deploy-fork-resources.sh"
+SYNC_TEMPLATE="$ROOT/.github/template-workflows/sync-template.yml"
 RESOURCES="$ROOT/.github/fork-resources"
 DEMO_CONFIG="$ROOT/.github/local-actions/upstream-filter-tests/config/demo.yml"
 TMP="$(mktemp -d)"
@@ -186,6 +188,62 @@ sed 's|provider/\*-azure|provider/*|' "$RESOURCES/CONTRIBUTING.md" > "$TMP/drift
 expect_rc 2 render contributing --config "$REF_CFG" < "$TMP/drift.md"
 ok "a template without the default lines exits 2"
 
+# A checkout whose Java headers name holders in the spellings upstream uses, plus lines that
+# must not count: a body string, a header past line 20, a non-Java file, an untracked file and
+# a template fixture under .github.
+NOTICE_TREE="$TMP/notice-tree"
+mkdir -p "$NOTICE_TREE/demo-core/src" "$NOTICE_TREE/provider/demo-azure/src"
+java_file() { printf '%s\n' "${@:2}" "package demo;" > "$NOTICE_TREE/$1"; }
+java_file demo-core/src/A.java "/*" " * Copyright 2017-2020, Schlumberger" " *" " * Licensed under the Apache License"
+java_file demo-core/src/B.java "/* Copyright (c) 2020 Google LLC. All rights reserved. */" "// Copyright 2021 Google"
+java_file demo-core/src/C.java "// Copyright © SLB" "// Copyright 2021 Microsoft"
+java_file demo-core/src/D.java "/*" " *  Copyright © Amazon Web Services" " *  Copyright 2020 EPAM Systems, Inc." " */"
+java_file provider/demo-azure/src/E.java "// Copyright © Microsoft Corporation" 'class E { String s = "Copyright Contoso"; }'
+java_file provider/demo-azure/src/F.java "// Copyright © Azure"
+java_file provider/demo-azure/src/J.java "// Copyright 2024 Fabrikam Ltd"
+java_file demo-core/src/G.java $'\xef\xbb\xbf// Copyright 2020 Google LLC'
+java_file demo-core/src/H.java "/**" " ** Copyright 2020 SLB" " */"
+java_file demo-core/src/I.java $'// Copyright \xa9 Microsoft Corporation'
+{ for _ in $(seq 1 19); do echo "// line"; done; echo "// Copyright The Open Group"; } > "$NOTICE_TREE/demo-core/src/Edge.java"
+ln -s Missing.java "$NOTICE_TREE/demo-core/src/Broken.java"
+mkdir -p "$NOTICE_TREE/.github/local-actions/fixtures"
+echo "// Copyright Contoso" > "$NOTICE_TREE/.github/local-actions/fixtures/Fixture.java"
+{ for _ in $(seq 1 20); do echo "// line"; done; echo "// Copyright Contoso"; } > "$NOTICE_TREE/demo-core/src/Late.java"
+echo "Copyright Contoso" > "$NOTICE_TREE/demo-core/notes.md"
+git -C "$NOTICE_TREE" -c init.defaultBranch=main init -q
+git -C "$NOTICE_TREE" add -A
+echo "// Copyright Contoso" > "$NOTICE_TREE/demo-core/src/Untracked.java"
+
+note "notice: project and source from the URL, holders from the Java headers"
+expect_rc 0 render notice --upstream-url "https://example.test/osdu/demo/.git" --checkout "$NOTICE_TREE" < "$RESOURCES/NOTICE-OSDU-SPI"
+cp "$TMP/out" "$TMP/notice"
+rm "$NOTICE_TREE/demo-core/src/Untracked.java"
+grep -qx "Component: OSDU demo" "$TMP/notice" || die "project not named from the URL"
+grep -qx "Source: https://example.test/osdu/demo" "$TMP/notice" || die "source not the URL without .git"
+grep -q "community project demo and carries" "$TMP/notice" || die "project not named in the prose"
+[ "$(grep '^  ' "$TMP/notice")" = "$(printf '  %s\n' "Microsoft Corporation" "SLB" "Google LLC" "Amazon.com, Inc. or its affiliates" "EPAM Systems, Inc." "Fabrikam Ltd" "The Open Group")" ] \
+  || die "unexpected holders: $(grep '^  ' "$TMP/notice")"
+! grep -q '<project>\|<upstream-url>\|<holders>\|Contoso' "$TMP/notice" || die "a placeholder or an uncounted holder survived"
+diff <(grep -v '<project>\|<upstream-url>\|<holders>' "$RESOURCES/NOTICE-OSDU-SPI") \
+     <(grep -v 'OSDU demo\|community project demo\|^Source: \|^  ' "$TMP/notice") > /dev/null \
+  || die "notice rendering changed more than the placeholders"
+[ "$(cat "$TMP/err")" = "warning: copyright holder kept as written: Fabrikam Ltd" ] || die "unexpected stderr: $(cat "$TMP/err")"
+ok "aliases collapse, files count once per holder, most files first; BOM, Latin-1 and line-20 headers read; unknown holder kept with a warning"
+
+note "notice: refusals"
+mkdir -p "$TMP/no-java"
+git -C "$TMP/no-java" -c init.defaultBranch=main init -q
+expect_rc 4 render notice --upstream-url "https://example.test/osdu/demo" --checkout "$TMP/no-java" < "$RESOURCES/NOTICE-OSDU-SPI"
+[ ! -s "$TMP/out" ] || die "rc 4 wrote a notice"
+for bad in "ftp://example.test/osdu/demo" "git@example.test:osdu/demo.git" "https://example.test" "https://example.test/osdu/demo?x=1" $'https://example.test/osdu/demo\n::error::forged'; do
+  expect_rc 2 render notice --upstream-url "$bad" --checkout "$NOTICE_TREE" < "$RESOURCES/NOTICE-OSDU-SPI"
+  ! grep -q '^::' "$TMP/err" || die "a refused URL opened a workflow command line: $(cat "$TMP/err")"
+done
+grep -v '<holders>' "$RESOURCES/NOTICE-OSDU-SPI" > "$TMP/drift-notice"
+expect_rc 2 render notice --upstream-url "https://example.test/osdu/demo" --checkout "$NOTICE_TREE" < "$TMP/drift-notice"
+expect_rc 2 render notice --checkout "$NOTICE_TREE" < "$RESOURCES/NOTICE-OSDU-SPI"
+ok "no headers exits 4; a non-http(s) or forged URL, a drifted template and a missing URL exit 2"
+
 # Init end to end: a throwaway checkout with the template's resources and a gh that answers
 # the CODEOWNERS variable.
 mkdir -p "$TMP/bin"
@@ -205,12 +263,14 @@ init_fork() {
   [ -n "$cfg" ] && cp "$cfg" "$ws/.github/upstream-filter.yml"
   [ -n "$tree" ] && cp -R "$tree/." "$ws/"
   git -C "$ws" -c init.defaultBranch=main init -q
-  (cd "$ws" && PATH="$TMP/bin:$PATH" UPSTREAM_REPO_URL="https://example.test/demo.git" bash "$DEPLOY" > "$ws.log")
+  git -C "$ws" add -A
+  (cd "$ws" && PATH="$TMP/bin:$PATH" UPSTREAM_REPO_URL="${INIT_URL-https://example.test/demo.git}" bash "$DEPLOY" > "$ws.log")
 }
 
 note "init: a conventional fork plants what it planted before"
 CONV="$TMP/conv"
-mkdir -p "$CONV/provider/demo-azure" "$CONV/testing/demo-test-azure"
+mkdir -p "$CONV/provider/demo-azure" "$CONV/testing/demo-test-azure" "$CONV/.github/local-actions/fixtures"
+echo "// Copyright © Microsoft Corporation" > "$CONV/.github/local-actions/fixtures/Main.java"
 init_fork "$CONV" "$DEMO_CONFIG" ""
 cmp -s "$RESOURCES/dependabot.yml" "$CONV/.github/dependabot.yml" || die "conventional dependabot.yml changed"
 cmp -s "$RESOURCES/CONTRIBUTING.md" "$CONV/CONTRIBUTING.md" || die "conventional CONTRIBUTING.md changed"
@@ -233,6 +293,81 @@ init_fork "$NOPOM" "$REF_CFG" "$TMP/no-pom"
 [ ! -e "$NOPOM/.github/dependabot.yml" ] || die "an unwatchable dependabot.yml was planted"
 grep -q "::warning::No fork_owned tree holds a pom.xml" "$NOPOM.log" || die "no warning for the missing pom"
 ok "warning raised, file absent"
+
+note "init: NOTICE-OSDU-SPI planted from the fork's headers, never over an existing file"
+render notice --upstream-url "https://example.test/demo.git" --checkout "$NOTICE_TREE" < "$RESOURCES/NOTICE-OSDU-SPI" > "$TMP/init-notice" 2> /dev/null
+NOTICE_INIT="$TMP/notice-init"
+init_fork "$NOTICE_INIT" "$DEMO_CONFIG" "$NOTICE_TREE"
+cmp -s "$TMP/init-notice" "$NOTICE_INIT/NOTICE-OSDU-SPI" || die "init NOTICE-OSDU-SPI differs from the renderer's"
+git -C "$NOTICE_INIT" ls-files --error-unmatch NOTICE-OSDU-SPI > /dev/null 2>&1 || die "NOTICE-OSDU-SPI not staged"
+grep -q "::warning::NOTICE-OSDU-SPI: copyright holder kept as written: Fabrikam Ltd" "$NOTICE_INIT.log" || die "unknown holder not annotated"
+[ ! -e "$NOTICE_INIT/.github/fork-resources" ] || die "fork-resources left behind"
+grep -q "::warning::NOTICE-OSDU-SPI not planted: no Java source" "$CONV.log" || die "a fork whose only header is a template fixture was not warned"
+[ ! -e "$CONV/NOTICE-OSDU-SPI" ] || die "a fork without headers got a notice"
+KEPT_TREE="$TMP/kept-tree"
+cp -R "$NOTICE_TREE" "$KEPT_TREE"
+echo "edited by the fork" > "$KEPT_TREE/NOTICE-OSDU-SPI"
+init_fork "$TMP/notice-kept" "$DEMO_CONFIG" "$KEPT_TREE"
+[ "$(cat "$TMP/notice-kept/NOTICE-OSDU-SPI")" = "edited by the fork" ] || die "init overwrote an existing NOTICE-OSDU-SPI"
+INIT_URL="" init_fork "$TMP/notice-nourl" "$DEMO_CONFIG" "$NOTICE_TREE"
+[ ! -e "$TMP/notice-nourl/NOTICE-OSDU-SPI" ] || die "planted without an upstream URL"
+grep -q "::warning::NOTICE-OSDU-SPI not planted: UPSTREAM_REPO_URL" "$TMP/notice-nourl.log" || die "no warning for the missing URL"
+ok "planted and staged; unknown holder annotated; existing file kept; no headers or no URL warns"
+
+# Template sync: the check-updates term and the plant block run as written in the workflow,
+# in a fork checkout whose template ref carries the notice template.
+python3 - "$SYNC_TEMPLATE" "$TMP/check-notice.sh" "$TMP/plant-notice.sh" <<'EOF'
+import sys, yaml
+steps = [s for job in yaml.safe_load(open(sys.argv[1]))["jobs"].values() for s in job.get("steps", [])]
+def run(name):
+    return next(s["run"] for s in steps if s.get("name") == name).splitlines()
+def window(lines, start, stop):
+    i = next(n for n, l in enumerate(lines) if l.strip().startswith(start))
+    j = next(n for n in range(i + 1, len(lines)) if stop(lines[n]))
+    return "\n".join(lines[i:j]) + "\n"
+check = run("Check for template updates")
+open(sys.argv[2], "w").write(window(check, "PLANT_NOTICE=false", lambda l: l.strip() == "fi") + "fi\necho \"PLANT_NOTICE=$PLANT_NOTICE\"\n")
+plant = run("Sync template files")
+open(sys.argv[3], "w").write(window(plant, 'if [ ! -f "NOTICE-OSDU-SPI" ]', lambda l: "Syncing sync configuration file" in l))
+EOF
+SYNC_FORK="$TMP/sync-fork"
+cp -R "$NOTICE_TREE" "$SYNC_FORK"
+TPL_BLOB=$(git -C "$SYNC_FORK" hash-object -w "$RESOURCES/NOTICE-OSDU-SPI")
+TPL_TREE=$(printf '100644 blob %s\tNOTICE-OSDU-SPI\n' "$TPL_BLOB" | git -C "$SYNC_FORK" mktree)
+TPL_TREE=$(printf '040000 tree %s\tfork-resources\n' "$TPL_TREE" | git -C "$SYNC_FORK" mktree)
+TPL_TREE=$(printf '040000 tree %s\t.github\n' "$TPL_TREE" | git -C "$SYNC_FORK" mktree)
+git -C "$SYNC_FORK" update-ref refs/remotes/template/main \
+  "$(git -C "$SYNC_FORK" -c user.name=t -c user.email=t@example.test commit-tree "$TPL_TREE" -m template)"
+sync_notice() {
+  local script="$1" url="$2"
+  mkdir -p "$TMP/runner"
+  (cd "$SYNC_FORK" && RUNNER_TEMP="$TMP/runner" RENDER="$RENDER" UPSTREAM_URL="$url" bash -e "$script" > "$TMP/sync.log" 2>&1)
+}
+
+note "sync: a missing notice counts as an update and is planted from the fork's headers"
+sync_notice "$TMP/check-notice.sh" "https://example.test/demo.git"
+grep -qx "PLANT_NOTICE=true" "$TMP/sync.log" || die "missing notice not counted as an update: $(cat "$TMP/sync.log")"
+sync_notice "$TMP/check-notice.sh" ""
+grep -qx "PLANT_NOTICE=false" "$TMP/sync.log" || die "counted as an update without a URL"
+sync_notice "$TMP/plant-notice.sh" "https://example.test/demo.git" || die "plant block failed: $(cat "$TMP/sync.log")"
+cmp -s "$TMP/init-notice" "$SYNC_FORK/NOTICE-OSDU-SPI" || die "sync NOTICE-OSDU-SPI differs from the renderer's"
+git -C "$SYNC_FORK" diff --cached --quiet -- NOTICE-OSDU-SPI && die "NOTICE-OSDU-SPI not staged"
+grep -qx "::warning::NOTICE-OSDU-SPI: copyright holder kept as written: Fabrikam Ltd" "$TMP/sync.log" || die "unknown holder not annotated"
+sync_notice "$TMP/check-notice.sh" "https://example.test/demo.git"
+grep -qx "PLANT_NOTICE=false" "$TMP/sync.log" || die "a planted notice still counts as an update"
+echo "edited by the fork" > "$SYNC_FORK/NOTICE-OSDU-SPI"
+sync_notice "$TMP/plant-notice.sh" "https://example.test/demo.git"
+[ "$(cat "$SYNC_FORK/NOTICE-OSDU-SPI")" = "edited by the fork" ] || die "sync overwrote an existing NOTICE-OSDU-SPI"
+ok "counted, planted and staged once; unknown holder annotated; existing file kept"
+
+note "sync: a notice that can't be rendered warns and the sync continues"
+git -C "$SYNC_FORK" rm -q -f NOTICE-OSDU-SPI
+sync_notice "$TMP/plant-notice.sh" "ftp://example.test/demo" || die "a render failure failed the sync step"
+[ ! -e "$SYNC_FORK/NOTICE-OSDU-SPI" ] || die "planted from a refused URL"
+grep -q "::warning::NOTICE-OSDU-SPI not planted: rendering failed" "$TMP/sync.log" || die "no warning for the render failure"
+sync_notice "$TMP/plant-notice.sh" "" || die "a missing URL failed the sync step"
+grep -q "::warning::UPSTREAM_REPO_URL is not set" "$TMP/sync.log" || die "no warning for the missing URL"
+ok "refused URL and missing URL warn without failing the step"
 
 note "build env: KEY=VALUE lines reach GITHUB_ENV with the workspace expanded"
 run_build_env() {

@@ -49,6 +49,7 @@ jobs:
         id: check-updates
         env:
           CODEOWNERS_VAR: ${{ vars.CODEOWNERS }}
+          UPSTREAM_URL: ${{ vars.UPSTREAM_REPO_URL }}
         run: |
           TEMPLATE_COMMIT=$(git rev-parse refs/remotes/template/main)
           echo "Template latest commit: $TEMPLATE_COMMIT"
@@ -62,6 +63,15 @@ jobs:
             echo "CODEOWNERS is missing and the variable is set; planting it counts as an update"
           fi
           
+          # A fork without its OSDU source notice gets it planted, so a missing, plantable
+          # NOTICE-OSDU-SPI counts as an update by itself.
+          PLANT_NOTICE=false
+          if [ ! -f "NOTICE-OSDU-SPI" ] && [ -n "$UPSTREAM_URL" ] \
+             && git show refs/remotes/template/main:".github/fork-resources/NOTICE-OSDU-SPI" >/dev/null 2>&1; then
+            PLANT_NOTICE=true
+            echo "NOTICE-OSDU-SPI is missing; planting it counts as an update"
+          fi
+
           # A fork_owned fork whose Maven modules no longer match its rendered Dependabot
           # directories needs a re-render, so a difference counts as an update by itself.
           RECONCILE_DEPENDABOT=false
@@ -129,7 +139,7 @@ jobs:
             exit 1
           fi
           
-          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ] && [ "$REMOVE_DROPPED" = "false" ]; then
+          if [ "$TEMPLATE_COMMIT" = "$LAST_SYNC_COMMIT" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$PLANT_NOTICE" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ] && [ "$REMOVE_DROPPED" = "false" ]; then
             echo "No template updates found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
             exit 0
@@ -174,7 +184,7 @@ jobs:
             fi
           done
           
-          if [ -z "$GITHUB_CHANGES" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ] && [ "$REMOVE_DROPPED" = "false" ]; then
+          if [ -z "$GITHUB_CHANGES" ] && [ "$PLANT_CODEOWNERS" = "false" ] && [ "$PLANT_NOTICE" = "false" ] && [ "$RECONCILE_DEPENDABOT" = "false" ] && [ "$REMOVE_DROPPED" = "false" ]; then
             echo "No syncable file changes found"
             echo "has_updates=false" >> $GITHUB_OUTPUT
           else
@@ -507,6 +517,26 @@ jobs:
               OWNERS_ESCAPED=${CODEOWNERS_VAR//&/\\&}; OWNERS_ESCAPED=${OWNERS_ESCAPED//|/\\|}
               sed "s|<owners>|$OWNERS_ESCAPED|g; s|<service>|${CODEOWNERS_SERVICE//&/\\&}|g" "$RUNNER_TEMP/CODEOWNERS" > ".github/CODEOWNERS"
               git add ".github/CODEOWNERS"
+            fi
+          fi
+
+          # Same create-if-missing rule for the OSDU source notice. The renderer names the project
+          # from the upstream URL and the holders from the source headers, once; later changes are PRs.
+          if [ ! -f "NOTICE-OSDU-SPI" ] && git show refs/remotes/template/main:".github/fork-resources/NOTICE-OSDU-SPI" > "$RUNNER_TEMP/NOTICE-OSDU-SPI" 2>/dev/null; then
+            if [ -z "$UPSTREAM_URL" ]; then
+              echo "::warning::UPSTREAM_REPO_URL is not set; NOTICE-OSDU-SPI not planted"
+            else
+              NOTICE_RC=0
+              python3 "$RENDER" notice --upstream-url "$UPSTREAM_URL" --checkout . \
+                < "$RUNNER_TEMP/NOTICE-OSDU-SPI" > "$RUNNER_TEMP/NOTICE-OSDU-SPI.rendered" 2> "$RUNNER_TEMP/notice.err" || NOTICE_RC=$?
+              while IFS= read -r line; do
+                case "$line" in "warning: "*) echo "::warning::NOTICE-OSDU-SPI: ${line#warning: }" ;; *) echo "$line" ;; esac
+              done < "$RUNNER_TEMP/notice.err"
+              case "$NOTICE_RC" in
+                0) echo "Planting NOTICE-OSDU-SPI"; mv "$RUNNER_TEMP/NOTICE-OSDU-SPI.rendered" "NOTICE-OSDU-SPI"; git add "NOTICE-OSDU-SPI" ;;
+                4) echo "::warning::NOTICE-OSDU-SPI not planted: no Java source carries a copyright header" ;;
+                *) echo "::warning::NOTICE-OSDU-SPI not planted: rendering failed (exit $NOTICE_RC)" ;;
+              esac
             fi
           fi
 

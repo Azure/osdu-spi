@@ -15,24 +15,29 @@
 
 """Renders the fork resources that name fork-owned paths from the filter config's
 fork_owned list: the Dependabot directories, the CODEOWNERS ownership lines and the
-CONTRIBUTING.md ownership row.
+CONTRIBUTING.md ownership row; and the NOTICE-OSDU-SPI attribution, from the upstream
+URL and the copyright holders in the fork's source headers.
 
     fork_resources.py explicit     --config CFG
     fork_resources.py dependabot   --config CFG --checkout DIR  < template > rendered
     fork_resources.py codeowners   --config CFG                 < template > rendered
     fork_resources.py contributing --config CFG                 < template > rendered
+    fork_resources.py notice --upstream-url URL --checkout DIR  < template > rendered
 
 A config without fork_owned, or no config at all, passes the template through byte for
 byte. `explicit` exits 0 when the config lists fork_owned and 1 when it does not.
 
 Exit codes: 0 rendered, 1 not explicit, 2 config or template error, 3 no fork-owned
-tree holds a pom.xml, so Dependabot has no directory to watch.
+tree holds a pom.xml, so Dependabot has no directory to watch, 4 no Java source carries a
+copyright header to name.
 """
 
 import argparse
 import os
 import re
+import subprocess
 import sys
+from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -49,6 +54,22 @@ CODEOWNERS_DEFAULTS = (
 CONTRIBUTING_DEFAULT = "`provider/*-azure/`, `testing/*-test-azure/`"
 # Paths go unescaped into YAML strings, CODEOWNERS patterns and Markdown cells.
 RENDER_SAFE_PATH = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$")
+
+
+# Spellings of one holder collapse to the name the attribution prints; anything else is kept as written.
+NOTICE_HOLDERS = (
+    (re.compile(r"microsoft( corporation)?|azure"), "Microsoft Corporation"),
+    (re.compile(r"schlumberger|slb"), "SLB"),
+    (re.compile(r"google( llc)?"), "Google LLC"),
+    (re.compile(r"the open group"), "The Open Group"),
+    (re.compile(r"amazon(\.com)?(,? inc\.?)?( or its affiliates)?|amazon web services"), "Amazon.com, Inc. or its affiliates"),
+    (re.compile(r"epam systems,? inc\.?"), "EPAM Systems, Inc."),
+    (re.compile(r"bp"), "BP"),
+)
+COPYRIGHT_LINE = re.compile(r"^[\s\ufeff]*(?:(?://|/?\*+|#)\s*)?copyright\b(.*)$", re.IGNORECASE)
+COPYRIGHT_NOISE = re.compile(r"Â?©|\ufffd|\(c\)|\ball rights reserved\b\.?|\b(?:19|20)\d\d\b(?:\s*[-,]\s*(?:19|20)\d\d\b)*", re.IGNORECASE)
+HEADER_LINES = 20
+UPSTREAM_URL = re.compile(r"https?://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[A-Za-z0-9._-]+)+")
 
 
 class TemplateError(Exception):
@@ -132,12 +153,76 @@ def render_contributing(text, paths):
     return text.replace(CONTRIBUTING_DEFAULT, ", ".join(f"`{p}/`" for p in paths))
 
 
+def copyright_holder(rest):
+    text = re.sub(r"\s+", " ", COPYRIGHT_NOISE.sub(" ", rest))
+    text = text.strip(" ,.;:*/-")
+    if not text:
+        return None
+    for pattern, name in NOTICE_HOLDERS:
+        if pattern.fullmatch(text.lower()):
+            return name
+    return text
+
+
+def copyright_holders(checkout):
+    """Holders named in the Java source headers, most files first; each file counts once per holder."""
+    # .github holds template fixtures at initialization, not service source.
+    listing = subprocess.run(["git", "-C", checkout, "ls-files", "-z", "--", "*.java", ":(exclude).github/"],
+                             check=True, capture_output=True).stdout
+    counts = Counter()
+    for rel in filter(None, listing.decode("utf-8").split("\0")):
+        found = set()
+        try:
+            with open(os.path.join(checkout, rel), encoding="utf-8", errors="replace") as source:
+                for _, line in zip(range(HEADER_LINES), source):
+                    match = COPYRIGHT_LINE.match(line)
+                    if match and (holder := copyright_holder(match.group(1))):
+                        found.add(holder)
+        except OSError:
+            continue
+        counts.update(found)
+    return sorted(counts, key=lambda name: (-counts[name], name))
+
+
+def render_notice(text, upstream_url, holders):
+    url = upstream_url.rstrip("/").removesuffix(".git").rstrip("/")
+    if not UPSTREAM_URL.fullmatch(url):
+        raise TemplateError(f"upstream URL is not an http or https repository URL: {_printable(upstream_url)}")
+    if text.count("<upstream-url>") != 1 or text.count("<holders>\n") != 1 or "<project>" not in text:
+        raise TemplateError("the template no longer carries <project>, <upstream-url> and a <holders> line")
+    text = text.replace("<project>", url.rsplit("/", 1)[1]).replace("<upstream-url>", url)
+    return text.replace("<holders>\n", "".join(f"  {name}\n" for name in holders))
+
+
+def main_notice(args):
+    holders = copyright_holders(args.checkout)
+    if not holders:
+        print("error: no Java source carries a copyright header", file=sys.stderr)
+        return 4
+    known = {name for _, name in NOTICE_HOLDERS}
+    for name in holders:
+        if name not in known:
+            print(f"warning: copyright holder kept as written: {_printable(name)}", file=sys.stderr)
+    try:
+        rendered = render_notice(sys.stdin.buffer.read().decode("utf-8"), args.upstream_url, holders)
+    except TemplateError as err:
+        print(f"error: {err}", file=sys.stderr)
+        return 2
+    sys.stdout.buffer.write(rendered.encode("utf-8"))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("kind", choices=["explicit", "dependabot", "codeowners", "contributing"])
+    parser.add_argument("kind", choices=["explicit", "dependabot", "codeowners", "contributing", "notice"])
     parser.add_argument("--config")
     parser.add_argument("--checkout", default=".")
+    parser.add_argument("--upstream-url")
     args = parser.parse_args(argv)
+    if args.kind == "notice":
+        if not args.upstream_url:
+            parser.error("notice needs --upstream-url")
+        return main_notice(args)
 
     try:
         paths = explicit_paths(args.config)

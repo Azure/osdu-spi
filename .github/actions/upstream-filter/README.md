@@ -167,6 +167,23 @@ update by itself, so a module added or removed opens a sync PR without waiting
 for a template change. A fork that drops `fork_owned` returns to the template's
 `dependabot.yml` on the next template change to `fork-resources/`.
 
+### `notice`
+
+`fork_resources.py notice --upstream-url URL --checkout DIR` renders
+`fork-resources/NOTICE-OSDU-SPI` (ADR-043). It reads no filter config. The
+project is the last segment of the URL, and the source is the URL without
+`.git`. The holders come from `Copyright` lines in the first 20 lines of each
+Java file `git ls-files` lists outside `.github/`, one count per file, printed most files first.
+Known spellings collapse to one name; an unknown holder is kept as written and
+reported on stderr as `warning: copyright holder kept as written: <name>`, which
+initialization and template sync raise as a workflow warning.
+
+Exit 2 is a URL that is not http or https, or a template without `<project>`,
+`<upstream-url>` and a `<holders>` line. Exit 4 means no Java file has a
+copyright header. On any nonzero exit the file is not planted and the run
+warns; template sync retries on its next run. Initialization and template sync
+render it only when the fork has no `NOTICE-OSDU-SPI`.
+
 ## Halt codes
 
 | Code | Raised when |
