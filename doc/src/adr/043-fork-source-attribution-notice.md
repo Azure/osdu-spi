@@ -24,17 +24,23 @@ The name has no extension so that upstream's `.dockerignore` admits it, and it s
 
 Initialization renders and plants it with the other fork resources (ADR-018). Template sync plants it when it is missing, and a missing, plantable file counts as an update by itself, so a fork receives it on the next sync run whether or not the template changed. A fork whose notice cannot be rendered (no upstream URL, a URL that is not http or https, no Java file with a copyright header) is left without it and each sync run warns; the sync itself continues. After planting, template sync never rewrites it; a holder change is a pull request to the fork.
 
+### In the image
+
+The service, acceptance and load images copy `LICENSE`, `NOTICE` and `NOTICE-OSDU-SPI` to `/licenses/` by name, so a fork missing one fails its image build instead of publishing without it. The service image also carries the Application Insights agent's bundled license and notice files under `/licenses/applicationinsights-agent/`, extracted from the same checksummed JAR it runs (ADR-037). The load image's sidecar `.dockerignore` admits the three files.
+
 ## Consequences
 
 ### Positive
 
 - `NOTICE` keeps following upstream unchanged, and a later generated dependency notice can take that name without touching this file.
 - A new fork is attributed at initialization with no manual step.
+- A published image carries its notices, so a consumer of the image alone sees the source, the license and the dependency notices.
 
 ### Negative
 
 - The holder list is a snapshot from planting. A holder upstream adds later reaches the file only by hand.
 - The plant rule lives in the fork's copy of `sync-template.yml`, so an existing fork plants the file one sync after the rule arrives.
+- A fork whose notice could not be rendered cannot build images until the file is written by hand.
 
 ## Alternatives Considered
 

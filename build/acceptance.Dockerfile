@@ -38,6 +38,7 @@ FROM maven-${JAVA_VERSION}
 ARG SUITE_DIRS
 WORKDIR /suite
 COPY --from=select /suite/ /suite/
+COPY LICENSE NOTICE NOTICE-OSDU-SPI /licenses/
 COPY --chmod=0755 build/acceptance-entrypoint.sh /usr/local/bin/acceptance-entrypoint.sh
 
 # Each suite resolves its own graph; a multi-module suite (a testing/ reactor whose provider
