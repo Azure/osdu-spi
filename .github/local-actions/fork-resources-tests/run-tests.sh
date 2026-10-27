@@ -393,6 +393,9 @@ for allow in '!LICENSE' '!NOTICE' '!NOTICE-OSDU-SPI'; do
   grep -qxF "$allow" "$ROOT/build/load.Dockerfile.dockerignore" || die "load sidecar dockerignore must re-admit $allow"
 done
 grep -q '^FROM --platform=$BUILDPLATFORM .* AS agent$' "$ROOT/build/Dockerfile" || die "the agent stage must run on the build platform"
+AGENT_BASE=$(sed -n 's/^FROM --platform=$BUILDPLATFORM \(.*\) AS agent$/\1/p' "$ROOT/build/Dockerfile")
+RUNTIME_17=$(sed -n 's/^FROM \(.*\) AS runtime-17$/\1/p' "$ROOT/build/Dockerfile")
+[ -n "$AGENT_BASE" ] && [ "$AGENT_BASE" = "$RUNTIME_17" ] || die "the agent stage must pin the runtime-17 image, so a digest bump moves both: '$AGENT_BASE' vs '$RUNTIME_17'"
 grep -qx 'COPY --from=agent /agent/notices/ /licenses/applicationinsights-agent/' "$ROOT/build/Dockerfile" || die "the agent's license and notice files must reach /licenses/"
 grep -qx 'COPY --from=agent /agent/applicationinsights-agent.jar /opt/agents/applicationinsights-agent.jar' "$ROOT/build/Dockerfile" || die "the agent must stay at /opt/agents/, where the entrypoint attaches it"
 ok "service, acceptance and load images copy the notices; the agent's notices come from the verified jar"
