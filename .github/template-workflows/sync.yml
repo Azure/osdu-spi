@@ -125,7 +125,7 @@ jobs:
             echo "::error::Resolved upstream SHA is not a full lowercase commit ID: $UPSTREAM_SHA"
             exit 1
           fi
-          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
+          UPSTREAM_VERSION=$(git describe --tags --exact-match "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
           echo "Captured pre-sync state: $BEFORE_SHA"
 
           # Exported before generation so a no-change run can still record the evaluated SHA.
