@@ -104,7 +104,7 @@ tests:                                  # named suites of one shape; acceptance 
     timeoutMinutes: 20
 ```
 
-Every suite may also carry `keyVaultBindings` (env name to Key Vault secret name), `requires` (`loads`, `groups`), and `dependencies`; the partition suites need none of them.
+Every suite may also carry `keyVaultBindings` (env name to Key Vault secret name), `forwards` (in-cluster services the lane port-forwards to), `requires` (`loads`, `groups`), and `dependencies`; the partition suites need none of them.
 
 Ports the prototype's ADR-043 contract (reserved-name blocklist, argv-token Maven args, no identity/cluster selection) and subgroup-core's closed-vocabulary posture: an unknown source kind halts loudly. Resolution precedence: explicit env → facts → declared default; templates render last, so the same contract runs in CI, against a personal stack, or fully offline. `token`, `memberToken`, and `noAccessToken` are the caller inputs with fixed names, `RESOLVER_TOKEN`, `RESOLVER_MEMBER_TOKEN`, and `RESOLVER_NO_ACCESS_TOKEN`, so the lane and a developer supply the bearers the same way whatever a suite calls them.
 
