@@ -716,7 +716,17 @@ jobs:
             --data-urlencode "client_assertion=$assertion" \
             --data-urlencode "scope=https://vault.azure.net/.default" | jq -r '.access_token | select(type == "string")')
           [ -n "$bearer" ] || { echo "::error::the deploy identity did not mint a Key Vault token"; exit 1; }
-          echo "::add-mask::$bearer"
+          # Workflow commands end at a newline, so the whole value goes in escaped and each line on its own.
+          mask() {
+            local escaped line
+            escaped=${1//'%'/'%25'}; escaped=${escaped//$'\r'/'%0D'}; escaped=${escaped//$'\n'/'%0A'}
+            echo "::add-mask::$escaped"
+            while IFS= read -r line; do
+              line=${line%$'\r'}
+              [ -z "$line" ] || echo "::add-mask::${line//'%'/'%25'}"
+            done <<< "$1"
+          }
+          mask "$bearer"
           umask 077
           out="$RUNNER_TEMP/suite-secrets.json"
           echo '{}' > "$out"
@@ -725,7 +735,7 @@ jobs:
               "https://$vault.vault.azure.net/secrets/$name?api-version=7.4" | jq -r '.value | select(type == "string")') \
               || { echo "::error::Key Vault secret $name could not be read from $vault"; exit 1; }
             [ -n "$value" ] || { echo "::error::Key Vault secret $name in $vault is empty"; exit 1; }
-            echo "::add-mask::$value"
+            mask "$value"
             SECRET_VALUE="$value" jq --arg name "$name" '. + {($name): env.SECRET_VALUE}' "$out" > "$out.next"
             mv "$out.next" "$out"
           done
@@ -841,6 +851,11 @@ jobs:
             reports/**/target/failsafe-reports/**
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: "Remove suite secrets"
+        # Prove removes the file on exit; this covers a failure between Fetch and Prove.
+        if: always()
+        run: rm -f "$RUNNER_TEMP/suite-secrets.json" "$RUNNER_TEMP/suite-secrets.json.next"
 
       - name: "Restore"
         if: always() && steps.install.outcome == 'success'
