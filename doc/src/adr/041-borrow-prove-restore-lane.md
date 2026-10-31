@@ -42,9 +42,15 @@ The positive-path caller is the environment's deploy identity, the same principa
 
 The stack also provisions a member identity, a plain user with no admin rights, and a no-access identity, which holds no entitlements. `spi onboard` federates both alongside the deploy identity. The lane mints their bearers for the same audience by exchanging the run's OIDC token with Entra directly, so the deploy identity's session stays in place for Restore. They reach the resolver as `RESOLVER_MEMBER_TOKEN` and `RESOLVER_NO_ACCESS_TOKEN` for bindings with `source: memberToken` and `source: noAccessToken`, and a developer supplies them from `spi token --member` and `spi token --no-access`. An identity the environment does not publish leaves its variable unset, and only a suite that binds it reports env-not-ready.
 
+### Secrets and in-cluster services
+
+Before Prove, the lane reads only the secret names the suites declare from the vault `spi info --json` publishes as `azure.keyvault`, with a vault bearer the deploy identity mints from a fresh OIDC token. Each value is masked and written to an owner-only file the resolver reads through `--secrets`; Prove deletes it on exit.
+
+A suite that declares `forwards` asserts against an in-cluster service directly. For each one, the lane opens a `kubectl port-forward` to the pod the stack publishes under `forwards` and runs that suite with host networking, so the service answers on `localhost` at its published port. The stack grants the deploy identity port-forward to exactly those pods. A target the environment does not publish is env-not-ready; a forward that does not open marks the suite not run.
+
 ### Not yet wired
 
-Two parts of the descriptor contract (ADR-040) are validated and reported by the resolver but not enforced by the lane. `keyvault:` bindings are not materialized: the lane passes no `--secrets` file, so a suite that declares one fails as env-not-ready ([#175](https://github.com/Azure/osdu-spi/issues/175)). `requires.loads`, `requires.groups`, and `dependencies` are not compared with the status facts before the borrow, because the stack does not yet publish seeded loads ([osdu-spi-stack#133](https://github.com/Azure/osdu-spi-stack/issues/133), [#176](https://github.com/Azure/osdu-spi/issues/176)). No shipped descriptor uses either yet.
+`requires.loads`, `requires.groups`, and `dependencies` are validated and reported by the resolver but not compared with the status facts before the borrow, because the stack does not yet publish seeded loads ([osdu-spi-stack#133](https://github.com/Azure/osdu-spi-stack/issues/133), [#176](https://github.com/Azure/osdu-spi/issues/176)). No shipped descriptor uses them yet.
 
 ## Consequences
 

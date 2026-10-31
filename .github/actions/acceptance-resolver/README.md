@@ -151,7 +151,7 @@ Written to `--report` (and always attempted, even on failure):
 
 ```json
 {
-  "engine_version": "1.1.0",
+  "engine_version": "1.2.0",
   "report_schema": 1,
   "mode": "bind",
   "service": "partition",
@@ -163,8 +163,10 @@ Written to `--report` (and always attempted, even on failure):
     "maven_arguments": ["verify"],
     "timeout_minutes": 25,
     "requires": {"loads": [], "groups": []},
-    "dependencies": []
+    "dependencies": [],
+    "forwards": []
   },
+  "forwards": [],
   "key_vault": {"vault": "kv-name-from-facts", "secret_names": []},
   "agreement_checked": ["gateway"],
   "resolved_names": ["MY_TENANT", "PARTITION_BASE_URL"],
@@ -200,6 +202,7 @@ tests:                                  # named suites of one shape; acceptance 
       loads: []
       groups: []
     dependencies: []                    # sibling services this suite calls
+    forwards: []                        # in-cluster services the lane port-forwards to (elasticsearch)
     timeoutMinutes: 25
   integration:                          # a fork-owned suite, selected with --suite integration
     type: maven
