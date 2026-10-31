@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.5.0](https://github.com/Azure/osdu-spi/compare/v1.4.0...v1.5.0) (2026-10-31)
+
+
+### ✨ Features
+
+* **acceptance:** Add suite forwards and Key Vault secret fetch ([05f37c1](https://github.com/Azure/osdu-spi/commit/05f37c13f9d85e6724ce5d7daeadb99f64497b62))
+* **acceptance:** Fetch suite secrets and port-forward to in-cluster services ([18b6884](https://github.com/Azure/osdu-spi/commit/18b6884efad210b1568d735be51b1418e8bfe2d5))
+* **build:** Copy license notices into published images ([8ae1596](https://github.com/Azure/osdu-spi/commit/8ae159668f50520227cf6e4e10841d8917a1ec1f))
+* **build:** Copy license notices into published images ([f73ecc8](https://github.com/Azure/osdu-spi/commit/f73ecc8ef38da9a0fa1b007b591487bc116a3c3a))
+* **notice:** Plant NOTICE-OSDU-SPI in forks from source headers ([242f2f3](https://github.com/Azure/osdu-spi/commit/242f2f35f15dd505fc0091aa76ca8b71d0979993))
+* **notice:** Plant NOTICE-OSDU-SPI in forks from source headers ([1d5393f](https://github.com/Azure/osdu-spi/commit/1d5393fe96fb59e5ab52ac04edfeb684de79bdea))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** Count dropped template files as sync updates ([06a8243](https://github.com/Azure/osdu-spi/commit/06a8243fcacf809d6d0cef6b3171ca9c40ca8b5c))
+* **ci:** Count dropped template files as sync updates ([40dd935](https://github.com/Azure/osdu-spi/commit/40dd9358ef6f220f353fdf76f6ba8db9d08d2cc1))
+* **ci:** Replace slashes in branch name for Maven revision ([f9d3b21](https://github.com/Azure/osdu-spi/commit/f9d3b21a0b14da11487b9fa91c451b1110b48b3e))
+* **ci:** Replace slashes in branch name for Maven revision ([a0ebd35](https://github.com/Azure/osdu-spi/commit/a0ebd35786dad4a60b5e29062fdd3196a8a67490))
+* **ci:** Sanitize branch name used as Maven revision ([8935867](https://github.com/Azure/osdu-spi/commit/8935867cc2129dc6cbc7415374fc712b917b2063))
+* **ci:** Sanitize branch name used as Maven revision ([ae931af](https://github.com/Azure/osdu-spi/commit/ae931af055e183302dcccf3ca7b8b8f280b7d84e))
+* **notice:** Map azure copyright holder to Microsoft Corporation ([f9f4a47](https://github.com/Azure/osdu-spi/commit/f9f4a472bb11c765f94c6b9700d9df5a540d9471))
+* **notice:** Skip .github when collecting copyright holders ([bcd5c0a](https://github.com/Azure/osdu-spi/commit/bcd5c0a159a0125b9ecb0227af11aac87b265d57))
+* **workflows:** Mask multiline secrets and clean up secrets file ([fcdd017](https://github.com/Azure/osdu-spi/commit/fcdd017c35381b047fd8f758e91c15a52a5f6a62))
+* **workflows:** Use exact-match upstream tag for correlation ([185b57b](https://github.com/Azure/osdu-spi/commit/185b57bfa097841bc0852528fd0879d740741e7c))
+* **workflows:** Use exact-match upstream tag for correlation ([b6d2714](https://github.com/Azure/osdu-spi/commit/b6d2714abf9870b27f1ef3f8fdb9d850a5a9e040))
+
+
+### 🔧 Miscellaneous
+
+* **deps:** Bump certifi from 2025.10.5 to 2026.10.19 in /doc ([bab3ee2](https://github.com/Azure/osdu-spi/commit/bab3ee246cc0470e1a05cbe3fa7c8c767228b3d3))
+* **deps:** Bump certifi from 2025.10.5 to 2026.10.19 in /doc ([6d0508b](https://github.com/Azure/osdu-spi/commit/6d0508b984934cbbcfeb226440db2db781a169f1))
+* **deps:** Bump openjdk/jdk from `1f04a62` to `292f024` in /build in the docker group ([b828150](https://github.com/Azure/osdu-spi/commit/b8281504743af81f781ade67744f706b9f146cf0))
+* **deps:** Bump openjdk/jdk from `292f024` to `9768f7d` in /build in the docker group ([f5a483b](https://github.com/Azure/osdu-spi/commit/f5a483b7f2e670b5293db2e7b4657f7de6071d59))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([f49e1a0](https://github.com/Azure/osdu-spi/commit/f49e1a01b6ca9004cb503a7eee76c29ef28a6431))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([13b9664](https://github.com/Azure/osdu-spi/commit/13b9664fccc9dc91195da7a969cad00d18a40036))
+
+
+### 🧪 Tests
+
+* **build:** Assert agent stage pins runtime-17 base image ([44fc6cf](https://github.com/Azure/osdu-spi/commit/44fc6cf519bc281c4c0af639960e1797a5f3049b))
+
 ## [1.4.0](https://github.com/Azure/osdu-spi/compare/v1.3.0...v1.4.0) (2026-10-14)
 
 
