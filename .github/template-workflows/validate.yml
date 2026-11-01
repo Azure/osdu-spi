@@ -799,13 +799,19 @@ jobs:
             mapfile -t mvn_args < <(jq -r '.contract.maven_arguments[]' "$report")
             # The resolver validated each target against the facts; a dropped forward reopens.
             network_args=()
+            trust_args=()
+            ports=()
             unreachable=""
             while read -r name namespace pod port; do
               network_args=(--network host)
+              ports+=("$port")
+              : > "forward-$name.log"
               ( while :; do kubectl port-forward -n "$namespace" "pod/$pod" "$port:$port" >> "forward-$name.log" 2>&1 || true; sleep 2; done ) &
               forward_pids+=("$!")
+              # Ready only once this forward owns the IPv4 listener, never another process on the port.
               for _ in $(seq 1 30); do
-                if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then continue 2; fi
+                if grep -q "Forwarding from 127.0.0.1:$port " "forward-$name.log" \
+                    && (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then continue 2; fi
                 sleep 2
               done
               unreachable="$unreachable $name"
@@ -821,10 +827,25 @@ jobs:
               echo "::endgroup::"
               continue
             fi
+            # Forwarded services sign with a private CA; the suite JVM trusts it through its own store.
+            if [ ${#ports[@]} -gt 0 ]; then
+              trust="$RUNNER_TEMP/forward-trust-$suite"
+              if ! bash .github/actions/acceptance-image/forward-truststore.sh "$TEST_IMAGE" "$trust" "${ports[@]}"; then
+                stop_forwards
+                verdict="not run, the forwarded CA could not be added to the suite trust store"
+                echo "::error::suite $suite $verdict"; failed="$failed $suite"
+                echo "❌ suite $suite: $verdict" >> "$GITHUB_STEP_SUMMARY"
+                verdicts="$verdicts❌ suite $suite: $verdict"$'\n'
+                rm -f "$suite.env"
+                echo "::endgroup::"
+                continue
+              fi
+              trust_args=(-v "$trust:/spi-trust:ro" -e "JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/spi-trust/cacerts -Djavax.net.ssl.trustStorePassword=changeit")
+            fi
             # The verdict comes from the report XML copied out before the container goes.
             container="suite-$suite-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             code=0
-            timeout "${timeout_min}m" docker run --name "$container" "${network_args[@]}" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
+            timeout "${timeout_min}m" docker run --name "$container" "${network_args[@]}" "${trust_args[@]}" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
             stop_forwards
             docker cp "$container:/suite/$suite_dir" "reports/$suite" > /dev/null 2>&1 || mkdir -p "reports/$suite"
             docker rm -f "$container" > /dev/null 2>&1 || true

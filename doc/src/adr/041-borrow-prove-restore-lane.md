@@ -46,7 +46,7 @@ The stack also provisions a member identity, a plain user with no admin rights, 
 
 Before Prove, the lane reads only the secret names the suites declare from the vault `spi info --json` publishes as `azure.keyvault`, with a vault bearer the deploy identity mints from a fresh OIDC token. Each value is masked and written to an owner-only file the resolver reads through `--secrets`; Prove deletes it on exit.
 
-A suite that declares `forwards` asserts against an in-cluster service directly. For each one, the lane opens a `kubectl port-forward` to the pod the stack publishes under `forwards` and runs that suite with host networking, so the service answers on `localhost` at its published port. The stack grants the deploy identity port-forward to exactly those pods. A target the environment does not publish is env-not-ready; a forward that does not open marks the suite not run.
+A suite that declares `forwards` asserts against an in-cluster service directly. For each one, the lane opens a `kubectl port-forward` to the pod the stack publishes under `forwards` and runs that suite with host networking, so the service answers on `localhost` at its published port. The stack grants the deploy identity port-forward to exactly those pods. In-cluster services sign with a private CA, so the lane reads each CA certificate through the forward, adds it to a copy of the suite image's JDK `cacerts`, and points the suite JVM at that store with `JAVA_TOOL_OPTIONS`; a client that trusts only the JVM store then passes the handshake without trust-all flags. A target the environment does not publish is env-not-ready; a forward that does not open, or whose CA cannot be added, marks the suite not run.
 
 ### Not yet wired
 
