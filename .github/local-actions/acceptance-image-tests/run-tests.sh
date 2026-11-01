@@ -226,30 +226,68 @@ TRUSTSTORE="$HERE/../../actions/acceptance-image/forward-truststore.sh"
 F="$TMP/forward"
 mkdir -p "$F/bin"
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$F/ca.key" -out "$F/ca.pem" -days 1 -subj "/CN=forward-ca" 2>/dev/null
-openssl req -newkey rsa:2048 -nodes -keyout "$F/leaf.key" -out "$F/leaf.csr" -subj "/CN=localhost" 2>/dev/null
-openssl x509 -req -in "$F/leaf.csr" -CA "$F/ca.pem" -CAkey "$F/ca.key" -CAcreateserial -out "$F/leaf.pem" -days 1 2>/dev/null
+leaf() {  # name subject: a leaf signed by the forward CA
+  openssl req -newkey rsa:2048 -nodes -keyout "$F/$1.key" -out "$F/$1.csr" -subj "$2" 2>/dev/null
+  openssl x509 -req -in "$F/$1.csr" -CA "$F/ca.pem" -CAkey "$F/ca.key" -CAcreateserial -out "$F/$1.pem" -days 1 2>/dev/null
+}
+leaf leaf "/CN=localhost"
+leaf decoy "/CN=CA:TRUE"
+# The suite image's in-container script runs against the host JDK, with /trust mapped to the mount.
+HOST_JAVA_HOME="${JAVA_HOME:-$(java -XshowSettings:properties -version 2>&1 | awk '/java.home =/ { print $3 }')}"
 cat > "$F/bin/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" > "$FORWARD_DOCKER_LOG"
-while [ $# -gt 0 ]; do [ "$1" = -v ] && printf 'store' > "${2%%:*}/cacerts"; shift; done
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -v) dir="${2%%:*}"; shift ;;
+    -c) script="$2"; shift ;;
+  esac
+  shift
+done
+JAVA_HOME="$HOST_JAVA_HOME" PATH="$HOST_JAVA_HOME/bin:$PATH" sh -c "${script//\/trust/$dir}"
 STUB
 chmod +x "$F/bin/docker"
-PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')"
-openssl s_server -accept "$PORT" -cert "$F/leaf.pem" -key "$F/leaf.key" -cert_chain "$F/ca.pem" -quiet >/dev/null 2>&1 &
-SERVER=$!
-for _ in $(seq 1 25); do (exec 3<> "/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && break; sleep 0.2; done
-PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" bash "$TRUSTSTORE" img "$F/out" "$PORT" >/dev/null 2>&1 || { kill "$SERVER"; die "a TLS forward serving a CA must build a store"; }
-{ kill "$SERVER"; wait "$SERVER"; } 2>/dev/null || true
+serve() {  # port cert [chain] -> server pid in SERVER, waits until it listens
+  local chain=()
+  [ -z "${3:-}" ] || chain=(-cert_chain "$3")
+  openssl s_server -accept "$1" -cert "$2" -key "${2%.pem}.key" ${chain[@]+"${chain[@]}"} -quiet >/dev/null 2>&1 &
+  SERVER=$!
+  for _ in $(seq 1 25); do (exec 3<> "/dev/tcp/127.0.0.1/$1") 2>/dev/null && return; sleep 0.2; done
+}
+stop() { { kill "$SERVER"; wait "$SERVER"; } 2>/dev/null || true; }
+truststore() {  # out-dir port -> script status
+  PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" HOST_JAVA_HOME="$HOST_JAVA_HOME" \
+    bash "$TRUSTSTORE" img "$1" "$2" >/dev/null 2>&1
+}
+free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])'; }
+[ -x "$HOST_JAVA_HOME/bin/keytool" ] || die "the trust store check needs a JDK keytool (JAVA_HOME=$HOST_JAVA_HOME)"
+
+PORT="$(free_port)"
+serve "$PORT" "$F/leaf.pem" "$F/ca.pem"
+truststore "$F/out" "$PORT" || { stop; die "a TLS forward serving a CA must build a store"; }
+stop
 CAS=("$F/out"/ca-*.pem)
 [ "${#CAS[@]}" -eq 1 ] || die "exactly the CA must be imported, got ${#CAS[@]}"
 cmp -s "${CAS[0]}" "$F/ca.pem" || die "the imported certificate is not the served CA"
 grep -q -- "--entrypoint sh -v $F/out:/trust img" "$F/docker.log" || die "keytool must run in the suite image: $(cat "$F/docker.log")"
-[ -s "$F/out/cacerts" ] || die "the store must be written to the out dir"
-RC=0
-PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" bash "$TRUSTSTORE" img "$F/none" "$PORT" >/dev/null 2>&1 || RC=$?
-[ "$RC" -eq 1 ] || die "a port serving no CA must exit 1, got $RC"
-RC=0
-PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" bash "$TRUSTSTORE" img "$F/bad" "9200;x" >/dev/null 2>&1 || RC=$?
+list() { "$HOST_JAVA_HOME/bin/keytool" -list -keystore "$1" -storepass changeit "${@:2}" 2>/dev/null; }
+list "$F/out/cacerts" -alias "${CAS[0]##*/}" >/dev/null || die "the forwarded CA is not in the store"
+ROOT="$(list "$HOST_JAVA_HOME/lib/security/cacerts" | awk -F, '/trustedCertEntry/ { print $1; exit }')"
+[ -n "$ROOT" ] && list "$F/out/cacerts" -alias "$ROOT" >/dev/null || die "the image's own roots must stay trusted ($ROOT)"
+
+PORT="$(free_port)"
+serve "$PORT" "$F/decoy.pem"
+RC=0; truststore "$F/decoy-out" "$PORT" || RC=$?
+stop
+[ "$RC" -eq 1 ] || die "a leaf whose subject reads CA:TRUE must not be trusted, got $RC"
+
+mkdir -p "$F/stale"
+cp "$F/ca.pem" "$F/stale/chain-$PORT-1.pem"
+RC=0; truststore "$F/stale" "$PORT" || RC=$?
+[ "$RC" -eq 1 ] || die "a chain left by an earlier run must not be imported, got $RC"
+[ -z "$(find "$F/stale" -name 'ca-*.pem')" ] || die "a stale chain was promoted to a CA"
+
+RC=0; truststore "$F/bad" "9200;x" || RC=$?
 [ "$RC" -eq 1 ] || die "a non-numeric port must exit 1, got $RC"
 ok "forward trust store"
 

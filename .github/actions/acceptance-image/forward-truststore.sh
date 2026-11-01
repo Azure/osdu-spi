@@ -35,24 +35,32 @@ fi
 image="$1" out="$2"
 shift 2
 
-# A server that accepts but never finishes the handshake must not hang the caller.
-limit=()
-if command -v timeout > /dev/null; then limit=(timeout 20); fi
-
 mkdir -p "$out"
-rm -f "$out"/ca-*.pem "$out/cacerts"
+rm -f "$out"/ca-*.pem "$out"/chain-*.pem "$out"/served-*.txt "$out/cacerts"
 added=0
 for port in "$@"; do
   [[ "$port" =~ ^[0-9]+$ ]] || { echo "port '$port' is not a number" >&2; exit 1; }
-  echo | ${limit[@]+"${limit[@]}"} openssl s_client -connect "127.0.0.1:$port" -showcerts 2> /dev/null \
-    | awk -v dir="$out" -v port="$port" '
+  # A server that accepts but never finishes the handshake gets 20 seconds; no timeout(1) needed.
+  served="$out/served-$port.txt"
+  openssl s_client -connect "127.0.0.1:$port" -showcerts < /dev/null > "$served" 2> /dev/null &
+  client=$!
+  for _ in $(seq 1 40); do
+    kill -0 "$client" 2> /dev/null || break
+    sleep 0.5
+  done
+  kill "$client" 2> /dev/null || true
+  wait "$client" 2> /dev/null || true
+  awk -v dir="$out" -v port="$port" '
         /BEGIN CERTIFICATE/ { n++; on = 1; file = sprintf("%s/chain-%s-%d.pem", dir, port, n) }
         on { print > file }
-        /END CERTIFICATE/ { on = 0; close(file) }' || true
+        /END CERTIFICATE/ { on = 0; close(file) }' "$served"
+  rm -f "$served"
   found=0
   for cert in "$out"/chain-"$port"-*.pem; do
     [[ -f "$cert" ]] || continue
-    if openssl x509 -in "$cert" -noout -text 2> /dev/null | grep -q 'CA:TRUE'; then
+    constraints=$(openssl x509 -in "$cert" -noout -text 2> /dev/null \
+      | awk '/^ *X509v3 Basic Constraints:/ { getline; print; exit }')
+    if [[ "$constraints" =~ ^[[:space:]]*CA:TRUE ]]; then
       mv "$cert" "$out/ca-${cert##*/chain-}"
       found=1
       added=$((added + 1))

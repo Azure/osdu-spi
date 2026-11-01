@@ -805,10 +805,13 @@ jobs:
             while read -r name namespace pod port; do
               network_args=(--network host)
               ports+=("$port")
+              : > "forward-$name.log"
               ( while :; do kubectl port-forward -n "$namespace" "pod/$pod" "$port:$port" >> "forward-$name.log" 2>&1 || true; sleep 2; done ) &
               forward_pids+=("$!")
+              # Ready only once this forward owns the IPv4 listener, never another process on the port.
               for _ in $(seq 1 30); do
-                if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then continue 2; fi
+                if grep -q "Forwarding from 127.0.0.1:$port " "forward-$name.log" \
+                    && (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then continue 2; fi
                 sleep 2
               done
               unreachable="$unreachable $name"
