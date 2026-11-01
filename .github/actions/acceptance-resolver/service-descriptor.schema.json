@@ -154,6 +154,13 @@
           },
           "description": "Sibling services this suite calls; a pinned dependency blocks the deploy gate with a typed reason."
         },
+        "forwards": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["elasticsearch"] },
+          "default": [],
+          "description": "In-cluster services the suite reaches directly. The lane opens a port-forward to the target the stack publishes under forwards in spi info --json and runs the suite with host networking, so the service answers on localhost at its published port."
+        },
         "timeoutMinutes": {
           "type": "integer",
           "minimum": 1,

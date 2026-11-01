@@ -688,6 +688,59 @@ jobs:
           mint member "$MEMBER_CLIENT_ID" RESOLVER_MEMBER_TOKEN memberToken
           mint no-access "$NO_ACCESS_CLIENT_ID" RESOLVER_NO_ACCESS_TOKEN noAccessToken
 
+      - name: "Fetch suite secrets"
+        if: needs.deploy-gate.outputs.deploy_only != 'true'
+        # Only the secrets the suites name, read with a vault bearer the deploy identity mints from
+        # a fresh OIDC token (it holds Key Vault Secrets User on the environment vault), into an
+        # owner-only file Prove hands the resolver.
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          resolver=.github/actions/acceptance-resolver/resolve.py
+          python3 "$resolver" --contract-only --descriptor .spi/service.yaml --report suites.json > /dev/null
+          names=$(for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
+            python3 "$resolver" --contract-only --suite "$suite" --descriptor .spi/service.yaml --report "secrets-$suite.json" > /dev/null
+            jq -r '.key_vault.secret_names[]' "secrets-$suite.json"
+          done | sort -u)
+          if [ -z "$names" ]; then echo "no suite names a Key Vault secret"; exit 0; fi
+          vault=$(jq -r '.azure.keyvault | select(type == "string")' facts.json)
+          [[ "$vault" =~ ^[A-Za-z0-9-]{3,24}$ ]] || { echo "::error::the environment publishes no usable azure.keyvault"; exit 1; }
+          assertion=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
+          bearer=$(curl -sSf -X POST "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token" \
+            --data-urlencode "grant_type=client_credentials" \
+            --data-urlencode "client_id=$AZURE_CLIENT_ID" \
+            --data-urlencode "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
+            --data-urlencode "client_assertion=$assertion" \
+            --data-urlencode "scope=https://vault.azure.net/.default" | jq -r '.access_token | select(type == "string")')
+          [ -n "$bearer" ] || { echo "::error::the deploy identity did not mint a Key Vault token"; exit 1; }
+          # Workflow commands end at a newline, so the whole value goes in escaped and each line on its own.
+          mask() {
+            local escaped line
+            escaped=${1//'%'/'%25'}; escaped=${escaped//$'\r'/'%0D'}; escaped=${escaped//$'\n'/'%0A'}
+            echo "::add-mask::$escaped"
+            while IFS= read -r line; do
+              line=${line%$'\r'}
+              [ -z "$line" ] || echo "::add-mask::${line//'%'/'%25'}"
+            done <<< "$1"
+          }
+          mask "$bearer"
+          umask 077
+          out="$RUNNER_TEMP/suite-secrets.json"
+          echo '{}' > "$out"
+          for name in $names; do
+            value=$(curl -sSf -H "Authorization: Bearer $bearer" \
+              "https://$vault.vault.azure.net/secrets/$name?api-version=7.4" | jq -r '.value | select(type == "string")') \
+              || { echo "::error::Key Vault secret $name could not be read from $vault"; exit 1; }
+            [ -n "$value" ] || { echo "::error::Key Vault secret $name in $vault is empty"; exit 1; }
+            mask "$value"
+            SECRET_VALUE="$value" jq --arg name "$name" '. + {($name): env.SECRET_VALUE}' "$out" > "$out.next"
+            mv "$out.next" "$out"
+          done
+          echo "fetched $(wc -w <<< "$names" | tr -d ' ') Key Vault secrets for the suites"
+
       - name: "Log in to GHCR"
         if: needs.deploy-gate.outputs.deploy_only != 'true'
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
@@ -698,15 +751,29 @@ jobs:
 
       - name: "Prove"
         # One docker run per declared suite, bound by the resolver from the descriptor, the
-        # facts, and the minted tokens, which reach the bindings with source: token,
-        # source: memberToken, and source: noAccessToken.
+        # facts, the fetched secrets, and the minted tokens, which reach the bindings with
+        # source: token, source: memberToken, and source: noAccessToken. A suite that declares
+        # forwards runs on the host network behind a port-forward to each published target.
         id: prove
         run: |
           set -euo pipefail
           failed=""
           verdicts=""
+          forward_pids=()
           mkdir -p reports
-          trap '{ echo "verdicts<<EOF"; printf "%s" "$verdicts"; echo "EOF"; } >> "$GITHUB_OUTPUT"' EXIT
+          stop_forwards() {
+            local pid
+            for pid in "${forward_pids[@]}"; do
+              local children
+              children=$(pgrep -P "$pid" || true)
+              kill "$pid" 2> /dev/null || true
+              [ -z "$children" ] || kill $children 2> /dev/null || true
+            done
+            forward_pids=()
+          }
+          trap 'stop_forwards; rm -f "$RUNNER_TEMP/suite-secrets.json"; { echo "verdicts<<EOF"; printf "%s" "$verdicts"; echo "EOF"; } >> "$GITHUB_OUTPUT"' EXIT
+          secrets_args=()
+          [ ! -f "$RUNNER_TEMP/suite-secrets.json" ] || secrets_args=(--secrets "$RUNNER_TEMP/suite-secrets.json")
           python3 .github/actions/acceptance-resolver/resolve.py --contract-only \
             --descriptor .spi/service.yaml --report suites.json > /dev/null
           if [ "$(jq -r '.contract.suites | length' suites.json)" = "0" ]; then
@@ -717,7 +784,8 @@ jobs:
             echo "::group::suite $suite"
             report="$suite-report.json"
             if ! python3 .github/actions/acceptance-resolver/resolve.py --mode run --suite "$suite" \
-                --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env" --report "$report"; then
+                --descriptor .spi/service.yaml --facts facts.json --env-file "$suite.env" --report "$report" \
+                "${secrets_args[@]}"; then
               # The suite never started; the resolver's report says why, in the summary too.
               verdict=$(jq -r '.error | "not run, \(.code): \(.detail)"' "$report" 2>/dev/null || echo "not run, resolver failed")
               echo "::error::suite $suite $verdict"; failed="$failed $suite"
@@ -729,10 +797,35 @@ jobs:
             suite_dir=$(jq -r .contract.test_dir "$report")
             timeout_min=$(jq -r .contract.timeout_minutes "$report")
             mapfile -t mvn_args < <(jq -r '.contract.maven_arguments[]' "$report")
+            # The resolver validated each target against the facts; a dropped forward reopens.
+            network_args=()
+            unreachable=""
+            while read -r name namespace pod port; do
+              network_args=(--network host)
+              ( while :; do kubectl port-forward -n "$namespace" "pod/$pod" "$port:$port" >> "forward-$name.log" 2>&1 || true; sleep 2; done ) &
+              forward_pids+=("$!")
+              for _ in $(seq 1 30); do
+                if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then continue 2; fi
+                sleep 2
+              done
+              unreachable="$unreachable $name"
+              tail -n 5 "forward-$name.log" || true
+            done < <(jq -r '.forwards[] | "\(.name) \(.namespace) \(.pod) \(.port)"' "$report")
+            if [ -n "$unreachable" ]; then
+              stop_forwards
+              verdict="not run, the port-forward to${unreachable} did not open"
+              echo "::error::suite $suite $verdict"; failed="$failed $suite"
+              echo "❌ suite $suite: $verdict" >> "$GITHUB_STEP_SUMMARY"
+              verdicts="$verdicts❌ suite $suite: $verdict"$'\n'
+              rm -f "$suite.env"
+              echo "::endgroup::"
+              continue
+            fi
             # The verdict comes from the report XML copied out before the container goes.
             container="suite-$suite-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             code=0
-            timeout "${timeout_min}m" docker run --name "$container" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
+            timeout "${timeout_min}m" docker run --name "$container" "${network_args[@]}" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
+            stop_forwards
             docker cp "$container:/suite/$suite_dir" "reports/$suite" > /dev/null 2>&1 || mkdir -p "reports/$suite"
             docker rm -f "$container" > /dev/null 2>&1 || true
             if verdict=$(python3 .github/actions/acceptance-image/suite-verdict.py --exit-code "$code" --reports "reports/$suite"); then
@@ -758,6 +851,11 @@ jobs:
             reports/**/target/failsafe-reports/**
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: "Remove suite secrets"
+        # Prove removes the file on exit; this covers a failure between Fetch and Prove.
+        if: always()
+        run: rm -f "$RUNNER_TEMP/suite-secrets.json" "$RUNNER_TEMP/suite-secrets.json.next"
 
       - name: "Restore"
         if: always() && steps.install.outcome == 'success'

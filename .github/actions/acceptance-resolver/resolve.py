@@ -38,7 +38,7 @@ import os
 import re
 import sys
 
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"
 REPORT_SCHEMA = 1
 
 FACTS_API_VERSION = "spi.osdu.dev/v1"
@@ -55,6 +55,10 @@ KEYVAULT_SOURCE_RE = re.compile(r"^keyvault:([A-Za-z0-9][A-Za-z0-9-]{0,126})$")
 
 FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag", "domain")
 SUITE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+# In-cluster services a suite may reach through a caller-opened port-forward;
+# the stack publishes each target under `forwards` and grants exactly those.
+FORWARD_NAMES = ("elasticsearch",)
+K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
 VALUE_SOURCES = ("static", "template")
 CALLER_SOURCES = ("user", "token", "memberToken", "noAccessToken")
 SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES + ("keyvault:<name>",)
@@ -428,7 +432,7 @@ def validate_descriptor(data, suite="acceptance"):
             "service": service["name"], "suite": None, "suites": {}, "test_type": None,
             "test_dir": None, "maven_arguments": [], "bindings": {}, "sources": {},
             "key_vault_bindings": {}, "requires": {"loads": [], "groups": []},
-            "dependencies": [], "timeout_minutes": None,
+            "dependencies": [], "forwards": [], "timeout_minutes": None,
         }
     if "acceptance" not in tests:
         raise Halt("MISSING_KEY", "descriptor.tests.acceptance is required")
@@ -455,7 +459,7 @@ def _validate_suite(service_name, suite_name, acceptance):
     _require_keys(
         acceptance,
         ("type", "path", "mavenArguments", "bindings", "keyVaultBindings",
-         "requires", "dependencies", "timeoutMinutes"),
+         "requires", "dependencies", "forwards", "timeoutMinutes"),
         ("type", "path"),
         where,
     )
@@ -524,6 +528,17 @@ def _validate_suite(service_name, suite_name, acceptance):
     dependencies = _slug_list(acceptance.get("dependencies", []),
                               f"{where}.dependencies", SLUG_RE, "service slug")
 
+    forwards = acceptance.get("forwards", [])
+    if not isinstance(forwards, list):
+        raise Halt("DESCRIPTOR_INVALID", f"{where}.forwards must be a list")
+    for item in forwards:
+        if not isinstance(item, str) or item not in FORWARD_NAMES:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.forwards: '{item}' is not a forward target; "
+                       "known: " + ", ".join(FORWARD_NAMES))
+    if len(set(forwards)) != len(forwards):
+        raise Halt("DESCRIPTOR_INVALID", f"{where}.forwards lists a target twice")
+
     timeout = acceptance.get("timeoutMinutes", 25)
     if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 180:
         raise Halt("DESCRIPTOR_INVALID", f"{where}.timeoutMinutes must be between 1 and 180")
@@ -538,6 +553,7 @@ def _validate_suite(service_name, suite_name, acceptance):
         "key_vault_bindings": key_vault_bindings,
         "requires": requires,
         "dependencies": dependencies,
+        "forwards": forwards,
         "timeout_minutes": timeout,
     }
 
@@ -772,7 +788,32 @@ def load_secrets(path):
 # ---------------------------------------------------------------------------
 # Entry point
 
-def build_report(mode, contract, facts, resolved, missing, agreement):
+def forward_targets(contract, facts):
+    """The published target for each forward the suite declares, and the names
+    the environment does not publish. A malformed target is an infra failure."""
+    published = facts.get("forwards", {}) if isinstance(facts, dict) else {}
+    if not isinstance(published, dict):
+        raise Infra("FACTS_MALFORMED", "facts.forwards must be an object")
+    targets, unpublished = [], []
+    for name in contract["forwards"]:
+        target = published.get(name)
+        if target is None:
+            unpublished.append(name)
+            continue
+        if not isinstance(target, dict):
+            raise Infra("FACTS_MALFORMED", f"facts.forwards.{name} must be an object")
+        namespace, pod, port = target.get("namespace"), target.get("pod"), target.get("port")
+        if not (isinstance(namespace, str) and K8S_NAME_RE.fullmatch(namespace)
+                and isinstance(pod, str) and K8S_NAME_RE.fullmatch(pod)
+                and isinstance(port, int) and not isinstance(port, bool)
+                and 1 <= port <= 65535):
+            raise Infra("FACTS_MALFORMED",
+                        f"facts.forwards.{name} needs a namespace, a pod, and a port")
+        targets.append({"name": name, "namespace": namespace, "pod": pod, "port": port})
+    return targets, unpublished
+
+
+def build_report(mode, contract, facts, resolved, missing, agreement, forwards=()):
     return {
         "engine_version": ENGINE_VERSION,
         "report_schema": REPORT_SCHEMA,
@@ -787,7 +828,9 @@ def build_report(mode, contract, facts, resolved, missing, agreement):
             "timeout_minutes": contract["timeout_minutes"],
             "requires": contract["requires"],
             "dependencies": contract["dependencies"],
+            "forwards": contract["forwards"],
         },
+        "forwards": list(forwards),
         "key_vault": {
             "vault": _require_printable_fact(
                 "keyvault", _fact_at(facts, VAULT_NAME_PATH)).strip(),
@@ -899,11 +942,18 @@ def main(argv=None):
         secrets = load_secrets(args.secrets)
         agreement = check_agreement(facts, args.expect_gateway, args.expect_partition)
         resolved, missing = resolve(contract, facts, secrets, os.environ)
-        report = build_report(args.mode, contract, facts, resolved, missing, agreement)
+        forwards, unpublished = forward_targets(contract, facts)
+        report = build_report(args.mode, contract, facts, resolved, missing, agreement, forwards)
 
         if missing and args.mode == "run":
             names = ", ".join(entry["name"] for entry in missing)
             raise EnvNotReady(f"unresolved required bindings: {names}")
+        if unpublished and args.mode == "run":
+            raise EnvNotReady("the environment publishes no forward target for: "
+                              + ", ".join(unpublished))
+        for name in unpublished:
+            print(f"warning: forward {name}: the environment publishes no target",
+                  file=sys.stderr)
 
         for entry in missing:
             print(f"warning: {entry['name']}: {entry['reason']}", file=sys.stderr)

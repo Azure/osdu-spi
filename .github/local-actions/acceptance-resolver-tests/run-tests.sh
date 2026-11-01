@@ -673,4 +673,56 @@ assert 'required' not in tests and {'maxProperties': 0} in tests['anyOf'] and {'
 "
 ok "schema allows an empty tests map and otherwise requires acceptance"
 
+note "forwards: the published target reaches the report; run mode refuses an unpublished one"
+variant "$TMP/fwd.yaml" "dependencies: [entitlements]" "dependencies: [entitlements]
+    forwards: [elasticsearch]"
+python3 -c "
+import json
+facts = json.load(open('$FACTS'))
+facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'elasticsearch-es-default-0', 'port': 9200}}
+json.dump(facts, open('$TMP/facts-fwd.json', 'w'))
+facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'ES 0', 'port': '9200'}}
+json.dump(facts, open('$TMP/facts-fwd-bad.json', 'w'))
+"
+engine --contract-only --descriptor "$TMP/fwd.yaml" --report "$TMP/fwd-contract.json" > /dev/null \
+  || die "forwards descriptor rejected"
+[ "$(report_field "$TMP/fwd-contract.json" "r['contract']['forwards']")" = "['elasticsearch']" ] \
+  || die "contract report lost forwards"
+TESTER_TOKEN="tok-123" engine --mode run --descriptor "$TMP/fwd.yaml" --facts "$TMP/facts-fwd.json" \
+  --env-file "$TMP/fwd.env" --secrets "$SECRETS" --report "$TMP/fwd.json" >/dev/null 2>&1 \
+  || die "run with a published forward failed"
+[ "$(report_field "$TMP/fwd.json" "r['forwards']")" = "[{'name': 'elasticsearch', 'namespace': 'platform', 'pod': 'elasticsearch-es-default-0', 'port': 9200}]" ] \
+  || die "published forward target not reported"
+ok "published forward target reported"
+expect_fail "unpublished forward in run mode" 3 "no forward target for: elasticsearch" "ENV_NOT_READY" \
+  env TESTER_TOKEN=tok-123 python3 "$ENGINE" --mode run --descriptor "$TMP/fwd.yaml" --facts "$FACTS" \
+  --env-file "$TMP/fwd-miss.env" --secrets "$SECRETS"
+[ ! -e "$TMP/fwd-miss.env" ] || die "unpublished forward left an env file"
+TESTER_TOKEN="tok-123" engine --mode bind --descriptor "$TMP/fwd.yaml" --facts "$FACTS" \
+  --env-file "$TMP/fwd-bind.env" --secrets "$SECRETS" --report "$TMP/fwd-bind.json" >/dev/null 2>&1 \
+  || die "bind must warn, not fail, on an unpublished forward"
+[ "$(report_field "$TMP/fwd-bind.json" "r['forwards']")" = "[]" ] || die "bind reported an unpublished target"
+ok "bind mode warns on an unpublished forward"
+expect_fail "malformed forward target" 4 "facts.forwards.elasticsearch" "FACTS_MALFORMED" \
+  env TESTER_TOKEN=tok-123 python3 "$ENGINE" --mode run --descriptor "$TMP/fwd.yaml" --facts "$TMP/facts-fwd-bad.json" \
+  --env-file "$TMP/fwd-bad.env" --secrets "$SECRETS"
+variant "$TMP/fwd-unknown.yaml" "dependencies: [entitlements]" "dependencies: [entitlements]
+    forwards: [postgresql]"
+expect_fail "unknown forward target" 2 "'postgresql' is not a forward target" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/fwd-unknown.yaml"
+variant "$TMP/fwd-dup.yaml" "dependencies: [entitlements]" "dependencies: [entitlements]
+    forwards: [elasticsearch, elasticsearch]"
+expect_fail "duplicate forward target" 2 "lists a target twice" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/fwd-dup.yaml"
+python3 - "$SCHEMA" "$ENGINE" <<'PY'
+import importlib.util, json, sys
+schema = json.load(open(sys.argv[1]))
+spec = importlib.util.spec_from_file_location("resolve", sys.argv[2])
+engine = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(engine)
+enum = schema["$defs"]["suite"]["properties"]["forwards"]["items"]["enum"]
+assert sorted(enum) == sorted(engine.FORWARD_NAMES), (enum, engine.FORWARD_NAMES)
+PY
+ok "schema and engine agree on forward targets"
+
 printf '\nAll acceptance resolver harness checks passed.\n'

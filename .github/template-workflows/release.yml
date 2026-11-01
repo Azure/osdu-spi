@@ -99,10 +99,10 @@ jobs:
             exit 1
           fi
 
-          # Matches sync.yml: prefer the nearest reachable upstream tag, otherwise
+          # Matches sync.yml: a tag only when it points at the upstream tip, otherwise
           # the short upstream SHA, so the correlation tag agrees with the meta commit.
           UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
-          UPSTREAM_VERSION=$(git describe --tags --abbrev=0 "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
+          UPSTREAM_VERSION=$(git describe --tags --exact-match "$UPSTREAM_SHA" 2>/dev/null || echo "${UPSTREAM_SHA:0:8}")
           echo "UPSTREAM_VERSION=$UPSTREAM_VERSION" >> $GITHUB_ENV
           
       - name: "Update Release Tags"
