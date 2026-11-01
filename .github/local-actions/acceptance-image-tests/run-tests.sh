@@ -15,7 +15,7 @@
 
 #
 # Fixture harness for the acceptance-image action's suite resolution and the
-# canonical acceptance Dockerfile's contract. No Docker daemon, no network.
+# canonical acceptance Dockerfile's contract. No Docker daemon; only loopback network.
 # Fails fast: the first broken assertion stops the run with a non-zero exit.
 #
 # Usage:
@@ -220,6 +220,38 @@ OUT="$(verdict 124 "$V/nonzero" || true)"
 mkdir -p "$V/stray/target/other"; report "$V/stray/target/other" 9 0 0 0
 verdict 0 "$V/stray" >/dev/null && die "TEST-*.xml outside a surefire or failsafe dir must not count"
 ok "suite verdict"
+
+note "forward trust store: only the served CA is imported, through the image's keytool"
+TRUSTSTORE="$HERE/../../actions/acceptance-image/forward-truststore.sh"
+F="$TMP/forward"
+mkdir -p "$F/bin"
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$F/ca.key" -out "$F/ca.pem" -days 1 -subj "/CN=forward-ca" 2>/dev/null
+openssl req -newkey rsa:2048 -nodes -keyout "$F/leaf.key" -out "$F/leaf.csr" -subj "/CN=localhost" 2>/dev/null
+openssl x509 -req -in "$F/leaf.csr" -CA "$F/ca.pem" -CAkey "$F/ca.key" -CAcreateserial -out "$F/leaf.pem" -days 1 2>/dev/null
+cat > "$F/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" > "$FORWARD_DOCKER_LOG"
+while [ $# -gt 0 ]; do [ "$1" = -v ] && printf 'store' > "${2%%:*}/cacerts"; shift; done
+STUB
+chmod +x "$F/bin/docker"
+PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')"
+openssl s_server -accept "$PORT" -cert "$F/leaf.pem" -key "$F/leaf.key" -cert_chain "$F/ca.pem" -quiet >/dev/null 2>&1 &
+SERVER=$!
+for _ in $(seq 1 25); do (exec 3<> "/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && break; sleep 0.2; done
+PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" bash "$TRUSTSTORE" img "$F/out" "$PORT" >/dev/null 2>&1 || { kill "$SERVER"; die "a TLS forward serving a CA must build a store"; }
+{ kill "$SERVER"; wait "$SERVER"; } 2>/dev/null || true
+CAS=("$F/out"/ca-*.pem)
+[ "${#CAS[@]}" -eq 1 ] || die "exactly the CA must be imported, got ${#CAS[@]}"
+cmp -s "${CAS[0]}" "$F/ca.pem" || die "the imported certificate is not the served CA"
+grep -q -- "--entrypoint sh -v $F/out:/trust img" "$F/docker.log" || die "keytool must run in the suite image: $(cat "$F/docker.log")"
+[ -s "$F/out/cacerts" ] || die "the store must be written to the out dir"
+RC=0
+PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" bash "$TRUSTSTORE" img "$F/none" "$PORT" >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 1 ] || die "a port serving no CA must exit 1, got $RC"
+RC=0
+PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" bash "$TRUSTSTORE" img "$F/bad" "9200;x" >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 1 ] || die "a non-numeric port must exit 1, got $RC"
+ok "forward trust store"
 
 note "build context: the sidecar ignore file overrides the upstream .dockerignore"
 IGNORE="${DOCKERFILE}.dockerignore"

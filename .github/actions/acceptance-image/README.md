@@ -60,6 +60,22 @@ Each suite resolves its own dependency graph. A suite that is a Maven reactor
 module) is installed without tests first so the sibling resolves, then warmed
 like the others.
 
+## Forward trust store
+
+`forward-truststore.sh` builds the trust store for a suite that declares
+`forwards`. In-cluster services such as Elasticsearch sign with a private CA,
+and a test client that trusts only the JVM store rejects it. The script reads
+the chain each forwarded port serves on `127.0.0.1`, keeps the CA certificates,
+and imports them into a copy of the suite image's own JDK `cacerts` with the
+image's `keytool`. The deploy lane mounts the result read-only at `/spi-trust`
+and sets `JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/spi-trust/cacerts`,
+which every JVM in the container reads, surefire's forked test JVM included.
+
+```bash
+# With a port-forward open on 9200:
+.github/actions/acceptance-image/forward-truststore.sh ghcr.io/<org>/<svc>-acceptance@sha256:... /tmp/trust 9200
+```
+
 ## Relationship to docker-build
 
 Same conventions, shared scripts (ADR-028): `compute-metadata.sh`,

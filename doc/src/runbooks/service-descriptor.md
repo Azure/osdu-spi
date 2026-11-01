@@ -55,7 +55,7 @@ tests:
 | `timeoutMinutes` | The lane stops the suite after this many minutes. Default 25, maximum 180 |
 | `bindings` | The environment variables the suite reads, each bound to a source from the table below |
 | `keyVaultBindings` | Variable name to Key Vault secret name, for values that must never be in the file. The lane reads each named secret from the environment's vault |
-| `forwards` | In-cluster services the suite reaches directly, today only `elasticsearch`. The lane port-forwards to the target the stack publishes and runs the suite with host networking, so bind the service's host as `localhost` and its port as the published one |
+| `forwards` | In-cluster services the suite reaches directly, today only `elasticsearch`. The lane port-forwards to the target the stack publishes and runs the suite with host networking, so bind the service's host as `localhost` and its port as the published one. The suite JVM trusts the service's CA through `JAVA_TOOL_OPTIONS`, so leave that variable unbound |
 | `requires`, `dependencies` | Seeded data loads, entitlement groups, and other services the suite depends on. The resolver validates them, but the gate doesn't enforce them yet |
 
 ## Single-module and reactor suites
