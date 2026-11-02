@@ -37,8 +37,14 @@ outputs:
   test_dir:
     description: 'Working directory of the acceptance suite'
     value: ${{ steps.run.outputs.test_dir }}
+  test_type:
+    description: 'Suite type: maven or pytest'
+    value: ${{ steps.run.outputs.test_type }}
+  arguments:
+    description: 'Argv tokens for the suite runner (Maven or pytest) as a compact JSON array; pass as decoded argv, never a shell string'
+    value: ${{ steps.run.outputs.arguments }}
   maven_arguments:
-    description: 'Maven argv tokens as a compact JSON array; pass as decoded argv, never a shell string'
+    description: 'Maven argv tokens as a compact JSON array (empty for a pytest suite); pass as decoded argv, never a shell string'
     value: ${{ steps.run.outputs.maven_arguments }}
   timeout_minutes:
     description: 'Suite timeout declared by the descriptor'
@@ -102,6 +108,8 @@ runs:
             delimiter = f"ghadelim_{uuid.uuid4().hex}"
             print(f"{name}<<{delimiter}\n{value}\n{delimiter}")
         emit("test_dir", contract["test_dir"])
+        emit("test_type", contract["test_type"])
+        emit("arguments", compact(contract["arguments"]))
         emit("maven_arguments", compact(contract["maven_arguments"]))
         emit("timeout_minutes", contract["timeout_minutes"])
         emit("requires", compact(contract["requires"]))

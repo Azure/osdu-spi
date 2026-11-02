@@ -78,6 +78,7 @@ naming the offending key — the resolver refuses to guess.
 | Source | Resolves to |
 | --- | --- |
 | `gateway` | `base_url` from facts, trailing slash stripped, then `suffix` appended |
+| `gatewayHost` | The host and port of `base_url`, without scheme or path, then `suffix` appended |
 | `partition` | The primary entry's `name` in `partitions[]` |
 | `openid` | `azure.openid_issuer` — the OIDC v2.0 issuer URL, published explicitly by the stack, never derived from the tenant id here |
 | `tenant` | `azure.tenant_id` |
@@ -132,9 +133,14 @@ by design.
   `AZURE_FEDERATED_TOKEN_FILE`, plus process basics such as `PATH`, `HOME`,
   `LD_PRELOAD`, `MAVEN_OPTS`) and prefixes (`ACTIONS_`, `GITHUB_`, `RESOLVER_`, `RUNNER_`,
   `SPI_STACK_`).
-- **`mavenArguments` is an argv array.** Each token must be free of
-  whitespace and control characters; consumers pass the decoded array
-  directly to Maven and never evaluate it as a shell string.
+- **`mavenArguments` and `pytestArguments` are argv arrays.** Each token must
+  be free of whitespace and control characters; consumers pass the decoded
+  array directly to the runner and never evaluate it as a shell string.
+- **Suite type decides the keys.** `type` is `maven` or `pytest` (ADR-044).
+  `mavenArguments` is Maven-only; `pytestArguments` and `requirements` (files
+  relative to the suite path, default `requirements.txt`) are pytest-only;
+  `forwards` is Maven-only. The report's `arguments` carries either type's
+  argv, and `maven_arguments` stays for existing consumers, empty for pytest.
 - **Secret values can never live in the descriptor**: `keyvault:` sources
   take no `default` and no `value`; `keyVaultBindings` map to secret names
   only.
@@ -157,16 +163,22 @@ Written to `--report` (and always attempted, even on failure):
 
 ```json
 {
-  "engine_version": "1.3.1",
+  "engine_version": "1.4.0",
   "report_schema": 1,
   "mode": "bind",
   "service": "partition",
   "contract": {
     "suite": "acceptance",
     "suites": {"acceptance": "partition-acceptance-test", "integration": "testing"},
+    "suite_specs": {
+      "acceptance": {"path": "partition-acceptance-test", "type": "maven", "requirements": []},
+      "integration": {"path": "testing", "type": "maven", "requirements": []}
+    },
     "test_type": "maven",
     "test_dir": "partition-acceptance-test",
+    "arguments": ["verify"],
     "maven_arguments": ["verify"],
+    "requirements": [],
     "timeout_minutes": 25,
     "requires": {"loads": [], "groups": []},
     "dependencies": [],

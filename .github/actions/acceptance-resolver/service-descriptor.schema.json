@@ -56,8 +56,8 @@
       "properties": {
         "source": {
           "type": "string",
-          "pattern": "^(gateway|partition|openid|tenant|legalTag|domain|static|template|user|token|memberToken|noAccessToken|keyvault:[A-Za-z0-9][A-Za-z0-9-]{0,126}|forward:[a-z][a-z0-9-]{0,62}:(host|port))$",
-          "description": "Closed source vocabulary. Facts: gateway (base_url), partition (primary partition name), openid (OIDC v2.0 issuer URL, published explicitly by the stack), tenant (azure.tenant_id), legalTag (primary partition's legal_tag), domain (the entitlements domain the stack deployed, published as entitlements_domain). keyvault:<name> reads that secret from the stack's vault. forward:<target>:host and forward:<target>:port are where the suite reaches a target it declares in forwards: the host is localhost in the lane (the caller may name another, such as a container engine's host alias) and the port is the one the stack publishes. static carries the declared value; template renders ${NAME} references to other (non-template, non-secret) bindings after everything else resolves; user must be supplied by the caller's environment; token is the bearer the caller minted for this run, supplied as RESOLVER_TOKEN; memberToken is the bearer minted for the stack's member identity, a plain user with no admin rights, supplied as RESOLVER_MEMBER_TOKEN; noAccessToken is the bearer minted for the stack's no-access identity, supplied as RESOLVER_NO_ACCESS_TOKEN. Anything else is a hard failure naming the key."
+          "pattern": "^(gateway|gatewayHost|partition|openid|tenant|legalTag|domain|static|template|user|token|memberToken|noAccessToken|keyvault:[A-Za-z0-9][A-Za-z0-9-]{0,126}|forward:[a-z][a-z0-9-]{0,62}:(host|port))$",
+          "description": "Closed source vocabulary. Facts: gateway (base_url), gatewayHost (the host and port of base_url, without scheme or path, for suites that build the URL themselves), partition (primary partition name), openid (OIDC v2.0 issuer URL, published explicitly by the stack), tenant (azure.tenant_id), legalTag (primary partition's legal_tag), domain (the entitlements domain the stack deployed, published as entitlements_domain). keyvault:<name> reads that secret from the stack's vault. forward:<target>:host and forward:<target>:port are where the suite reaches a target it declares in forwards: the host is localhost in the lane (the caller may name another, such as a container engine's host alias) and the port is the one the stack publishes. static carries the declared value; template renders ${NAME} references to other (non-template, non-secret) bindings after everything else resolves; user must be supplied by the caller's environment; token is the bearer the caller minted for this run, supplied as RESOLVER_TOKEN; memberToken is the bearer minted for the stack's member identity, a plain user with no admin rights, supplied as RESOLVER_MEMBER_TOKEN; noAccessToken is the bearer minted for the stack's no-access identity, supplied as RESOLVER_NO_ACCESS_TOKEN. Anything else is a hard failure naming the key."
         },
         "suffix": {
           "type": "string",
@@ -82,7 +82,8 @@
       "required": ["type", "path"],
       "properties": {
         "type": {
-          "const": "maven"
+          "enum": ["maven", "pytest"],
+          "description": "maven runs the suite with Maven from its pom.xml. pytest runs python -m pytest in the suite directory with the declared requirements installed when the image is built."
         },
         "path": {
           "type": "string",
@@ -98,7 +99,28 @@
             "maxLength": 240,
             "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
           },
-          "description": "Individual Maven argv tokens. Consumers pass the decoded array directly to Maven and never evaluate it as a shell string."
+          "description": "Individual Maven argv tokens. Consumers pass the decoded array directly to Maven and never evaluate it as a shell string. Maven suites only."
+        },
+        "pytestArguments": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string",
+            "maxLength": 240,
+            "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+          },
+          "description": "Individual pytest argv tokens, for example the test files to run. Pytest suites only; passed as decoded argv, never a shell string."
+        },
+        "requirements": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["requirements.txt"],
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$"
+          },
+          "description": "Requirements files, relative to the suite path, installed into the suite's virtual environment when the acceptance image is built. Pytest suites only."
         },
         "bindings": {
           "type": "object",
@@ -159,7 +181,7 @@
           "uniqueItems": true,
           "items": { "enum": ["elasticsearch"] },
           "default": [],
-          "description": "In-cluster services the suite reaches directly. The lane opens a port-forward to the target the stack publishes under forwards in spi info --json and runs the suite with host networking, so the service answers on localhost at its published port. Bind forward:<target>:host and forward:<target>:port rather than static values so a caller running the suite elsewhere can point it at the forward."
+          "description": "In-cluster services the suite reaches directly. The lane opens a port-forward to the target the stack publishes under forwards in spi info --json and runs the suite with host networking, so the service answers on localhost at its published port. Bind forward:<target>:host and forward:<target>:port rather than static values so a caller running the suite elsewhere can point it at the forward. Maven suites only: the forwarded CA reaches the suite through a JVM trust store."
         },
         "timeoutMinutes": {
           "type": "integer",
@@ -167,7 +189,37 @@
           "maximum": 180,
           "default": 25
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "maven"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [{"required": ["pytestArguments"]}, {"required": ["requirements"]}]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "pytest"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [{"required": ["mavenArguments"]}, {"required": ["forwards"]}]
+            }
+          }
+        }
+      ]
     }
   }
 }

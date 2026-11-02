@@ -47,6 +47,7 @@ if [[ -f "$DESCRIPTOR_PATH" ]]; then
     {
       echo "suite_dir="
       echo "suite_dirs="
+      echo "pytest_suites="
       echo "buildable=false"
       echo "reason=${DESCRIPTOR_PATH} declares no suite (deploy only)"
     } >> "${GITHUB_OUTPUT:-/dev/stdout}"
@@ -59,9 +60,16 @@ if [[ -f "$DESCRIPTOR_PATH" ]]; then
 import json, sys
 suites = json.load(open(sys.argv[1]))['contract']['suites']
 print(' '.join([suites['acceptance']] + [d for n, d in sorted(suites.items()) if n != 'acceptance']))" "$REPORT")"
+  # dir=req[,req...] per pytest suite; the image installs each into that suite's virtual environment.
+  PYTEST_SUITES="$(python3 -c "
+import json, sys
+specs = json.load(open(sys.argv[1]))['contract']['suite_specs']
+print(' '.join(s['path'] + '=' + ','.join(s['requirements'])
+               for _, s in sorted(specs.items()) if s['type'] == 'pytest'))" "$REPORT")"
   SOURCE="descriptor"
 fi
 
+PYTEST_SUITES="${PYTEST_SUITES:-}"
 BUILDABLE="true"
 REASON=""
 for dir in $SUITE_DIRS; do
@@ -78,9 +86,22 @@ for dir in $SUITE_DIRS; do
   fi
 done
 
+for spec in $PYTEST_SUITES; do
+  dir="${spec%%=*}"
+  [[ -d "$dir" ]] || continue
+  IFS=',' read -r -a files <<< "${spec#*=}"
+  for file in "${files[@]}"; do
+    if [[ ! -f "$dir/$file" ]]; then
+      echo "::error::${DESCRIPTOR_PATH} names requirements '$file' for suite '$dir', which does not exist"
+      exit 2
+    fi
+  done
+done
+
 {
   echo "suite_dir=$SUITE_DIR"
   echo "suite_dirs=$SUITE_DIRS"
+  echo "pytest_suites=$PYTEST_SUITES"
   echo "buildable=$BUILDABLE"
   echo "reason=$REASON"
 } >> "${GITHUB_OUTPUT:-/dev/stdout}"

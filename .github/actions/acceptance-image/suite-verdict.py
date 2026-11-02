@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Decide one suite's verdict from its Surefire and Failsafe reports.
+"""Decide one suite's verdict from its Surefire, Failsafe, or pytest JUnit reports.
 
 Usage: suite-verdict.py --exit-code N --reports DIR
 
@@ -29,7 +29,7 @@ import pathlib
 import sys
 import xml.etree.ElementTree as ET
 
-REPORT_DIRS = ("surefire-reports", "failsafe-reports")
+REPORT_DIRS = ("surefire-reports", "failsafe-reports", "pytest-reports")
 
 
 def count(reports):
@@ -41,8 +41,11 @@ def count(reports):
             root = ET.parse(path).getroot()
         except ET.ParseError:
             return None, f"unreadable report {path.name}"
-        for key in totals:
-            totals[key] += int(root.get(key, 0))
+        # Surefire writes one <testsuite> per file; pytest nests them under <testsuites>.
+        suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+        for suite in suites:
+            for key in totals:
+                totals[key] += int(suite.get(key, 0))
     return totals, ""
 
 

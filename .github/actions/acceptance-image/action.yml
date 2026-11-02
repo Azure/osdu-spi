@@ -136,6 +136,7 @@ runs:
         tags: ${{ steps.tags.outputs.docker_tags }}
         build-args: |
           SUITE_DIRS=${{ steps.suite.outputs.suite_dirs }}
+          PYTEST_SUITES=${{ steps.suite.outputs.pytest_suites }}
           JAVA_VERSION=${{ steps.java.outputs.version }}
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
