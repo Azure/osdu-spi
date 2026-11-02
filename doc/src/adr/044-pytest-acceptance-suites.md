@@ -28,7 +28,7 @@ The resolver publishes `arguments` for either type and keeps `maven_arguments`, 
 
 ### Image
 
-One image per fork still carries every suite. When the descriptor declares a pytest suite, the build installs the distribution's `python3` and `python3-venv` on the Maven base and creates a virtual environment under `/opt/spi-venv/` for each pytest suite, named by its path with `/` as `_`, installing its requirements and pytest with `PIP_INDEX_URL` defaulting to the proxy. The install is retried as a whole, since pip does not retry an HTTP error status. Maven suites build as before and the Maven prewarm skips pytest suites.
+One image per fork still carries every suite. When the descriptor declares a pytest suite, the build installs the distribution's `python3` and `python3-venv` on the Maven base and creates a virtual environment under `/opt/spi-venv/` for each pytest suite, named by its path with `/` as `+`, installing its requirements and pytest with `PIP_INDEX_URL` defaulting to the proxy. The install is retried as a whole, since pip does not retry an HTTP error status. Maven suites build as before and the Maven prewarm skips pytest suites.
 
 The image carries no `CMD`. The entrypoint selects the runner by suite: pytest writes JUnit XML to `target/pytest-reports/TEST-pytest.xml`, and a Maven suite run with no argv defaults to `verify`.
 

@@ -20,7 +20,7 @@
 set -e
 SUITE_DIR="${SUITE_DIR:-$(cat /suite/.default-suite-dir)}"
 if [ -d "/suite/$SUITE_DIR" ] && grep -qxF "$SUITE_DIR" /suite/.pytest-suites 2>/dev/null; then
-  venv="/opt/spi-venv/$(printf '%s' "$SUITE_DIR" | tr / _)"
+  venv="/opt/spi-venv/$(printf '%s' "$SUITE_DIR" | tr / +)"
   cd "/suite/$SUITE_DIR"
   echo "Running suite $SUITE_DIR: pytest $*" >&2
   exec "$venv/bin/python" -m pytest -p no:cacheprovider \

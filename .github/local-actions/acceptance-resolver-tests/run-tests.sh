@@ -851,6 +851,14 @@ DESCRIPTOR="$PYT" variant "$TMP/pyt-fwd-empty.yaml" "    pytestArguments:" "    
     pytestArguments:"
 expect_fail "empty forwards on a pytest suite" 2 "forwards is only valid for type maven" "DESCRIPTOR_INVALID" \
   engine --contract-only --descriptor "$TMP/pyt-fwd-empty.yaml"
+cat "$PYT" > "$TMP/pyt-shared.yaml"
+cat >> "$TMP/pyt-shared.yaml" <<'EOF'
+  integration:
+    type: maven
+    path: unit-acceptance-test
+EOF
+expect_fail "a shared path with two types" 2 "shares path 'unit-acceptance-test' with tests.acceptance" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/pyt-shared.yaml"
 DESCRIPTOR="$PYT" variant "$TMP/pyt-type.yaml" "type: pytest" "type: npm"
 expect_fail "unknown suite type" 2 "type must be one of: maven, pytest" "DESCRIPTOR_INVALID" \
   engine --contract-only --descriptor "$TMP/pyt-type.yaml"
@@ -864,7 +872,8 @@ grep -q "^VIRTUAL_SERVICE_HOST_NAME=.*://" "$TMP/pyt.env" && die "gatewayHost mu
 python3 - "$FACTS" "$TMP" <<'PY'
 import json, sys
 facts = json.load(open(sys.argv[1]))
-for name, url in (("port", "https://h.example:8443/api/"), ("schemeless", "h.example/api")):
+for name, url in (("port", "https://h.example:8443/api/"), ("schemeless", "h.example/api"),
+                  ("malformed", "https://[broken/")):
     facts["base_url"] = url
     json.dump(facts, open(f"{sys.argv[2]}/facts-gw-{name}.json", "w"))
 PY
@@ -873,6 +882,8 @@ RESOLVER_TOKEN="tok-123" engine --mode run --descriptor "$PYT" --facts "$TMP/fac
 [ "$(env_value "$TMP/pyt-port.env" VIRTUAL_SERVICE_HOST_NAME)" = "h.example:8443" ] || die "gatewayHost must keep the port and drop the path"
 RESOLVER_TOKEN="tok-123" expect_fail "gatewayHost on a schemeless base_url" 4 "has no host" "FACTS_INVALID" \
   engine --mode run --descriptor "$PYT" --facts "$TMP/facts-gw-schemeless.json" --env-file "$TMP/x.env"
+RESOLVER_TOKEN="tok-123" expect_fail "gatewayHost on a malformed base_url" 4 "has no host" "FACTS_INVALID" \
+  engine --mode run --descriptor "$PYT" --facts "$TMP/facts-gw-malformed.json" --env-file "$TMP/x.env"
 python3 - "$SCHEMA" <<'PY'
 import json, re, sys
 schema = json.load(open(sys.argv[1]))

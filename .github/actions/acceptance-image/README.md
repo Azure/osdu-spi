@@ -22,7 +22,7 @@ pytest for a suite of type `pytest` (ADR-044). The lane passes the resolver's
 arguments runs `verify`.
 
 A pytest suite runs `python -m pytest` from its virtual environment under `/opt/spi-venv/`
-(the suite path with `/` as `_`), built at
+(the suite path with `/` as `+`), built at
 image build time from the suite's `requirements` files through the Microsoft
 package feed proxy (`PIP_INDEX_URL`). The install is retried, because the proxy
 is a pull-through cache whose first fetch of an uncached file can fail.

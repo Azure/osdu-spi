@@ -235,6 +235,17 @@ OUT="$(SUITE_DIR=py-tests PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" test_a.py -
   || die "pytest suite not dispatched: $OUT"
 OUT="$(SUITE_DIR=testing PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" test 2>/dev/null)"
 [[ "$OUT" == "mvn $IMG/suite/testing -B --no-transfer-progress test" ]] || die "a Maven suite beside a pytest suite must stay Maven: $OUT"
+mkdir -p "$IMG/suite/py/api" "$IMG/opt/spi-venv/py+api/bin"
+echo "py/api" >> "$IMG/suite/.pytest-suites"
+printf '#!/bin/sh\necho "venv py+api $*"\n' > "$IMG/opt/spi-venv/py+api/bin/python"
+chmod +x "$IMG/opt/spi-venv/py+api/bin/python"
+OUT="$(SUITE_DIR=py/api PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" 2>/dev/null)" \
+  || die "a nested pytest suite must run from its encoded venv"
+[[ "$OUT" == "venv py+api -m pytest"* ]] || die "a nested pytest suite must run from its encoded venv: $OUT"
+[ "$(grep -c "tr / +" "$HERE/../../../build/acceptance.Dockerfile")" -eq 1 ] \
+  || die "the Dockerfile must name venvs as the entrypoint does"
+grep -q 'cd "/suite/$dir"; attempt=1' "$HERE/../../../build/acceptance.Dockerfile" \
+  || die "pip must run from the suite directory"
 ok "entrypoint dispatches by suite type"
 
 note "verdict: reports decide, not the exit code or the console"

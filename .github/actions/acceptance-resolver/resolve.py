@@ -475,6 +475,15 @@ def validate_descriptor(data, suite="acceptance"):
         raise Halt("DESCRIPTOR_INVALID",
                    f"descriptor.tests declares no suite named '{suite}'; "
                    "declared: " + ", ".join(sorted(suites)))
+    # The image keys its runner and virtual environment by path, so a shared path needs one spec.
+    by_path = {}
+    for name in sorted(suites):
+        spec = (suites[name]["test_type"], suites[name]["requirements"])
+        first, first_spec = by_path.setdefault(suites[name]["test_dir"], (name, spec))
+        if spec != first_spec:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"descriptor.tests.{name} shares path '{suites[name]['test_dir']}' with "
+                       f"tests.{first} but differs in type or requirements")
     contract = dict(suites[suite])
     contract["suite"] = suite
     contract["suites"] = {name: suites[name]["test_dir"] for name in sorted(suites)}
@@ -801,7 +810,10 @@ def resolve(contract, facts, secrets, environ, forward_host=DEFAULT_FORWARD_HOST
         else:
             base = fact_value(facts, source)
             if base and source == "gatewayHost":
-                host = urllib.parse.urlsplit(base).netloc
+                try:
+                    host = urllib.parse.urlsplit(base).netloc
+                except ValueError:
+                    host = ""
                 if not host:
                     raise Infra("FACTS_INVALID", f"facts value at 'base_url' has no host: {base!r}")
                 base = host

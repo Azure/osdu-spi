@@ -66,7 +66,9 @@ RUN set -eu; \
       mvn -B --no-transfer-progress $SETTINGS -f "/suite/$dir/pom.xml" dependency:resolve dependency:resolve-plugins; \
     done
 
-# Each pytest suite gets its own virtual environment under /opt/spi-venv, named for its path.
+# Each pytest suite gets its own virtual environment under /opt/spi-venv, named for its path
+# with / as + (a character suite paths cannot hold). pip runs from the suite directory so
+# local requirements such as -e . resolve there.
 # The proxy is a pull-through cache whose first fetch of an uncached file can fail, and pip
 # does not retry an HTTP error status, so the install is retried as a whole.
 RUN set -eu; \
@@ -76,16 +78,16 @@ RUN set -eu; \
       rm -rf /var/lib/apt/lists/*; \
     fi; \
     for spec in ${PYTEST_SUITES}; do \
-      dir="${spec%%=*}"; venv="/opt/spi-venv/$(printf '%s' "$dir" | tr / _)"; \
+      dir="${spec%%=*}"; venv="/opt/spi-venv/$(printf '%s' "$dir" | tr / +)"; \
       echo "==> installing $dir into $venv"; \
       python3 -m venv "$venv"; \
       set --; \
       IFS=,; for file in ${spec#*=}; do set -- "$@" -r "/suite/$dir/$file"; done; unset IFS; \
-      attempt=1; \
-      until "$venv/bin/pip" install --disable-pip-version-check --no-cache-dir \
-          --index-url "$PIP_INDEX_URL" "$@" pytest; do \
-        [ "$attempt" -lt 3 ] || exit 1; attempt=$((attempt + 1)); sleep 15; \
-      done; \
+      ( cd "/suite/$dir"; attempt=1; \
+        until "$venv/bin/pip" install --disable-pip-version-check --no-cache-dir \
+            --index-url "$PIP_INDEX_URL" "$@" pytest; do \
+          [ "$attempt" -lt 3 ] || exit 1; attempt=$((attempt + 1)); sleep 15; \
+        done ); \
     done
 
 # Arguments are argv tokens for the suite's runner, never a shell string.
