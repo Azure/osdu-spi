@@ -236,7 +236,7 @@ leaf decoy "/CN=CA:TRUE"
 HOST_JAVA_HOME="${JAVA_HOME:-$(java -XshowSettings:properties -version 2>&1 | awk '/java.home =/ { print $3 }')}"
 cat > "$F/bin/docker" <<'STUB'
 #!/usr/bin/env bash
-echo "$*" > "$FORWARD_DOCKER_LOG"
+echo "${0##*/} $*" > "$FORWARD_DOCKER_LOG"
 while [ $# -gt 0 ]; do
   case "$1" in
     -v) dir="${2%%:*}"; shift ;;
@@ -244,9 +244,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-JAVA_HOME="$HOST_JAVA_HOME" PATH="$HOST_JAVA_HOME/bin:$PATH" sh -c "${script//\/trust/$dir}"
+JAVA_HOME="$HOST_JAVA_HOME" sh -c "$script" sh "$dir"
 STUB
 chmod +x "$F/bin/docker"
+cp "$F/bin/docker" "$F/bin/podman"
 serve() {  # port cert [chain] -> server pid in SERVER, waits until it listens
   local chain=()
   [ -z "${3:-}" ] || chain=(-cert_chain "$3")
@@ -289,6 +290,32 @@ RC=0; truststore "$F/stale" "$PORT" || RC=$?
 
 RC=0; truststore "$F/bad" "9200;x" || RC=$?
 [ "$RC" -eq 1 ] || die "a non-numeric port must exit 1, got $RC"
+
+PORT="$(free_port)"
+serve "$PORT" "$F/leaf.pem" "$F/ca.pem"
+RC=0
+(cd "$F" && CONTAINER_ENGINE=podman truststore rel-out "$PORT") || RC=$?
+stop
+[ "$RC" -eq 0 ] || die "a relative out-dir under CONTAINER_ENGINE=podman must build a store, got $RC"
+grep -q -- "^podman run .* -v $F/rel-out:/trust img" "$F/docker.log" \
+  || die "CONTAINER_ENGINE must run the image with an absolute mount: $(cat "$F/docker.log")"
+[ -s "$F/rel-out/cacerts" ] || die "the relative out-dir store was not written"
+
+PORT="$(free_port)"
+serve "$PORT" "$F/leaf.pem" "$F/ca.pem"
+rm -f "$F/docker.log"
+RC=0
+PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" JAVA_HOME="$HOST_JAVA_HOME" \
+  bash "$TRUSTSTORE" --host-jdk "$F/host-out" "$PORT" >/dev/null 2>&1 || RC=$?
+NOJDK=0
+PATH="$F/bin:$PATH" JAVA_HOME="$F/no-jdk" bash "$TRUSTSTORE" --host-jdk "$F/nojdk-out" "$PORT" >/dev/null 2>"$F/nojdk.err" || NOJDK=$?
+stop
+[ "$RC" -eq 0 ] || die "--host-jdk must build a store, got $RC"
+[ "$NOJDK" -eq 1 ] && grep -q "no host JDK keytool" "$F/nojdk.err" || die "--host-jdk without a JDK must name it, got $NOJDK"
+[ ! -e "$F/docker.log" ] || die "--host-jdk must not start a container: $(cat "$F/docker.log")"
+HOST_CAS=("$F/host-out"/ca-*.pem)
+list "$F/host-out/cacerts" -alias "${HOST_CAS[0]##*/}" >/dev/null || die "--host-jdk did not import the forwarded CA"
+list "$F/host-out/cacerts" -alias "$ROOT" >/dev/null || die "--host-jdk lost the host JDK's own roots"
 ok "forward trust store"
 
 note "build context: the sidecar ignore file overrides the upstream .dockerignore"

@@ -38,7 +38,7 @@ import os
 import re
 import sys
 
-ENGINE_VERSION = "1.2.0"
+ENGINE_VERSION = "1.3.0"
 REPORT_SCHEMA = 1
 
 FACTS_API_VERSION = "spi.osdu.dev/v1"
@@ -52,6 +52,10 @@ MAVEN_ARG_RE = re.compile(r"^[^\s\x00-\x1f\x7f]{1,240}$")
 PATH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$")
 TEMPLATE_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]{0,127})\}")
 KEYVAULT_SOURCE_RE = re.compile(r"^keyvault:([A-Za-z0-9][A-Za-z0-9-]{0,126})$")
+FORWARD_SOURCE_RE = re.compile(r"^forward:([a-z][a-z0-9-]{0,62}):(host|port)$")
+HOSTNAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+# The lane's host network sees a forward on localhost; a VM-backed engine passes its host alias.
+DEFAULT_FORWARD_HOST = "localhost"
 
 FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag", "domain")
 SUITE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
@@ -61,7 +65,8 @@ FORWARD_NAMES = ("elasticsearch",)
 K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
 VALUE_SOURCES = ("static", "template")
 CALLER_SOURCES = ("user", "token", "memberToken", "noAccessToken")
-SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES + ("keyvault:<name>",)
+SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES + (
+    "keyvault:<name>", "forward:<target>:host", "forward:<target>:port")
 # The bearers the caller minted for this run; the inputs the resolver takes from
 # its own reserved prefix rather than from a binding name.
 TOKEN_ENV = "RESOLVER_TOKEN"
@@ -349,7 +354,9 @@ def _validate_binding(name, binding, where):
         raise Halt("DESCRIPTOR_INVALID", f"{where}.source must be a string")
 
     keyvault = KEYVAULT_SOURCE_RE.fullmatch(source)
-    if source not in FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES and not keyvault:
+    forward = FORWARD_SOURCE_RE.fullmatch(source)
+    if source not in FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES and not keyvault \
+            and not forward:
         raise Halt(
             "UNKNOWN_SOURCE",
             f"{where}.source '{source}' is not in the source vocabulary: "
@@ -377,6 +384,9 @@ def _validate_binding(name, binding, where):
                    f"{where}.value is only valid for sources static and template")
 
     if "default" in binding:
+        if forward:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.default is not valid for source {source}")
         if keyvault or source in TOKEN_SOURCES:
             # A default for a secret would put a secret value in the repository.
             raise Halt("DESCRIPTOR_INVALID",
@@ -539,6 +549,13 @@ def _validate_suite(service_name, suite_name, acceptance):
     if len(set(forwards)) != len(forwards):
         raise Halt("DESCRIPTOR_INVALID", f"{where}.forwards lists a target twice")
 
+    for name, source in sources.items():
+        forward = FORWARD_SOURCE_RE.fullmatch(source)
+        if forward and forward.group(1) not in forwards:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.bindings.{name} binds forward '{forward.group(1)}', "
+                       f"which {where}.forwards does not declare")
+
     timeout = acceptance.get("timeoutMinutes", 25)
     if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 180:
         raise Halt("DESCRIPTOR_INVALID", f"{where}.timeoutMinutes must be between 1 and 180")
@@ -676,7 +693,7 @@ def check_agreement(facts, expect_gateway, expect_partition):
     return checks
 
 
-def resolve(contract, facts, secrets, environ):
+def resolve(contract, facts, secrets, environ, forward_host=DEFAULT_FORWARD_HOST):
     resolved = {}
     missing = []
 
@@ -699,7 +716,18 @@ def resolve(contract, facts, secrets, environ):
             resolved[name] = override
             continue
         keyvault = KEYVAULT_SOURCE_RE.fullmatch(source)
-        if keyvault:
+        forward = FORWARD_SOURCE_RE.fullmatch(source)
+        if forward:
+            target = facts.get("forwards", {}).get(forward.group(1)) \
+                if isinstance(facts.get("forwards"), dict) else None
+            port = target.get("port") if isinstance(target, dict) else None
+            if not isinstance(port, int) or isinstance(port, bool):
+                miss(name, f"the environment publishes no forward target for '{forward.group(1)}'")
+            elif forward.group(2) == "host":
+                resolved[name] = forward_host
+            else:
+                resolved[name] = str(port)
+        elif keyvault:
             # kv_name is the vault entry's NAME from the descriptor, never a value.
             kv_name = keyvault.group(1)
             if kv_name in secrets:
@@ -897,10 +925,15 @@ def main(argv=None):
     parser.add_argument("--report", default="")
     parser.add_argument("--suite", default="acceptance",
                         help="which descriptor.tests suite to resolve (default: acceptance)")
+    parser.add_argument("--forward-host", default=DEFAULT_FORWARD_HOST,
+                        help="the host a forward:<target>:host binding resolves to "
+                             f"(default: {DEFAULT_FORWARD_HOST})")
     parser.add_argument("--contract-only", action="store_true",
                         help="validate the descriptor and report the contract; "
                              "no facts, no resolution, no env file")
     args = parser.parse_args(argv)
+    if not HOSTNAME_RE.fullmatch(args.forward_host):
+        parser.error("--forward-host must be a hostname")
     if args.contract_only:
         args.mode = "contract-only"
     elif not (args.mode and args.facts and args.env_file):
@@ -941,16 +974,16 @@ def main(argv=None):
         facts = load_facts(args.facts)
         secrets = load_secrets(args.secrets)
         agreement = check_agreement(facts, args.expect_gateway, args.expect_partition)
-        resolved, missing = resolve(contract, facts, secrets, os.environ)
+        resolved, missing = resolve(contract, facts, secrets, os.environ, args.forward_host)
         forwards, unpublished = forward_targets(contract, facts)
         report = build_report(args.mode, contract, facts, resolved, missing, agreement, forwards)
 
-        if missing and args.mode == "run":
-            names = ", ".join(entry["name"] for entry in missing)
-            raise EnvNotReady(f"unresolved required bindings: {names}")
         if unpublished and args.mode == "run":
             raise EnvNotReady("the environment publishes no forward target for: "
                               + ", ".join(unpublished))
+        if missing and args.mode == "run":
+            names = ", ".join(entry["name"] for entry in missing)
+            raise EnvNotReady(f"unresolved required bindings: {names}")
         for name in unpublished:
             print(f"warning: forward {name}: the environment publishes no target",
                   file=sys.stderr)

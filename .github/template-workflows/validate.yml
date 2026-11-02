@@ -731,12 +731,14 @@ jobs:
           out="$RUNNER_TEMP/suite-secrets.json"
           echo '{}' > "$out"
           for name in $names; do
-            value=$(curl -sSf -H "Authorization: Bearer $bearer" \
-              "https://$vault.vault.azure.net/secrets/$name?api-version=7.4" | jq -r '.value | select(type == "string")') \
+            # The value stays JSON until it lands in the file: $(...) would strip a trailing newline.
+            body=$(curl -sSf -H "Authorization: Bearer $bearer" \
+              "https://$vault.vault.azure.net/secrets/$name?api-version=7.4") \
               || { echo "::error::Key Vault secret $name could not be read from $vault"; exit 1; }
-            [ -n "$value" ] || { echo "::error::Key Vault secret $name in $vault is empty"; exit 1; }
-            mask "$value"
-            SECRET_VALUE="$value" jq --arg name "$name" '. + {($name): env.SECRET_VALUE}' "$out" > "$out.next"
+            jq -e '.value | type == "string" and length > 0' <<< "$body" > /dev/null \
+              || { echo "::error::Key Vault secret $name in $vault is empty"; exit 1; }
+            mask "$(jq -r '.value' <<< "$body")"
+            jq -s --arg name "$name" '.[0] + {($name): .[1].value}' "$out" /dev/stdin <<< "$body" > "$out.next"
             mv "$out.next" "$out"
           done
           echo "fetched $(wc -w <<< "$names" | tr -d ' ') Key Vault secrets for the suites"

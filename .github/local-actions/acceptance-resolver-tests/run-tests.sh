@@ -683,6 +683,8 @@ facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'elastics
 json.dump(facts, open('$TMP/facts-fwd.json', 'w'))
 facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'ES 0', 'port': '9200'}}
 json.dump(facts, open('$TMP/facts-fwd-bad.json', 'w'))
+facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'elasticsearch-es-default-0', 'port': 19200}}
+json.dump(facts, open('$TMP/facts-fwd-port.json', 'w'))
 "
 engine --contract-only --descriptor "$TMP/fwd.yaml" --report "$TMP/fwd-contract.json" > /dev/null \
   || die "forwards descriptor rejected"
@@ -714,6 +716,67 @@ variant "$TMP/fwd-dup.yaml" "dependencies: [entitlements]" "dependencies: [entit
     forwards: [elasticsearch, elasticsearch]"
 expect_fail "duplicate forward target" 2 "lists a target twice" "DESCRIPTOR_INVALID" \
   engine --contract-only --descriptor "$TMP/fwd-dup.yaml"
+note "forward bindings: host and port come from the published target, the host from the caller"
+variant "$TMP/fwd-bind.yaml" "dependencies: [entitlements]" "dependencies: [entitlements]
+    forwards: [elasticsearch]"
+python3 - "$TMP/fwd-bind.yaml" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+old = "      CLIENT_SECRET: { source: keyvault:demo-client-secret }\n"
+assert text.count(old) == 1
+open(path, "w").write(text.replace(old, old
+    + "      ELASTIC_HOST: { source: forward:elasticsearch:host }\n"
+    + "      ELASTIC_PORT: { source: forward:elasticsearch:port }\n"
+    + "      ELASTIC_URL: { source: template, value: \"https://${ELASTIC_HOST}:${ELASTIC_PORT}\" }\n"))
+PY
+TESTER_TOKEN="tok-123" engine --mode run --descriptor "$TMP/fwd-bind.yaml" --facts "$TMP/facts-fwd-port.json" \
+  --env-file "$TMP/fwd-local.env" --secrets "$SECRETS" >/dev/null 2>&1 \
+  || die "run with forward bindings failed"
+[ "$(env_value "$TMP/fwd-local.env" ELASTIC_HOST)" = "localhost" ] || die "forward host did not default to localhost"
+[ "$(env_value "$TMP/fwd-local.env" ELASTIC_PORT)" = "19200" ] || die "forward port is not the published port"
+[ "$(env_value "$TMP/fwd-local.env" ELASTIC_URL)" = "https://localhost:19200" ] || die "template lost the forward bindings"
+ok "forward bindings default to localhost and the published port"
+TESTER_TOKEN="tok-123" engine --mode run --descriptor "$TMP/fwd-bind.yaml" --facts "$TMP/facts-fwd-port.json" \
+  --env-file "$TMP/fwd-alias.env" --secrets "$SECRETS" --forward-host host.containers.internal >/dev/null 2>&1 \
+  || die "run with --forward-host failed"
+[ "$(env_value "$TMP/fwd-alias.env" ELASTIC_HOST)" = "host.containers.internal" ] || die "--forward-host ignored"
+[ "$(env_value "$TMP/fwd-alias.env" ELASTIC_PORT)" = "19200" ] || die "--forward-host changed the port"
+ok "--forward-host names the host"
+ELASTIC_HOST=127.0.0.1 TESTER_TOKEN="tok-123" engine --mode run --descriptor "$TMP/fwd-bind.yaml" \
+  --facts "$TMP/facts-fwd-port.json" --env-file "$TMP/fwd-env.env" --secrets "$SECRETS" >/dev/null 2>&1 \
+  || die "run with an explicit forward host failed"
+[ "$(env_value "$TMP/fwd-env.env" ELASTIC_HOST)" = "127.0.0.1" ] || die "explicit environment lost to a forward binding"
+ok "explicit environment wins over a forward binding"
+expect_fail "unpublished forward behind bindings" 3 "no forward target for: elasticsearch" "ENV_NOT_READY" \
+  env TESTER_TOKEN=tok-123 python3 "$ENGINE" --mode run --descriptor "$TMP/fwd-bind.yaml" --facts "$FACTS" \
+  --env-file "$TMP/fwd-bind-miss.env" --secrets "$SECRETS"
+rc=0
+engine --contract-only --descriptor "$TMP/fwd-bind.yaml" --forward-host 'host;id' >/dev/null 2>"$TMP/stderr.txt" || rc=$?
+[ "$rc" -eq 2 ] && grep -qF -- "--forward-host must be a hostname" "$TMP/stderr.txt" \
+  || die "unsafe --forward-host accepted"
+ok "unsafe --forward-host refused"
+variant "$TMP/fwd-undeclared.yaml" "{ source: keyvault:demo-client-secret }" \
+  "{ source: keyvault:demo-client-secret }
+      ELASTIC_HOST: { source: forward:elasticsearch:host }"
+expect_fail "forward binding without forwards" 2 "binds forward 'elasticsearch'" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/fwd-undeclared.yaml"
+DESCRIPTOR="$TMP/fwd-bind.yaml" variant "$TMP/fwd-default.yaml" "      ELASTIC_PORT: { source: forward:elasticsearch:port }" \
+  "      ELASTIC_PORT: { source: forward:elasticsearch:port, default: \"9200\" }"
+expect_fail "forward binding with a default" 2 "default is not valid for source forward:elasticsearch:port" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/fwd-default.yaml"
+DESCRIPTOR="$TMP/fwd-bind.yaml" variant "$TMP/fwd-qualifier.yaml" "forward:elasticsearch:port }" "forward:elasticsearch:url }"
+expect_fail "unknown forward qualifier" 2 "'forward:elasticsearch:url' is not in the source vocabulary" "UNKNOWN_SOURCE" \
+  engine --contract-only --descriptor "$TMP/fwd-qualifier.yaml"
+python3 - "$SCHEMA" <<'PY'
+import json, re, sys
+pattern = re.compile(json.load(open(sys.argv[1]))["$defs"]["binding"]["properties"]["source"]["pattern"])
+for good in ("forward:elasticsearch:host", "forward:elasticsearch:port"):
+    assert pattern.search(good), good
+for bad in ("forward:elasticsearch", "forward:elasticsearch:url", "forward::host"):
+    assert not pattern.search(bad), bad
+PY
+ok "schema admits forward host and port sources only"
 python3 - "$SCHEMA" "$ENGINE" <<'PY'
 import importlib.util, json, sys
 schema = json.load(open(sys.argv[1]))
