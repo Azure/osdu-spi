@@ -70,6 +70,10 @@ and imports them into a copy of the suite image's own JDK `cacerts` with the
 image's `keytool`. The deploy lane mounts the result read-only at `/spi-trust`
 and sets `JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/spi-trust/cacerts`,
 which every JVM in the container reads, surefire's forked test JVM included.
+`CONTAINER_ENGINE=podman` runs the image with Podman instead of Docker; a rootless
+Podman gets `--userns=keep-id` so the container can write the mounted directory.
+`--host-jdk` in place of the image builds the store from the host JDK for a suite
+Maven runs on the host.
 
 ```bash
 # With a port-forward open on 9200:

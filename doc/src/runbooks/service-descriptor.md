@@ -55,7 +55,7 @@ tests:
 | `timeoutMinutes` | The lane stops the suite after this many minutes. Default 25, maximum 180 |
 | `bindings` | The environment variables the suite reads, each bound to a source from the table below |
 | `keyVaultBindings` | Variable name to Key Vault secret name, for values that must never be in the file. The lane reads each named secret from the environment's vault |
-| `forwards` | In-cluster services the suite reaches directly, today only `elasticsearch`. The lane port-forwards to the target the stack publishes and runs the suite with host networking, so bind the service's host as `localhost` and its port as the published one. The suite JVM trusts the service's CA through `JAVA_TOOL_OPTIONS`, so leave that variable unbound |
+| `forwards` | In-cluster services the suite reaches directly, today only `elasticsearch`. The lane port-forwards to the target the stack publishes and runs the suite with host networking. Bind the service's host and port with `forward:<target>:host` and `forward:<target>:port`. The suite JVM trusts the service's CA through `JAVA_TOOL_OPTIONS`, so leave that variable unbound |
 | `requires`, `dependencies` | Seeded data loads, entitlement groups, and other services the suite depends on. The resolver validates them, but the gate doesn't enforce them yet |
 
 ## Single-module and reactor suites
@@ -83,12 +83,14 @@ A binding maps an environment variable the suite reads to a source that supplies
 | `template` | The `value` with `${OTHER}` references to the suite's other bindings, rendered last; never to another `template` or a `keyvault:` binding | A URL built from the gateway and a fixed path |
 | `user` | Nothing from the stack; the caller's shell supplies it, or the declared `default` | A setting only a developer changes |
 | `keyvault:<name>` | The named secret, from a secrets file the caller passes to the resolver; the lane fetches it from the environment's vault | Secrets other than access tokens, such as Elasticsearch credentials. For an access token, use `token` |
+| `forward:<target>:host` | Where the forward answers: `localhost` in the lane, or the host the caller passes with `--forward-host` | The host of a service the suite declares in `forwards`, such as `ELASTIC_HOST` |
+| `forward:<target>:port` | The port the stack publishes for the target | The matching port, such as `ELASTIC_PORT` |
 
 ### Values and defaults
 
 - Values from the stack, the caller, or a vault never appear in the file.
 - `static` and `template` bindings carry a `value`.
-- `user` and the six sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`, `domain`) accept a `default`, used when nothing else supplies a value. `token`, `memberToken`, `noAccessToken`, `keyvault:<name>`, `static`, and `template` don't.
+- `user` and the six sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`, `domain`) accept a `default`, used when nothing else supplies a value. `token`, `memberToken`, `noAccessToken`, `keyvault:<name>`, `forward:<target>:host`, `forward:<target>:port`, `static`, and `template` don't.
 
 A nonempty value in the caller's environment takes precedence over the descriptor; an empty value counts as unset. That's how a developer points a suite at a service running on their laptop without editing the descriptor.
 
@@ -143,7 +145,7 @@ A suite that runs its tests through Failsafe takes the same `systemPropertyVaria
     )
     ```
 
-    The suite names come from the contract report, the same source the lane uses. Each suite gets an env file, `<suite>.env`, and a report, `<suite>-report.json`. The subshell stops at the first resolver failure and returns its exit code without closing your terminal. A descriptor with `keyvault:<name>` or `keyVaultBindings` also needs `--secrets <file>`, a JSON object of secret name to value that you fetch from the vault yourself; without it, run mode exits 3 for those bindings.
+    The suite names come from the contract report, the same source the lane uses. Each suite gets an env file, `<suite>.env`, and a report, `<suite>-report.json`. The subshell stops at the first resolver failure and returns its exit code without closing your terminal. A descriptor with `keyvault:<name>` or `keyVaultBindings` also needs `--secrets <file>`, a JSON object of secret name to value that you fetch from the vault yourself; without it, run mode exits 3 for those bindings. A suite that declares `forwards` resolves its host to `localhost`; when the suite runs in Docker Desktop or Podman, which can't reach the laptop's `localhost`, add `--forward-host host.docker.internal` or `--forward-host host.containers.internal`.
 
     Run mode is what the lane uses: when a binding has no value, it exits 3 and names every such binding. While iterating against a personal stack, `--mode bind` warns instead.
 

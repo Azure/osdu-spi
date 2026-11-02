@@ -26,6 +26,7 @@ top_level:
   docs: keep
   pom.xml: keep
   publish.yml: strip
+  schemathesis-tests: keep
   <service>-acceptance-test: keep
   <service>-core: keep
   <service>-core-plus: strip

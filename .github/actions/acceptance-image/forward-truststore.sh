@@ -23,19 +23,24 @@
 # The caller mounts <out-dir> and points the suite at it with
 #   JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=<mount>/cacerts -Djavax.net.ssl.trustStorePassword=changeit
 #
-# Usage: forward-truststore.sh <image> <out-dir> <port>...
+# Usage: forward-truststore.sh <image|--host-jdk> <out-dir> <port>...
+# CONTAINER_ENGINE names the engine that runs the image (default docker; podman works too).
+# --host-jdk builds the store from the host JDK instead, for a suite Maven runs on the host.
 # Exit 1 when a port serves no CA certificate or the import fails.
 
 set -euo pipefail
 
 if [[ $# -lt 3 ]]; then
-  echo "Usage: $0 <image> <out-dir> <port>..." >&2
+  echo "Usage: $0 <image|--host-jdk> <out-dir> <port>..." >&2
   exit 1
 fi
-image="$1" out="$2"
+image="$1"
+engine="${CONTAINER_ENGINE:-docker}"
+mkdir -p "$2"
+# Absolute and physical, so the engine mounts the directory rather than a named volume.
+out="$(CDPATH= cd -- "$2" && pwd -P)"
 shift 2
 
-mkdir -p "$out"
 rm -f "$out"/ca-*.pem "$out"/chain-*.pem "$out"/served-*.txt "$out/cacerts"
 added=0
 for port in "$@"; do
@@ -71,14 +76,27 @@ for port in "$@"; do
   [[ "$found" == 1 ]] || { echo "127.0.0.1:$port served no CA certificate" >&2; exit 1; }
 done
 
-# The image's own keytool and cacerts, so the store matches the JVM that reads it.
-docker run --rm --user "$(id -u):$(id -g)" --entrypoint sh -v "$out:/trust" "$image" -c '
+# The keytool and cacerts of the JVM that reads the store; $1 is the store's directory.
+import='
   set -e
   java_home="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")}"
-  cp "$java_home/lib/security/cacerts" /trust/cacerts
-  chmod u+w /trust/cacerts
-  for ca in /trust/ca-*.pem; do
-    keytool -importcert -noprompt -alias "${ca##*/}" -file "$ca" -keystore /trust/cacerts -storepass changeit > /dev/null
+  cp "$java_home/lib/security/cacerts" "$1/cacerts"
+  chmod u+w "$1/cacerts"
+  for ca in "$1"/ca-*.pem; do
+    "$java_home/bin/keytool" -importcert -noprompt -alias "${ca##*/}" -file "$ca" -keystore "$1/cacerts" -storepass changeit > /dev/null
   done'
+if [[ "$image" == --host-jdk ]]; then
+  # The JVM Maven starts: JAVA_HOME, else the java on PATH, whose home a launcher stub would hide.
+  java_home="${JAVA_HOME:-$( { java -XshowSettings:properties -version 2>&1 || true; } | awk -F' = ' '/^ *java.home = / { print $2 }')}"
+  [[ -n "$java_home" && -x "$java_home/bin/keytool" ]] || { echo "no host JDK keytool (set JAVA_HOME)" >&2; exit 1; }
+  JAVA_HOME="$java_home" sh -c "$import" sh "$out"
+else
+  run=("$engine" run --rm --user "$(id -u):$(id -g)")
+  # Rootless Podman maps the caller to container root, so --user alone lands on a subordinate ID that cannot write the mount.
+  if [[ "$engine" == *podman* && "$("$engine" info --format '{{.Host.Security.Rootless}}' 2> /dev/null)" == true ]]; then
+    run+=(--userns=keep-id)
+  fi
+  "${run[@]}" --entrypoint sh -v "$out:/trust" "$image" -c "$import" sh /trust
+fi
 [[ -s "$out/cacerts" ]] || { echo "the trust store was not written" >&2; exit 1; }
 echo "trust store: $added forwarded CA certificates added"

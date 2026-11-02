@@ -39,6 +39,7 @@ python3 resolve.py --mode {bind|run}
                    --env-file <out.env>
                    [--suite <name>]
                    [--secrets <name-to-value.json>]
+                   [--forward-host <host>]
                    [--expect-gateway <url>]
                    [--expect-partition <name>]
                    [--report <path>]
@@ -58,6 +59,9 @@ suite's path) with no facts, no resolution, and no env file. It is how the
 build lane reads the descriptor where no environment exists, to select the
 suite modules the acceptance image bakes, and how the deploy lane enumerates
 the suites to run. Descriptor violations exit 2 exactly as in the full modes.
+`--forward-host` is the host `forward:<target>:host` bindings resolve to,
+`localhost` by default; a caller whose container engine runs in a VM passes the
+engine's host alias (`host.docker.internal`, `host.containers.internal`).
 
 ## Modes: two audiences
 
@@ -80,6 +84,8 @@ naming the offending key — the resolver refuses to guess.
 | `legalTag` | The primary entry's `legal_tag` in `partitions[]` (legal tags are partition-scoped) |
 | `domain` | `entitlements_domain` — the entitlements domain the stack deployed |
 | `keyvault:<name>` | The value of that secret from the caller's secrets file; the vault itself is named by `azure.keyvault` in facts |
+| `forward:<target>:host` | `--forward-host`, `localhost` unless the caller names another. The suite must declare the target in `forwards` |
+| `forward:<target>:port` | The port the stack publishes for that target under `forwards` in facts. No `default`: an unpublished target is env-not-ready in run mode |
 | `static` | The declared `value`, verbatim |
 | `template` | The declared `value` with `${NAME}` references to other bindings, rendered after everything else resolves; may only reference non-template, non-secret bindings |
 | `user` | Nothing — the caller's environment must supply it (or a declared `default`) |
@@ -151,7 +157,7 @@ Written to `--report` (and always attempted, even on failure):
 
 ```json
 {
-  "engine_version": "1.2.0",
+  "engine_version": "1.3.0",
   "report_schema": 1,
   "mode": "bind",
   "service": "partition",
