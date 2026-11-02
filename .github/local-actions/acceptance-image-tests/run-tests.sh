@@ -72,6 +72,30 @@ resolve_suite "$WS2" "$TMP/out2.txt" SERVICE_NAME=demo >/dev/null
 [ "$(output_value "$TMP/out2.txt" buildable)" = "true" ] || die "override suite must be buildable"
 ok "descriptor override honored"
 
+note "pytest suites: each one's requirements reach the build"
+WSP="$TMP/ws-pytest"
+mkdir -p "$WSP/.spi" "$WSP/unit-acceptance-test/v3"
+touch "$WSP/unit-acceptance-test/requirements.txt" "$WSP/unit-acceptance-test/v3/requirements.txt"
+cat > "$WSP/.spi/service.yaml" <<'EOF'
+schemaVersion: 3
+service: { name: unit, archetype: java-maven-azure }
+tests:
+  acceptance:
+    type: pytest
+    path: unit-acceptance-test
+    requirements: [requirements.txt, v3/requirements.txt]
+EOF
+resolve_suite "$WSP" "$TMP/outp.txt" SERVICE_NAME=unit >/dev/null
+[ "$(output_value "$TMP/outp.txt" suite_dirs)" = "unit-acceptance-test" ] || die "pytest suite must be baked"
+[ "$(output_value "$TMP/outp.txt" pytest_suites)" = "unit-acceptance-test=requirements.txt,v3/requirements.txt" ] \
+  || die "pytest suite requirements wrong: $(output_value "$TMP/outp.txt" pytest_suites)"
+grep -qx 'pytest_suites=' "$TMP/out2.txt" || die "a Maven-only descriptor must emit an empty pytest_suites"
+rm "$WSP/unit-acceptance-test/v3/requirements.txt"
+RC=0
+resolve_suite "$WSP" "$TMP/outp2.txt" SERVICE_NAME=unit >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "a declared requirements file that is absent must exit 2, got $RC"
+ok "pytest suites resolved"
+
 note "named suites: every declared path is baked, acceptance first"
 WS2B="$TMP/ws-suites"
 mkdir -p "$WS2B/.spi" "$WS2B/demo-acceptance-test" "$WS2B/testing"
@@ -164,13 +188,20 @@ grep -q '^COPY --from=select /suite/ /suite/$' "$DOCKERFILE" || die "maven stage
 grep -q '/suite/.default-suite-dir' "$DOCKERFILE" || die "the default suite must be recorded for the entrypoint"
 grep -qF 'cp -R "/src/$dir/." "/suite/$dir/"' "$DOCKERFILE" || die "select stage must copy suite contents into the destination, not nest under it"
 grep -q 'acceptance-entrypoint.sh' "$DOCKERFILE" || die "entrypoint not baked"
-grep -q '^CMD \["verify"\]$' "$DOCKERFILE" || die "default command must be verify"
+! grep -q '^CMD ' "$DOCKERFILE" || die "the image must carry no CMD: the default argv depends on the suite type"
+grep -q '^ARG PYTEST_SUITES=""$' "$DOCKERFILE" || die "PYTEST_SUITES build arg missing"
+grep -q 'PYTEST_SUITES=${{ steps.suite.outputs.pytest_suites }}' "$HERE/../../actions/acceptance-image/action.yml" || die "action must pass the pytest suites"
+grep -q '^ARG PIP_INDEX_URL=https://packagefeedproxy.microsoft.io/pypi/simple/$' "$DOCKERFILE" || die "pip must default to the Microsoft package feed proxy"
+grep -qF -- '--index-url "$PIP_INDEX_URL"' "$DOCKERFILE" || die "pip install must use the proxy index"
+! grep -qE 'pypi\.org|pythonhosted' "$DOCKERFILE" || die "the image must never name pypi.org"
+grep -qF 'grep -qxF "$dir" /suite/.pytest-suites' "$DOCKERFILE" || die "the Maven prewarm must skip pytest suites"
 grep -q 'dependency:resolve dependency:resolve-plugins' "$DOCKERFILE" || die "dependencies must be pre-resolved at build"
 ! grep -q 'dependency:go-offline' "$DOCKERFILE" || die "go-offline resolves artifacts the build never uses"
 grep -q 'install -DskipTests -DskipITs' "$DOCKERFILE" || die "a reactor suite must be installed, without running its suites, so sibling modules resolve"
 grep -q 'linux/amd64' "$HERE/../../actions/acceptance-image/action.yml" || die "amd64-only platform lost"
 head -1 "$ENTRYPOINT" | grep -q '^#!/bin/sh' || die "entrypoint must be POSIX sh"
 grep -q 'exec mvn' "$ENTRYPOINT" || die "entrypoint must exec maven with argv"
+grep -q -- '-m pytest' "$ENTRYPOINT" || die "entrypoint must run pytest for a pytest suite"
 grep -q '/suite/.default-suite-dir' "$ENTRYPOINT" || die "entrypoint must default SUITE_DIR from the image"
 ok "Dockerfile and entrypoint contract"
 
@@ -181,14 +212,41 @@ printf 'demo-acceptance-test' > "$IMG/suite/.default-suite-dir"
 touch "$IMG/suite/demo-acceptance-test/pom.xml" "$IMG/suite/testing/pom.xml"
 printf '#!/bin/sh\necho "mvn $PWD $*"\n' > "$IMG/bin/mvn"; chmod +x "$IMG/bin/mvn"
 sed "s|/suite|$IMG/suite|g" "$ENTRYPOINT" > "$IMG/entrypoint.sh"; chmod +x "$IMG/entrypoint.sh"
+: > "$IMG/suite/.pytest-suites"
 OUT="$(PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" verify 2>/dev/null)"
 [[ "$OUT" == "mvn $IMG/suite/demo-acceptance-test -B --no-transfer-progress verify" ]] || die "default suite not selected: $OUT"
+OUT="$(PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" 2>/dev/null)"
+[[ "$OUT" == "mvn $IMG/suite/demo-acceptance-test -B --no-transfer-progress verify" ]] || die "a Maven suite with no argv must default to verify: $OUT"
 OUT="$(SUITE_DIR=testing PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" -pl x test 2>/dev/null)"
 [[ "$OUT" == "mvn $IMG/suite/testing -B --no-transfer-progress -pl x test" ]] || die "SUITE_DIR not honored: $OUT"
 RC=0
 SUITE_DIR=nope PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" verify >/dev/null 2>&1 || RC=$?
 [ "$RC" -eq 2 ] || die "an unbaked SUITE_DIR must exit 2, got $RC"
 ok "entrypoint suite selection"
+
+note "entrypoint: a pytest suite runs pytest from its own virtual environment"
+mkdir -p "$IMG/suite/py-tests" "$IMG/opt/spi-venv/py-tests/bin"
+echo "py-tests" >> "$IMG/suite/.pytest-suites"
+printf '#!/bin/sh\necho "python $PWD $*"\n' > "$IMG/opt/spi-venv/py-tests/bin/python"
+chmod +x "$IMG/opt/spi-venv/py-tests/bin/python"
+sed -e "s|/suite|$IMG/suite|g" -e "s|/opt/spi-venv|$IMG/opt/spi-venv|g" "$ENTRYPOINT" > "$IMG/entrypoint.sh"
+OUT="$(SUITE_DIR=py-tests PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" test_a.py -k smoke 2>/dev/null)"
+[[ "$OUT" == "python $IMG/suite/py-tests -m pytest -p no:cacheprovider --junitxml=$IMG/suite/py-tests/target/pytest-reports/TEST-pytest.xml test_a.py -k smoke" ]] \
+  || die "pytest suite not dispatched: $OUT"
+OUT="$(SUITE_DIR=testing PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" test 2>/dev/null)"
+[[ "$OUT" == "mvn $IMG/suite/testing -B --no-transfer-progress test" ]] || die "a Maven suite beside a pytest suite must stay Maven: $OUT"
+mkdir -p "$IMG/suite/py/api" "$IMG/opt/spi-venv/py+api/bin"
+echo "py/api" >> "$IMG/suite/.pytest-suites"
+printf '#!/bin/sh\necho "venv py+api $*"\n' > "$IMG/opt/spi-venv/py+api/bin/python"
+chmod +x "$IMG/opt/spi-venv/py+api/bin/python"
+OUT="$(SUITE_DIR=py/api PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" 2>/dev/null)" \
+  || die "a nested pytest suite must run from its encoded venv"
+[[ "$OUT" == "venv py+api -m pytest"* ]] || die "a nested pytest suite must run from its encoded venv: $OUT"
+[ "$(grep -c "tr / +" "$HERE/../../../build/acceptance.Dockerfile")" -eq 1 ] \
+  || die "the Dockerfile must name venvs as the entrypoint does"
+grep -q 'cd "/suite/$dir"; attempt=1' "$HERE/../../../build/acceptance.Dockerfile" \
+  || die "pip must run from the suite directory"
+ok "entrypoint dispatches by suite type"
 
 note "verdict: reports decide, not the exit code or the console"
 VERDICT="$HERE/../../actions/acceptance-image/suite-verdict.py"
@@ -219,6 +277,16 @@ OUT="$(verdict 124 "$V/nonzero" || true)"
 [[ "$OUT" == FAIL:*"timed out"* ]] || die "exit 124 must read as a timeout: $OUT"
 mkdir -p "$V/stray/target/other"; report "$V/stray/target/other" 9 0 0 0
 verdict 0 "$V/stray" >/dev/null && die "TEST-*.xml outside a surefire or failsafe dir must not count"
+pytest_report() {  # dir: pytest nests its counts under <testsuites>
+  mkdir -p "$1"
+  printf '<?xml version="1.0"?><testsuites name="pytest tests"><testsuite name="pytest" tests="%s" skipped="%s" failures="%s" errors="%s"/></testsuites>\n' "$2" "$3" "$4" "$5" > "$1/TEST-pytest.xml"
+}
+pytest_report "$V/pytest/target/pytest-reports" 32 0 0 0
+OUT="$(verdict 0 "$V/pytest")" || die "a green pytest report must pass: $OUT"
+[[ "$OUT" == "pass: 32 tests, 0 skipped" ]] || die "pytest pass line wrong: $OUT"
+pytest_report "$V/pytest-fail/target/pytest-reports" 32 0 2 0
+OUT="$(verdict 1 "$V/pytest-fail" || true)"
+[[ "$OUT" == "FAIL: exit 1, 32 tests ran, 2 failed or errored" ]] || die "pytest failures must count: $OUT"
 ok "suite verdict"
 
 note "forward trust store: only the served CA is imported, through the image's keytool"

@@ -799,4 +799,97 @@ assert sorted(enum) == sorted(engine.FORWARD_NAMES), (enum, engine.FORWARD_NAMES
 PY
 ok "schema and engine agree on forward targets"
 
+note "pytest: a suite type with its own argv and requirements"
+PYT="$TMP/pytest.yaml"
+cat > "$PYT" <<'EOF'
+schemaVersion: 3
+service: { name: unit, archetype: java-maven-azure }
+tests:
+  acceptance:
+    type: pytest
+    path: unit-acceptance-test
+    requirements: [requirements.txt, v3/requirements.txt]
+    pytestArguments: [test_unit_service_v3.py]
+    bindings:
+      VIRTUAL_SERVICE_HOST_NAME: { source: gatewayHost }
+      BASE_URL: { source: static, value: /api/unit }
+      MY_TENANT: { source: partition }
+      PRIVILEGED_USER_TOKEN: { source: token }
+EOF
+engine --contract-only --descriptor "$PYT" --report "$TMP/pyt.json" >/dev/null 2>&1 || die "pytest descriptor must validate"
+[ "$(report_field "$TMP/pyt.json" "r['contract']['test_type']")" = "pytest" ] || die "pytest test_type wrong"
+[ "$(report_field "$TMP/pyt.json" "r['contract']['arguments']")" = "['test_unit_service_v3.py']" ] || die "pytest arguments wrong"
+[ "$(report_field "$TMP/pyt.json" "r['contract']['maven_arguments']")" = "[]" ] || die "a pytest suite must carry no Maven arguments"
+[ "$(report_field "$TMP/pyt.json" "r['contract']['suite_specs']['acceptance'] == dict(path='unit-acceptance-test', type='pytest', requirements=['requirements.txt', 'v3/requirements.txt'])")" = "True" ] \
+  || die "suite_specs must carry type and requirements"
+ok "pytest contract"
+DESCRIPTOR="$PYT" variant "$TMP/pyt-default.yaml" "    requirements: [requirements.txt, v3/requirements.txt]
+    pytestArguments: [test_unit_service_v3.py]
+" ""
+engine --contract-only --descriptor "$TMP/pyt-default.yaml" --report "$TMP/pyt-default.json" >/dev/null 2>&1 \
+  || die "pytest defaults must validate"
+[ "$(report_field "$TMP/pyt-default.json" "r['contract']['arguments']")" = "[]" ] || die "pytest arguments default to none"
+[ "$(report_field "$TMP/pyt-default.json" "r['contract']['requirements']")" = "['requirements.txt']" ] || die "requirements default wrong"
+[ "$(report_field "$TMP/contract.json" "r['contract']['arguments']")" = "$(report_field "$TMP/contract.json" "r['contract']['maven_arguments']")" ] \
+  || die "a Maven suite's arguments must equal its maven_arguments"
+ok "pytest defaults and Maven compatibility"
+DESCRIPTOR="$PYT" variant "$TMP/pyt-maven-key.yaml" "pytestArguments:" "mavenArguments:"
+expect_fail "mavenArguments on a pytest suite" 2 "mavenArguments is only valid for type maven" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/pyt-maven-key.yaml"
+variant "$TMP/maven-pytest-key.yaml" "    path: demo-acceptance-test" "    path: demo-acceptance-test
+    requirements: [requirements.txt]"
+expect_fail "requirements on a Maven suite" 2 "requirements is only valid for type pytest" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/maven-pytest-key.yaml"
+DESCRIPTOR="$PYT" variant "$TMP/pyt-escape.yaml" "v3/requirements.txt]" "../requirements.txt]"
+expect_fail "requirements outside the suite" 2 "requirements[1] must be a path inside the suite" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/pyt-escape.yaml"
+DESCRIPTOR="$PYT" variant "$TMP/pyt-fwd.yaml" "    pytestArguments:" "    forwards: [elasticsearch]
+    pytestArguments:"
+expect_fail "forwards on a pytest suite" 2 "forwards is only valid for type maven" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/pyt-fwd.yaml"
+DESCRIPTOR="$PYT" variant "$TMP/pyt-fwd-empty.yaml" "    pytestArguments:" "    forwards: []
+    pytestArguments:"
+expect_fail "empty forwards on a pytest suite" 2 "forwards is only valid for type maven" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/pyt-fwd-empty.yaml"
+cat "$PYT" > "$TMP/pyt-shared.yaml"
+cat >> "$TMP/pyt-shared.yaml" <<'EOF'
+  integration:
+    type: maven
+    path: unit-acceptance-test
+EOF
+expect_fail "a shared path with two types" 2 "shares path 'unit-acceptance-test' with tests.acceptance" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/pyt-shared.yaml"
+DESCRIPTOR="$PYT" variant "$TMP/pyt-type.yaml" "type: pytest" "type: npm"
+expect_fail "unknown suite type" 2 "type must be one of: maven, pytest" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/pyt-type.yaml"
+
+note "gatewayHost: the gateway's host without scheme or path"
+RESOLVER_TOKEN="tok-123" engine --mode run --descriptor "$PYT" --facts "$FACTS" --env-file "$TMP/pyt.env" \
+  >/dev/null 2>&1 || die "pytest run mode failed"
+[ "$(env_value "$TMP/pyt.env" VIRTUAL_SERVICE_HOST_NAME)" = "$(report_field "$FACTS" "__import__('urllib.parse').parse.urlsplit(r['base_url']).netloc")" ] \
+  || die "gatewayHost must be the host of base_url"
+grep -q "^VIRTUAL_SERVICE_HOST_NAME=.*://" "$TMP/pyt.env" && die "gatewayHost must carry no scheme"
+python3 - "$FACTS" "$TMP" <<'PY'
+import json, sys
+facts = json.load(open(sys.argv[1]))
+for name, url in (("port", "https://h.example:8443/api/"), ("schemeless", "h.example/api"),
+                  ("malformed", "https://[broken/")):
+    facts["base_url"] = url
+    json.dump(facts, open(f"{sys.argv[2]}/facts-gw-{name}.json", "w"))
+PY
+RESOLVER_TOKEN="tok-123" engine --mode run --descriptor "$PYT" --facts "$TMP/facts-gw-port.json" --env-file "$TMP/pyt-port.env" \
+  >/dev/null 2>&1 || die "pytest run mode with a port failed"
+[ "$(env_value "$TMP/pyt-port.env" VIRTUAL_SERVICE_HOST_NAME)" = "h.example:8443" ] || die "gatewayHost must keep the port and drop the path"
+RESOLVER_TOKEN="tok-123" expect_fail "gatewayHost on a schemeless base_url" 4 "has no host" "FACTS_INVALID" \
+  engine --mode run --descriptor "$PYT" --facts "$TMP/facts-gw-schemeless.json" --env-file "$TMP/x.env"
+RESOLVER_TOKEN="tok-123" expect_fail "gatewayHost on a malformed base_url" 4 "has no host" "FACTS_INVALID" \
+  engine --mode run --descriptor "$PYT" --facts "$TMP/facts-gw-malformed.json" --env-file "$TMP/x.env"
+python3 - "$SCHEMA" <<'PY'
+import json, re, sys
+schema = json.load(open(sys.argv[1]))
+assert re.search(schema["$defs"]["binding"]["properties"]["source"]["pattern"], "gatewayHost")
+assert schema["$defs"]["suite"]["properties"]["type"]["enum"] == ["maven", "pytest"]
+PY
+ok "gatewayHost resolves and the schema agrees"
+
 printf '\nAll acceptance resolver harness checks passed.\n'

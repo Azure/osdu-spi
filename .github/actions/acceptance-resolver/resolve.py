@@ -37,8 +37,9 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 
-ENGINE_VERSION = "1.3.1"
+ENGINE_VERSION = "1.4.0"
 REPORT_SCHEMA = 1
 
 FACTS_API_VERSION = "spi.osdu.dev/v1"
@@ -48,7 +49,7 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 GROUP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,254}$")
 SECRET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,126}$")
 SUFFIX_RE = re.compile(r"^[A-Za-z0-9._~:/@+-]{1,200}$")
-MAVEN_ARG_RE = re.compile(r"^[^\s\x00-\x1f\x7f]{1,240}$")
+ARG_RE = re.compile(r"^[^\s\x00-\x1f\x7f]{1,240}$")
 PATH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$")
 TEMPLATE_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]{0,127})\}")
 KEYVAULT_SOURCE_RE = re.compile(r"^keyvault:([A-Za-z0-9][A-Za-z0-9-]{0,126})$")
@@ -57,7 +58,19 @@ HOSTNAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 # The lane's host network sees a forward on localhost; a VM-backed engine passes its host alias.
 DEFAULT_FORWARD_HOST = "localhost"
 
-FACT_SOURCES = ("gateway", "partition", "openid", "tenant", "legalTag", "domain")
+FACT_SOURCES = ("gateway", "gatewayHost", "partition", "openid", "tenant", "legalTag", "domain")
+SUITE_TYPES = ("maven", "pytest")
+# Each suite type reads its own argv key; the other type's keys are a contract error.
+TYPE_KEYS = {
+    "maven": ("mavenArguments",),
+    "pytest": ("pytestArguments", "requirements"),
+}
+# Keys a type may not carry at all, even empty.
+TYPE_FORBIDDEN = {
+    "maven": (),
+    "pytest": ("forwards",),
+}
+DEFAULT_ARGUMENTS = {"maven": ["verify"], "pytest": []}
 SUITE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # In-cluster services a suite may reach through a caller-opened port-forward;
 # the stack publishes each target under `forwards` and grants exactly those.
@@ -88,6 +101,7 @@ TOKEN_SOURCES = {
 # publish yet resolves as env-not-ready.
 FACT_PATHS = {
     "gateway": ("base_url",),
+    "gatewayHost": ("base_url",),
     "openid": ("azure", "openid_issuer"),
     "tenant": ("azure", "tenant_id"),
     "domain": ("entitlements_domain",),
@@ -442,8 +456,10 @@ def validate_descriptor(data, suite="acceptance"):
     if not tests:
         # Deploy only: the lane borrows, verifies the rollout and restores with no suite to run.
         return {
-            "service": service["name"], "suite": None, "suites": {}, "test_type": None,
-            "test_dir": None, "maven_arguments": [], "bindings": {}, "sources": {},
+            "service": service["name"], "suite": None, "suites": {}, "suite_specs": {},
+            "test_type": None,
+            "test_dir": None, "arguments": [], "maven_arguments": [], "requirements": [],
+            "bindings": {}, "sources": {},
             "key_vault_bindings": {}, "requires": {"loads": [], "groups": []},
             "dependencies": [], "forwards": [], "timeout_minutes": None,
         }
@@ -459,9 +475,23 @@ def validate_descriptor(data, suite="acceptance"):
         raise Halt("DESCRIPTOR_INVALID",
                    f"descriptor.tests declares no suite named '{suite}'; "
                    "declared: " + ", ".join(sorted(suites)))
+    # The image keys its runner and virtual environment by path, so a shared path needs one spec.
+    by_path = {}
+    for name in sorted(suites):
+        spec = (suites[name]["test_type"], suites[name]["requirements"])
+        first, first_spec = by_path.setdefault(suites[name]["test_dir"], (name, spec))
+        if spec != first_spec:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"descriptor.tests.{name} shares path '{suites[name]['test_dir']}' with "
+                       f"tests.{first} but differs in type or requirements")
     contract = dict(suites[suite])
     contract["suite"] = suite
     contract["suites"] = {name: suites[name]["test_dir"] for name in sorted(suites)}
+    contract["suite_specs"] = {
+        name: {"path": suites[name]["test_dir"], "type": suites[name]["test_type"],
+               "requirements": suites[name]["requirements"]}
+        for name in sorted(suites)
+    }
     return contract
 
 
@@ -471,25 +501,50 @@ def _validate_suite(service_name, suite_name, acceptance):
     where = f"descriptor.tests.{suite_name}"
     _require_keys(
         acceptance,
-        ("type", "path", "mavenArguments", "bindings", "keyVaultBindings",
-         "requires", "dependencies", "forwards", "timeoutMinutes"),
+        ("type", "path", "mavenArguments", "pytestArguments", "requirements", "bindings",
+         "keyVaultBindings", "requires", "dependencies", "forwards", "timeoutMinutes"),
         ("type", "path"),
         where,
     )
-    if acceptance["type"] != "maven":
-        raise Halt("DESCRIPTOR_INVALID", f"{where}.type must be maven")
+    test_type = acceptance["type"]
+    if test_type not in SUITE_TYPES:
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"{where}.type must be one of: " + ", ".join(SUITE_TYPES))
+    for other, keys in TYPE_KEYS.items():
+        for key in keys:
+            if other != test_type and key in acceptance:
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.{key} is only valid for type {other}")
+    for key in TYPE_FORBIDDEN[test_type]:
+        if key in acceptance:
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.{key} is only valid for type maven")
     path = _string_field(acceptance, "path", where, PATH_RE)
     if ".." in path.split("/"):
         raise Halt("DESCRIPTOR_INVALID", f"{where}.path must stay inside the repository")
 
-    maven_arguments = acceptance.get("mavenArguments", ["verify"])
-    if not isinstance(maven_arguments, list) or not maven_arguments:
-        raise Halt("DESCRIPTOR_INVALID", f"{where}.mavenArguments must be a non-empty list")
-    for position, argument in enumerate(maven_arguments):
-        if not isinstance(argument, str) or not MAVEN_ARG_RE.fullmatch(argument):
+    arguments_key = TYPE_KEYS[test_type][0]
+    arguments = acceptance.get(arguments_key, DEFAULT_ARGUMENTS[test_type])
+    if not isinstance(arguments, list) or (test_type == "maven" and not arguments):
+        raise Halt("DESCRIPTOR_INVALID", f"{where}.{arguments_key} must be a "
+                   + ("non-empty list" if test_type == "maven" else "list"))
+    for position, argument in enumerate(arguments):
+        if not isinstance(argument, str) or not ARG_RE.fullmatch(argument):
             raise Halt("DESCRIPTOR_INVALID",
-                       f"{where}.mavenArguments[{position}] must be one argv token "
+                       f"{where}.{arguments_key}[{position}] must be one argv token "
                        "with no whitespace")
+
+    requirements = []
+    if test_type == "pytest":
+        requirements = acceptance.get("requirements", ["requirements.txt"])
+        if not isinstance(requirements, list) or not requirements:
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.requirements must be a non-empty list")
+        for position, item in enumerate(requirements):
+            if not isinstance(item, str) or not PATH_RE.fullmatch(item) \
+                    or ".." in item.split("/"):
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.requirements[{position}] must be a path inside the suite")
+        if len(set(requirements)) != len(requirements):
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.requirements lists a file twice")
 
     bindings = acceptance.get("bindings", {})
     if not isinstance(bindings, dict):
@@ -565,9 +620,11 @@ def _validate_suite(service_name, suite_name, acceptance):
 
     return {
         "service": service_name,
-        "test_type": acceptance["type"],
+        "test_type": test_type,
         "test_dir": path,
-        "maven_arguments": maven_arguments,
+        "arguments": arguments,
+        "maven_arguments": arguments if test_type == "maven" else [],
+        "requirements": requirements,
         "bindings": bindings,
         "sources": sources,
         "key_vault_bindings": key_vault_bindings,
@@ -752,6 +809,14 @@ def resolve(contract, facts, secrets, environ, forward_host=DEFAULT_FORWARD_HOST
                 miss(name, f"source {source}: set {env_name} to {who}")
         else:
             base = fact_value(facts, source)
+            if base and source == "gatewayHost":
+                try:
+                    host = urllib.parse.urlsplit(base).netloc
+                except ValueError:
+                    host = ""
+                if not host:
+                    raise Infra("FACTS_INVALID", f"facts value at 'base_url' has no host: {base!r}")
+                base = host
             if base:
                 if source == "gateway":
                     base = base.rstrip("/")
@@ -853,9 +918,12 @@ def build_report(mode, contract, facts, resolved, missing, agreement, forwards=(
         "contract": {
             "suite": contract["suite"],
             "suites": contract["suites"],
+            "suite_specs": contract["suite_specs"],
             "test_type": contract["test_type"],
             "test_dir": contract["test_dir"],
+            "arguments": contract["arguments"],
             "maven_arguments": contract["maven_arguments"],
+            "requirements": contract["requirements"],
             "timeout_minutes": contract["timeout_minutes"],
             "requires": contract["requires"],
             "dependencies": contract["dependencies"],

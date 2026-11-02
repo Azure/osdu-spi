@@ -13,17 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Entrypoint for build/acceptance.Dockerfile. Arguments are Maven argv tokens appended
-# verbatim; the environment arrives via --env-file from the acceptance resolver.
-# SUITE_DIR selects the suite (a tests.<name>.path from .spi/service.yaml); the build's
-# first suite is the default.
+# Entrypoint for build/acceptance.Dockerfile. Arguments are argv tokens appended verbatim
+# to Maven, or to pytest for a suite of type pytest; the environment arrives via --env-file
+# from the acceptance resolver. SUITE_DIR selects the suite (a tests.<name>.path from
+# .spi/service.yaml); the build's first suite is the default.
 set -e
 SUITE_DIR="${SUITE_DIR:-$(cat /suite/.default-suite-dir)}"
+if [ -d "/suite/$SUITE_DIR" ] && grep -qxF "$SUITE_DIR" /suite/.pytest-suites 2>/dev/null; then
+  venv="/opt/spi-venv/$(printf '%s' "$SUITE_DIR" | tr / +)"
+  cd "/suite/$SUITE_DIR"
+  echo "Running suite $SUITE_DIR: pytest $*" >&2
+  exec "$venv/bin/python" -m pytest -p no:cacheprovider \
+    --junitxml="/suite/$SUITE_DIR/target/pytest-reports/TEST-pytest.xml" "$@"
+fi
 if [ ! -f "/suite/$SUITE_DIR/pom.xml" ]; then
   echo "SUITE_DIR '$SUITE_DIR' is not a suite baked into this image" >&2
   exit 2
 fi
 cd "/suite/$SUITE_DIR"
+[ "$#" -gt 0 ] || set -- verify
 echo "Running suite $SUITE_DIR: mvn $*" >&2
 if [ -f /suite/.mvn/community-maven.settings.xml ]; then
   exec mvn -B --no-transfer-progress --settings /suite/.mvn/community-maven.settings.xml "$@"

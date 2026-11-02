@@ -49,13 +49,15 @@ tests:
 
 | Field | Meaning |
 |---|---|
-| `type` | Always `maven` |
-| `path` | The directory holding the suite's `pom.xml`, relative to the repository root. The image includes only the directories the suites name |
-| `mavenArguments` | Maven arguments as an array of tokens, never as one shell string. Default `[verify]` |
+| `type` | `maven`, or `pytest` for a Python suite (see [Pytest suites](#pytest-suites)) |
+| `path` | The directory holding the suite, relative to the repository root: its `pom.xml` for Maven, its test files for pytest. The image includes only the directories the suites name |
+| `mavenArguments` | Maven suites: Maven arguments as an array of tokens, never as one shell string. Default `[verify]` |
+| `pytestArguments` | Pytest suites: pytest arguments as an array of tokens, such as the test files to run. Default none |
+| `requirements` | Pytest suites: requirements files relative to `path`, installed when the image is built. Default `[requirements.txt]` |
 | `timeoutMinutes` | The lane stops the suite after this many minutes. Default 25, maximum 180 |
 | `bindings` | The environment variables the suite reads, each bound to a source from the table below |
 | `keyVaultBindings` | Variable name to Key Vault secret name, for values that must never be in the file. The lane reads each named secret from the environment's vault |
-| `forwards` | In-cluster services the suite reaches directly, today only `elasticsearch`. The lane port-forwards to the target the stack publishes and runs the suite with host networking. Bind the service's host and port with `forward:<target>:host` and `forward:<target>:port`. The suite JVM trusts the service's CA through `JAVA_TOOL_OPTIONS`, so leave that variable unbound |
+| `forwards` | Maven suites: in-cluster services the suite reaches directly, today only `elasticsearch`. The lane port-forwards to the target the stack publishes and runs the suite with host networking. Bind the service's host and port with `forward:<target>:host` and `forward:<target>:port`. The suite JVM trusts the service's CA through `JAVA_TOOL_OPTIONS`, so leave that variable unbound |
 | `requires`, `dependencies` | Seeded data loads, entitlement groups, and other services the suite depends on. The resolver validates them, but the gate doesn't enforce them yet |
 
 ## Single-module and reactor suites
@@ -64,6 +66,27 @@ tests:
 
 **A reactor** has a parent `pom.xml` at the path, with the Azure module beneath it. Set the path to the parent directory and select the module in the arguments: `[-pl, <service>-test-azure, -am, test]`. The image installs the reactor before it downloads dependencies, so the modules the Azure module depends on resolve from the image's local Maven repository. Upstream's `testing/` tree is laid out this way.
 
+## Pytest suites
+
+A suite written in Python declares `type: pytest`:
+
+```yaml
+  acceptance:
+    type: pytest
+    path: <service>-acceptance-test
+    requirements: [requirements.txt, v3/requirements.txt]
+    pytestArguments: [test_<service>_v3.py]
+    bindings:
+      VIRTUAL_SERVICE_HOST_NAME: { source: gatewayHost }
+      BASE_URL: { source: static, value: /api/<service> }
+      MY_TENANT: { source: partition }
+      PRIVILEGED_USER_TOKEN: { source: token }
+```
+
+The image builds a virtual environment for the suite and installs every listed requirements file, plus pytest, from the Microsoft package feed proxy; the run itself installs nothing. List every file the upstream runner script installs, such as a swagger client's `v3/requirements.txt`. The suite runs with `python -m pytest` from its path, so its `pytest.ini` applies, and the lane reads the JUnit report pytest writes to `target/pytest-reports/`.
+
+A pytest suite can't declare `forwards`, and steps upstream's runner script performs around pytest, such as a fixture cleanup, don't run. [ADR-044](../adr/044-pytest-acceptance-suites.md) records the decision.
+
 ## Bindings
 
 A binding maps an environment variable the suite reads to a source that supplies its value. Name the variable whatever the suite reads; the stack never sees these names. Two suites can bind the same source under different names, as the example does for the token.
@@ -71,6 +94,7 @@ A binding maps an environment variable the suite reads to a source that supplies
 | Source | Value | Use it for |
 |---|---|---|
 | `gateway` | The stack's base URL, with `suffix` appended if given | Service URLs. Add `suffix: /` when the suite appends paths to it |
+| `gatewayHost` | The host of the stack's base URL, without scheme or path | Suites that build the URL themselves from a host, such as `VIRTUAL_SERVICE_HOST_NAME` |
 | `partition` | The primary data partition's name | Data partition ids and tenant names |
 | `openid` | The OIDC issuer the stack publishes | Suites that discover the token endpoint |
 | `tenant` | The Entra tenant id | Suites that build authority URLs themselves |
@@ -90,7 +114,7 @@ A binding maps an environment variable the suite reads to a source that supplies
 
 - Values from the stack, the caller, or a vault never appear in the file.
 - `static` and `template` bindings carry a `value`.
-- `user` and the six sources the stack publishes (`gateway`, `partition`, `openid`, `tenant`, `legalTag`, `domain`) accept a `default`, used when nothing else supplies a value. `token`, `memberToken`, `noAccessToken`, `keyvault:<name>`, `forward:<target>:host`, `forward:<target>:port`, `static`, and `template` don't.
+- `user` and the seven sources the stack publishes (`gateway`, `gatewayHost`, `partition`, `openid`, `tenant`, `legalTag`, `domain`) accept a `default`, used when nothing else supplies a value. `token`, `memberToken`, `noAccessToken`, `keyvault:<name>`, `forward:<target>:host`, `forward:<target>:port`, `static`, and `template` don't.
 
 A nonempty value in the caller's environment takes precedence over the descriptor; an empty value counts as unset. That's how a developer points a suite at a service running on their laptop without editing the descriptor.
 
@@ -167,18 +191,18 @@ Run the suites through the acceptance image, the same way the lane does. You nee
 ```bash
 image="ghcr.io/<org>/<service>-acceptance:sha-<short-sha>"
 for suite in $(jq -r '.contract.suites | keys[]' suites.json); do
-  maven_args=()
-  while IFS= read -r arg; do maven_args+=("$arg"); done < <(jq -r '.contract.maven_arguments[]' "$suite-report.json")
+  suite_args=()
+  while IFS= read -r arg; do suite_args+=("$arg"); done < <(jq -r '.contract.arguments[]' "$suite-report.json")
   docker run --rm --env-file "$suite.env" -e SUITE_DIR="$(jq -r .contract.test_dir "$suite-report.json")" \
-    "$image" "${maven_args[@]}" || { echo "suite $suite failed"; break; }
+    "$image" ${suite_args[@]+"${suite_args[@]}"} || { echo "suite $suite failed"; break; }
 done
 ```
 
-Each suite runs from its declared path with its declared Maven arguments, both read from its report. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches Maven as one token instead of being expanded by the shell. The loop stops at the first failing suite, as the lane fails when any suite fails, and runs in Bash 3.2 and zsh alike.
+Each suite runs from its declared path with its declared arguments, both read from its report; the image runs Maven or pytest by the suite's type. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches the runner as one token instead of being expanded by the shell. The loop stops at the first failing suite, as the lane fails when any suite fails, and runs in Bash 3.2 and zsh alike.
 
 ## Common mistakes
 
 - **A `user` binding with a default token.** A default is stored in the repository, so a default token is a secret committed to the file. Use `token`.
-- **`mavenArguments` as one string.** `"-pl x -am test"` reaches Maven as one token and fails. Write the array.
+- **`mavenArguments` or `pytestArguments` as one string.** The resolver refuses `"-pl x -am test"`, since an argument may not contain whitespace. Write the array.
 - **A path outside the suites.** The image contains only the declared directories plus `.mvn` and `.spi`. A suite that reads `../shared` passes on a laptop and fails in the image.
 - **A suite name with capitals or underscores.** Names must match `^[a-z][a-z0-9-]{0,31}$`.

@@ -806,7 +806,7 @@ jobs:
             fi
             suite_dir=$(jq -r .contract.test_dir "$report")
             timeout_min=$(jq -r .contract.timeout_minutes "$report")
-            mapfile -t mvn_args < <(jq -r '.contract.maven_arguments[]' "$report")
+            mapfile -t suite_args < <(jq -r '.contract.arguments[]' "$report")
             # The resolver validated each target against the facts; a dropped forward reopens.
             network_args=()
             trust_args=()
@@ -864,7 +864,7 @@ jobs:
             # The verdict comes from the report XML copied out before the container goes.
             container="suite-$suite-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             code=0
-            timeout "${timeout_min}m" docker run --name "$container" "${network_args[@]}" "${trust_args[@]}" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
+            timeout "${timeout_min}m" docker run --name "$container" "${network_args[@]}" "${trust_args[@]}" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${suite_args[@]}" || code=$?
             stop_forwards
             docker cp "$container:/suite/$suite_dir" "reports/$suite" > /dev/null 2>&1 || mkdir -p "reports/$suite"
             docker rm -f "$container" > /dev/null 2>&1 || true
@@ -889,6 +889,7 @@ jobs:
           path: |
             reports/**/target/surefire-reports/**
             reports/**/target/failsafe-reports/**
+            reports/**/target/pytest-reports/**
           if-no-files-found: ignore
           retention-days: 14
 

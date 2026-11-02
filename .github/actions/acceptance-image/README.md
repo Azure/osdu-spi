@@ -2,7 +2,8 @@
 
 Builds the test-suite image beside the service image (design §8, D5;
 ADR-040, ADR-041): every suite the descriptor declares, as *source* from the
-same commit with Maven dependencies prewarmed at build time, published as
+same commit with its dependencies prewarmed at build time (Maven artifacts, or a
+virtual environment for a pytest suite), published as
 `ghcr.io/<org>/<service>-acceptance:sha-<sha>`, so "run the tests that shipped
 with release X" stays one command months later:
 
@@ -15,8 +16,16 @@ docker run --env-file .env -e SUITE_DIR=testing ghcr.io/<org>/partition-acceptan
 `SUITE_DIR` is a `tests.<name>.path` from the descriptor and defaults to the
 acceptance suite; the entrypoint refuses a path that is not baked in.
 
-Arguments after the image are Maven argv tokens — the lane passes the
-descriptor's `mavenArguments` array verbatim, never a shell string.
+Arguments after the image are argv tokens for the suite's runner: Maven, or
+pytest for a suite of type `pytest` (ADR-044). The lane passes the resolver's
+`arguments` array verbatim, never a shell string. A Maven suite run with no
+arguments runs `verify`.
+
+A pytest suite runs `python -m pytest` from its virtual environment under `/opt/spi-venv/`
+(the suite path with `/` as `+`), built at
+image build time from the suite's `requirements` files through the Microsoft
+package feed proxy (`PIP_INDEX_URL`). The install is retried, because the proxy
+is a pull-through cache whose first fetch of an uncached file can fail.
 
 ## What the image pins
 
@@ -49,8 +58,9 @@ read as "this fork has no acceptance suite".
 `suite-verdict.py` decides whether one suite run passed. The deploy lane copies
 the suite directory out of the container after `docker run` returns and hands
 the script the exit code and that directory. It reads every `TEST-*.xml` under a
-`surefire-reports` or `failsafe-reports` directory, at any depth, so a
-multi-module suite counts its submodules. A pass needs a zero exit, at least one
+`surefire-reports`, `failsafe-reports` or `pytest-reports` directory, at any
+depth, so a multi-module suite counts its submodules, and sums each
+`<testsuite>` in it, since pytest nests them under `<testsuites>`. A pass needs a zero exit, at least one
 test that was not skipped, and no failures or errors. The console is never
 consulted: `-q` hides Maven's summary lines and `-Dmaven.test.failure.ignore`
 turns a failing suite into a zero exit.
