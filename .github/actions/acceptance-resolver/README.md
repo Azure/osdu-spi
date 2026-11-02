@@ -157,7 +157,7 @@ Written to `--report` (and always attempted, even on failure):
 
 ```json
 {
-  "engine_version": "1.3.0",
+  "engine_version": "1.3.1",
   "report_schema": 1,
   "mode": "bind",
   "service": "partition",
