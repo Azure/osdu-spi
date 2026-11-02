@@ -16,6 +16,8 @@ The suites take the host of the gateway without its scheme (`VIRTUAL_SERVICE_HOS
 
 **A suite may be `type: pytest`. Its requirements are installed into a per-suite virtual environment when the acceptance image is built, from the Microsoft package feed proxy, and the entrypoint runs pytest from that environment.**
 
+![Pytest acceptance suites at a glance](../images/pytest-acceptance-suites.png)
+
 ### Descriptor
 
 A pytest suite names its `requirements` files, relative to the suite path (default `requirements.txt`), and optional `pytestArguments`, argv tokens as for `mavenArguments`. Each type's keys are refused on the other type. `forwards` stays Maven-only, because the forwarded CA reaches the suite through a JVM trust store.
