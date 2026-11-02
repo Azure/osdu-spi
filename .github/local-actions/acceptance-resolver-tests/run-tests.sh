@@ -685,6 +685,10 @@ facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'ES 0', '
 json.dump(facts, open('$TMP/facts-fwd-bad.json', 'w'))
 facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'elasticsearch-es-default-0', 'port': 19200}}
 json.dump(facts, open('$TMP/facts-fwd-port.json', 'w'))
+facts['forwards'] = {'elasticsearch': {'namespace': 'platform', 'pod': 'elasticsearch.master-0', 'port': 9200}}
+json.dump(facts, open('$TMP/facts-fwd-dotted.json', 'w'))
+facts['forwards'] = {'elasticsearch': {'namespace': 'plat.form', 'pod': 'elasticsearch-es-default-0', 'port': 9200}}
+json.dump(facts, open('$TMP/facts-fwd-dotted-ns.json', 'w'))
 "
 engine --contract-only --descriptor "$TMP/fwd.yaml" --report "$TMP/fwd-contract.json" > /dev/null \
   || die "forwards descriptor rejected"
@@ -708,6 +712,13 @@ ok "bind mode warns on an unpublished forward"
 expect_fail "malformed forward target" 4 "facts.forwards.elasticsearch" "FACTS_MALFORMED" \
   env TESTER_TOKEN=tok-123 python3 "$ENGINE" --mode run --descriptor "$TMP/fwd.yaml" --facts "$TMP/facts-fwd-bad.json" \
   --env-file "$TMP/fwd-bad.env" --secrets "$SECRETS"
+TESTER_TOKEN="tok-123" engine --mode run --descriptor "$TMP/fwd.yaml" --facts "$TMP/facts-fwd-dotted.json" \
+  --env-file "$TMP/fwd-dotted.env" --secrets "$SECRETS" --report "$TMP/fwd-dotted.json" >/dev/null 2>&1 \
+  || die "a dotted pod name is a valid DNS subdomain"
+ok "pod names follow the DNS-subdomain rule"
+expect_fail "dotted namespace" 4 "facts.forwards.elasticsearch" "FACTS_MALFORMED" \
+  env TESTER_TOKEN=tok-123 python3 "$ENGINE" --mode run --descriptor "$TMP/fwd.yaml" --facts "$TMP/facts-fwd-dotted-ns.json" \
+  --env-file "$TMP/fwd-dotted-ns.env" --secrets "$SECRETS"
 variant "$TMP/fwd-unknown.yaml" "dependencies: [entitlements]" "dependencies: [entitlements]
     forwards: [postgresql]"
 expect_fail "unknown forward target" 2 "'postgresql' is not a forward target" "DESCRIPTOR_INVALID" \

@@ -38,7 +38,7 @@ import os
 import re
 import sys
 
-ENGINE_VERSION = "1.3.0"
+ENGINE_VERSION = "1.3.1"
 REPORT_SCHEMA = 1
 
 FACTS_API_VERSION = "spi.osdu.dev/v1"
@@ -63,6 +63,9 @@ SUITE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # the stack publishes each target under `forwards` and grants exactly those.
 FORWARD_NAMES = ("elasticsearch",)
 K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+# Pod names are DNS subdomains: dot-separated labels, at most 253 characters.
+K8S_SUBDOMAIN_RE = re.compile(
+    r"^(?=.{1,253}$)[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")
 VALUE_SOURCES = ("static", "template")
 CALLER_SOURCES = ("user", "token", "memberToken", "noAccessToken")
 SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES + (
@@ -832,7 +835,7 @@ def forward_targets(contract, facts):
             raise Infra("FACTS_MALFORMED", f"facts.forwards.{name} must be an object")
         namespace, pod, port = target.get("namespace"), target.get("pod"), target.get("port")
         if not (isinstance(namespace, str) and K8S_NAME_RE.fullmatch(namespace)
-                and isinstance(pod, str) and K8S_NAME_RE.fullmatch(pod)
+                and isinstance(pod, str) and K8S_SUBDOMAIN_RE.fullmatch(pod)
                 and isinstance(port, int) and not isinstance(port, bool)
                 and 1 <= port <= 65535):
             raise Infra("FACTS_MALFORMED",

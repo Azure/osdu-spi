@@ -706,7 +706,10 @@ jobs:
           done | sort -u)
           if [ -z "$names" ]; then echo "no suite names a Key Vault secret"; exit 0; fi
           vault=$(jq -r '.azure.keyvault | select(type == "string")' facts.json)
-          [[ "$vault" =~ ^[A-Za-z0-9-]{3,24}$ ]] || { echo "::error::the environment publishes no usable azure.keyvault"; exit 1; }
+          if ! [[ "$vault" =~ ^[A-Za-z0-9-]{3,24}$ ]]; then
+            echo "::warning::the environment publishes no usable azure.keyvault; suites that bind a secret report it as missing"
+            exit 0
+          fi
           assertion=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
           bearer=$(curl -sSf -X POST "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token" \
@@ -730,16 +733,23 @@ jobs:
           umask 077
           out="$RUNNER_TEMP/suite-secrets.json"
           echo '{}' > "$out"
+          resp="$RUNNER_TEMP/kv-secret.json"
+          trap 'rm -f "$resp"' EXIT
+          fetched=0
           for name in $names; do
-            value=$(curl -sSf -H "Authorization: Bearer $bearer" \
-              "https://$vault.vault.azure.net/secrets/$name?api-version=7.4" | jq -r '.value | select(type == "string")') \
-              || { echo "::error::Key Vault secret $name could not be read from $vault"; exit 1; }
-            [ -n "$value" ] || { echo "::error::Key Vault secret $name in $vault is empty"; exit 1; }
-            mask "$value"
-            SECRET_VALUE="$value" jq --arg name "$name" '. + {($name): env.SECRET_VALUE}' "$out" > "$out.next"
+            if ! curl -sSf -o "$resp" -H "Authorization: Bearer $bearer" \
+                "https://$vault.vault.azure.net/secrets/$name?api-version=7.4" \
+                || ! jq -e '.value | type == "string" and length > 0' "$resp" > /dev/null; then
+              echo "::warning::Key Vault secret $name is unreadable or empty in $vault; suites that bind it report it as missing"
+              continue
+            fi
+            # The value goes into the file JSON to JSON; a shell variable would drop trailing newlines.
+            mask "$(jq -r '.value' "$resp")"
+            jq --arg name "$name" --slurpfile secret "$resp" '. + {($name): $secret[0].value}' "$out" > "$out.next"
             mv "$out.next" "$out"
+            fetched=$((fetched + 1))
           done
-          echo "fetched $(wc -w <<< "$names" | tr -d ' ') Key Vault secrets for the suites"
+          echo "fetched $fetched of $(wc -w <<< "$names" | tr -d ' ') Key Vault secrets for the suites"
 
       - name: "Log in to GHCR"
         if: needs.deploy-gate.outputs.deploy_only != 'true'
@@ -805,17 +815,26 @@ jobs:
             while read -r name namespace pod port; do
               network_args=(--network host)
               ports+=("$port")
-              : > "forward-$name.log"
-              ( while :; do kubectl port-forward -n "$namespace" "pod/$pod" "$port:$port" >> "forward-$name.log" 2>&1 || true; sleep 2; done ) &
+              rm -f "forward-$name.log" "forward-$name.last" "forward-$name.pid"
+              ( while :; do
+                  kubectl port-forward -n "$namespace" "pod/$pod" "$port:$port" > "forward-$name.log" 2>&1 &
+                  echo "$!" > "forward-$name.pid"
+                  wait "$!" || true
+                  mv -f "forward-$name.log" "forward-$name.last" 2> /dev/null || true
+                  sleep 2
+                done ) &
               forward_pids+=("$!")
-              # Ready only once this forward owns the IPv4 listener, never another process on the port.
+              # Ready only while the attempt read before the log still runs after the probe, so the
+              # listener the probe reached was this forward's, never another process on the port.
               for _ in $(seq 1 30); do
-                if grep -q "Forwarding from 127.0.0.1:$port " "forward-$name.log" \
-                    && (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then continue 2; fi
+                attempt=$(cat "forward-$name.pid" 2> /dev/null || true)
+                if [ -n "$attempt" ] && grep -qs "Forwarding from 127.0.0.1:$port " "forward-$name.log" \
+                    && (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null \
+                    && kill -0 "$attempt" 2> /dev/null; then continue 2; fi
                 sleep 2
               done
               unreachable="$unreachable $name"
-              tail -n 5 "forward-$name.log" || true
+              tail -n 5 "forward-$name.last" "forward-$name.log" 2> /dev/null || true
             done < <(jq -r '.forwards[] | "\(.name) \(.namespace) \(.pod) \(.port)"' "$report")
             if [ -n "$unreachable" ]; then
               stop_forwards
