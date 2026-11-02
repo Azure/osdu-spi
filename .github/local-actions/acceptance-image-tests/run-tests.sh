@@ -236,6 +236,7 @@ leaf decoy "/CN=CA:TRUE"
 HOST_JAVA_HOME="${JAVA_HOME:-$(java -XshowSettings:properties -version 2>&1 | awk '/java.home =/ { print $3 }')}"
 cat > "$F/bin/docker" <<'STUB'
 #!/usr/bin/env bash
+if [ "$1" = info ]; then echo "${FORWARD_ROOTLESS:-false}"; exit 0; fi
 echo "${0##*/} $*" > "$FORWARD_DOCKER_LOG"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -299,7 +300,17 @@ stop
 [ "$RC" -eq 0 ] || die "a relative out-dir under CONTAINER_ENGINE=podman must build a store, got $RC"
 grep -q -- "^podman run .* -v $F/rel-out:/trust img" "$F/docker.log" \
   || die "CONTAINER_ENGINE must run the image with an absolute mount: $(cat "$F/docker.log")"
+grep -q -- "--userns=keep-id" "$F/docker.log" && die "rootful podman must not get --userns=keep-id: $(cat "$F/docker.log")"
 [ -s "$F/rel-out/cacerts" ] || die "the relative out-dir store was not written"
+
+PORT="$(free_port)"
+serve "$PORT" "$F/leaf.pem" "$F/ca.pem"
+RC=0
+FORWARD_ROOTLESS=true CONTAINER_ENGINE=podman truststore "$F/rootless-out" "$PORT" || RC=$?
+stop
+[ "$RC" -eq 0 ] || die "rootless podman must build a store, got $RC"
+grep -q -- "^podman run .*--user [0-9]*:[0-9]* .*--userns=keep-id .* -v $F/rootless-out:/trust img" "$F/docker.log" \
+  || die "rootless podman must keep the caller's id in the container: $(cat "$F/docker.log")"
 
 PORT="$(free_port)"
 serve "$PORT" "$F/leaf.pem" "$F/ca.pem"
@@ -310,7 +321,7 @@ PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" JAVA_HOME="$HOST_JAVA_HOM
 NOJDK=0
 PATH="$F/bin:$PATH" JAVA_HOME="$F/no-jdk" bash "$TRUSTSTORE" --host-jdk "$F/nojdk-out" "$PORT" >/dev/null 2>"$F/nojdk.err" || NOJDK=$?
 mkdir -p "$F/nojava"
-for tool in openssl awk seq sleep mkdir rm mv cat; do ln -sf "$(command -v "$tool")" "$F/nojava/$tool"; done
+for tool in openssl awk seq sleep mkdir rm mv cat sh; do ln -sf "$(command -v "$tool")" "$F/nojava/$tool"; done
 NOJAVA=0
 env -u JAVA_HOME PATH="$F/nojava" "$(command -v bash)" "$TRUSTSTORE" --host-jdk "$F/nojava-out" "$PORT" >/dev/null 2>"$F/nojava.err" || NOJAVA=$?
 REL=0

@@ -88,10 +88,15 @@ import='
 if [[ "$image" == --host-jdk ]]; then
   # The JVM Maven starts: JAVA_HOME, else the java on PATH, whose home a launcher stub would hide.
   java_home="${JAVA_HOME:-$( { java -XshowSettings:properties -version 2>&1 || true; } | awk -F' = ' '/^ *java.home = / { print $2 }')}"
-  [[ -x "$java_home/bin/keytool" ]] || { echo "no host JDK keytool (set JAVA_HOME)" >&2; exit 1; }
+  [[ -n "$java_home" && -x "$java_home/bin/keytool" ]] || { echo "no host JDK keytool (set JAVA_HOME)" >&2; exit 1; }
   JAVA_HOME="$java_home" sh -c "$import" sh "$out"
 else
-  "$engine" run --rm --user "$(id -u):$(id -g)" --entrypoint sh -v "$out:/trust" "$image" -c "$import" sh /trust
+  run=("$engine" run --rm --user "$(id -u):$(id -g)")
+  # Rootless Podman maps the caller to container root, so --user alone lands on a subordinate ID that cannot write the mount.
+  if [[ "$engine" == *podman* && "$("$engine" info --format '{{.Host.Security.Rootless}}' 2> /dev/null)" == true ]]; then
+    run+=(--userns=keep-id)
+  fi
+  "${run[@]}" --entrypoint sh -v "$out:/trust" "$image" -c "$import" sh /trust
 fi
 [[ -s "$out/cacerts" ]] || { echo "the trust store was not written" >&2; exit 1; }
 echo "trust store: $added forwarded CA certificates added"
