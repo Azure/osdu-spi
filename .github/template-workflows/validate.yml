@@ -824,12 +824,13 @@ jobs:
                   sleep 2
                 done ) &
               forward_pids+=("$!")
-              # Ready only while the attempt that logged the line still runs after the probe, so the
+              # Ready only while the attempt read before the log still runs after the probe, so the
               # listener the probe reached was this forward's, never another process on the port.
               for _ in $(seq 1 30); do
-                if grep -qs "Forwarding from 127.0.0.1:$port " "forward-$name.log" \
+                attempt=$(cat "forward-$name.pid" 2> /dev/null || true)
+                if [ -n "$attempt" ] && grep -qs "Forwarding from 127.0.0.1:$port " "forward-$name.log" \
                     && (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null \
-                    && kill -0 "$(cat "forward-$name.pid" 2> /dev/null)" 2> /dev/null; then continue 2; fi
+                    && kill -0 "$attempt" 2> /dev/null; then continue 2; fi
                 sleep 2
               done
               unreachable="$unreachable $name"
