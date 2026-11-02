@@ -28,7 +28,7 @@ RESOLVE_SUITE="$HERE/../../actions/acceptance-image/resolve-suite.sh"
 RESOLVER="$HERE/../../actions/acceptance-resolver/resolve.py"
 DOCKERFILE="$HERE/../../../build/acceptance.Dockerfile"
 ENTRYPOINT="$HERE/../../../build/acceptance-entrypoint.sh"
-TMP="$(mktemp -d)"
+TMP="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$TMP"' EXIT
 
 note()  { printf '\n== %s\n' "$*"; }
@@ -309,9 +309,18 @@ PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/docker.log" JAVA_HOME="$HOST_JAVA_HOM
   bash "$TRUSTSTORE" --host-jdk "$F/host-out" "$PORT" >/dev/null 2>&1 || RC=$?
 NOJDK=0
 PATH="$F/bin:$PATH" JAVA_HOME="$F/no-jdk" bash "$TRUSTSTORE" --host-jdk "$F/nojdk-out" "$PORT" >/dev/null 2>"$F/nojdk.err" || NOJDK=$?
+mkdir -p "$F/nojava"
+for tool in openssl awk seq sleep mkdir rm mv cat; do ln -sf "$(command -v "$tool")" "$F/nojava/$tool"; done
+NOJAVA=0
+env -u JAVA_HOME PATH="$F/nojava" "$(command -v bash)" "$TRUSTSTORE" --host-jdk "$F/nojava-out" "$PORT" >/dev/null 2>"$F/nojava.err" || NOJAVA=$?
+REL=0
+(cd "$F" && mkdir -p cdpath-target && CDPATH="$F/elsewhere:." PATH="$F/bin:$PATH" FORWARD_DOCKER_LOG="$F/cdpath.log" \
+  HOST_JAVA_HOME="$HOST_JAVA_HOME" bash "$TRUSTSTORE" img cdpath-target "$PORT" >/dev/null 2>&1) || REL=$?
 stop
 [ "$RC" -eq 0 ] || die "--host-jdk must build a store, got $RC"
 [ "$NOJDK" -eq 1 ] && grep -q "no host JDK keytool" "$F/nojdk.err" || die "--host-jdk without a JDK must name it, got $NOJDK"
+[ "$NOJAVA" -eq 1 ] && grep -q "no host JDK keytool" "$F/nojava.err" || die "--host-jdk with no java on PATH must name it, got $NOJAVA"
+[ "$REL" -eq 0 ] && [ -s "$F/cdpath-target/cacerts" ] || die "CDPATH must not redirect a relative out-dir, got $REL"
 [ ! -e "$F/docker.log" ] || die "--host-jdk must not start a container: $(cat "$F/docker.log")"
 HOST_CAS=("$F/host-out"/ca-*.pem)
 list "$F/host-out/cacerts" -alias "${HOST_CAS[0]##*/}" >/dev/null || die "--host-jdk did not import the forwarded CA"

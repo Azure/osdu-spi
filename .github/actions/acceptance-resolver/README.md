@@ -85,7 +85,7 @@ naming the offending key — the resolver refuses to guess.
 | `domain` | `entitlements_domain` — the entitlements domain the stack deployed |
 | `keyvault:<name>` | The value of that secret from the caller's secrets file; the vault itself is named by `azure.keyvault` in facts |
 | `forward:<target>:host` | `--forward-host`, `localhost` unless the caller names another. The suite must declare the target in `forwards` |
-| `forward:<target>:port` | The port the stack publishes for that target under `forwards` in facts. No `default`: an unpublished target is env-not-ready |
+| `forward:<target>:port` | The port the stack publishes for that target under `forwards` in facts. No `default`: an unpublished target is env-not-ready in run mode |
 | `static` | The declared `value`, verbatim |
 | `template` | The declared `value` with `${NAME}` references to other bindings, rendered after everything else resolves; may only reference non-template, non-secret bindings |
 | `user` | Nothing — the caller's environment must supply it (or a declared `default`) |
@@ -157,7 +157,7 @@ Written to `--report` (and always attempted, even on failure):
 
 ```json
 {
-  "engine_version": "1.2.0",
+  "engine_version": "1.3.0",
   "report_schema": 1,
   "mode": "bind",
   "service": "partition",

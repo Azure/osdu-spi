@@ -37,8 +37,8 @@ fi
 image="$1"
 engine="${CONTAINER_ENGINE:-docker}"
 mkdir -p "$2"
-# Absolute, so the engine mounts the directory rather than a named volume.
-out="$(cd "$2" && pwd)"
+# Absolute and physical, so the engine mounts the directory rather than a named volume.
+out="$(CDPATH= cd -- "$2" && pwd -P)"
 shift 2
 
 rm -f "$out"/ca-*.pem "$out"/chain-*.pem "$out"/served-*.txt "$out/cacerts"
@@ -87,7 +87,7 @@ import='
   done'
 if [[ "$image" == --host-jdk ]]; then
   # The JVM Maven starts: JAVA_HOME, else the java on PATH, whose home a launcher stub would hide.
-  java_home="${JAVA_HOME:-$(java -XshowSettings:properties -version 2>&1 | awk -F' = ' '/^ *java.home = / { print $2 }')}"
+  java_home="${JAVA_HOME:-$( { java -XshowSettings:properties -version 2>&1 || true; } | awk -F' = ' '/^ *java.home = / { print $2 }')}"
   [[ -x "$java_home/bin/keytool" ]] || { echo "no host JDK keytool (set JAVA_HOME)" >&2; exit 1; }
   JAVA_HOME="$java_home" sh -c "$import" sh "$out"
 else
