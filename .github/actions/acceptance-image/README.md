@@ -70,6 +70,16 @@ Each suite resolves its own dependency graph. A suite that is a Maven reactor
 module) is installed without tests first so the sibling resolves, then warmed
 like the others.
 
+The surefire and failsafe test providers (`surefire-junit4`,
+`surefire-junit-platform`) are not part of that graph: each plugin fetches its
+provider only when a run selects test classes. So the prewarm also runs
+`verify` once with an excludes file that matches every test method. Each pom
+keeps its own class selection and plugin version, the provider it would load
+at run time is fetched, and no test method runs. `-DskipTests` cannot do this,
+because a skipped plugin never loads a provider. A runner that errors without
+the suite's environment (a Cucumber runner's run-level hooks) is ignored there,
+and the reports that pass leaves are deleted.
+
 ## Forward trust store
 
 `forward-truststore.sh` builds the trust store for a suite that declares
