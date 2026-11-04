@@ -55,17 +55,18 @@ if [[ -f "$DESCRIPTOR_PATH" ]]; then
     exit 0
   fi
   SUITE_DIR="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['contract']['test_dir'])" "$REPORT")"
-  # The acceptance suite leads so it is the image's run-time default.
+  # The acceptance suite leads so it is the image's run-time default. Named suites may share a
+  # path (the engine then requires the same type and requirements), so each path is listed once.
   SUITE_DIRS="$(python3 -c "
 import json, sys
 suites = json.load(open(sys.argv[1]))['contract']['suites']
-print(' '.join([suites['acceptance']] + [d for n, d in sorted(suites.items()) if n != 'acceptance']))" "$REPORT")"
-  # dir=req[,req...] per pytest suite; the image installs each into that suite's virtual environment.
+print(' '.join(dict.fromkeys([suites['acceptance']] + [d for n, d in sorted(suites.items()) if n != 'acceptance'])))" "$REPORT")"
+  # dir=req[,req...] once per pytest suite path; the image installs each into that path's virtual environment.
   PYTEST_SUITES="$(python3 -c "
 import json, sys
 specs = json.load(open(sys.argv[1]))['contract']['suite_specs']
-print(' '.join(s['path'] + '=' + ','.join(s['requirements'])
-               for _, s in sorted(specs.items()) if s['type'] == 'pytest'))" "$REPORT")"
+print(' '.join(dict.fromkeys(s['path'] + '=' + ','.join(s['requirements'])
+                             for _, s in sorted(specs.items()) if s['type'] == 'pytest')))" "$REPORT")"
   SOURCE="descriptor"
 fi
 
