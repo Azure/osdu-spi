@@ -111,7 +111,7 @@ Merge the pull request. The push to `main` runs the deploy lane again with the i
 
 ## Operate the repository
 
-- **Pull requests that push an image borrow the environment.** A docs-only change skips the build and deploys nothing. Pull requests queue behind each other in a per-service concurrency group, so only one run at a time deploys the service.
+- **Pull requests that push an image borrow the environment.** A docs-only change skips the build and deploys nothing. A push to `main` that changes only release, config or docs files, such as a release merge, builds the images the release tags and does not borrow. Pull requests queue behind each other in a per-service concurrency group, so only one run at a time deploys the service.
 - **Pull requests from other repositories never borrow.** The Deploy Gate reports why. To test such a change, a maintainer pushes it to a branch in this repository.
 - **Check for drift** by running `spi onboard <service> --repo <org>/<service>` without `--write`. Run it when the "Log in as deploy identity" step starts failing.
 - **Require approval before each borrow** by adding a required reviewer to the repository's `spi-stack` environment in its settings. The workflow needs no change.
