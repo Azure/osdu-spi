@@ -26,7 +26,7 @@ The descriptor section (ADR-040) carries `upstream`, the OSDU community project 
 
 Steps prepare inputs only; nothing is built under isolation. `MAVEN_ARGS` (`-P <profiles> -pl <module> -am` with the fork's Maven settings) limits the CG Maven detector to the shipped module and its parents. `dockerImagesToScan` names the images Validation published for the commit, the service image and, for a fork with shared schemas, the loader image (ADR-042). `cgmanifest.json` registers what no detector sees: the upstream commit of the newest generated upstream tree (ADR-038, its `Upstream-Sha` equal to its last parent), every `Seeded-From` commit, and the Application Insights agent. Acceptance images are test tooling and are not scanned.
 
-The pipeline runs on `v*` release tags and weekly on `main`; there is no CI or pull request trigger. Compliance is read from `main`.
+The pipeline runs on `v*` release tags and weekly on `main`; there is no CI or pull request trigger. Compliance is read from `main`. The weekly run also opens or updates the NOTICE pull request, so the NOTICE follows what `main` ships without anyone queuing a run.
 
 ### Nothing is registered without the published image
 
@@ -36,7 +36,7 @@ CG only warns when it cannot pull an image and registers the snapshot without it
 
 A second job downloads the NOTICE CG generates for the snapshot the scan job registered, reports every registered component that has no entry, and fails when the scan could not process an image. It must be a second job because the injected CG step runs after all steps of a job. CG is disabled for this job through the 1ES per-job justification, because its own scan would register an empty snapshot that CG then keeps as the branch's production snapshot.
 
-With `openNoticePr` the job commits the NOTICE to `chore/notice-refresh/<branch>` and opens or updates a draft pull request. It only replaces its own earlier refresh from an older commit or build, recorded in `Source-Commit` and `Build-Id` trailers, and pushes with a lease. The commit skips no checks, and `NOTICE` is no longer in Validation's push `paths-ignore`, so a merged refresh publishes the image that ships it.
+Weekly runs of `main`, and manual runs with `openNoticePr`, commit the NOTICE to `chore/notice-refresh/<branch>` and open or update a draft pull request. A run only replaces its own earlier refresh from an older commit or build, recorded in `Source-Commit` and `Build-Id` trailers, and pushes with a lease; when the refresh already holds the same NOTICE for the same commit it pushes nothing, so an unchanged `main` does not rerun the pull request's checks every week. The commit skips no checks, and `NOTICE` is no longer in Validation's push `paths-ignore`, so a merged refresh publishes the image that ships it.
 
 ### NOTICE becomes fork-owned
 

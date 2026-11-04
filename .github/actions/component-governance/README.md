@@ -15,11 +15,12 @@ cg_scan   "Register shipped components"            (1ES Official, network isolat
   [1ES CG step]       registers after isolation stops: Maven graph, images, cgmanifest
 cg_notice "Generate NOTICE from Component Governance" (CG disabled for this job)
   fetch_notice.py     this build's snapshot -> NOTICE + gap report (artifact cg-notice)
-  notice_pr.py        with openNoticePr: draft PR chore/notice-refresh/<branch>
+  notice_pr.py        weekly, or with openNoticePr: draft PR chore/notice-refresh/<branch>
 ```
 
-Triggers: `v*` tags (not `v*-upstream-*`), and every Monday 06:00 UTC on `main`. Parameters:
-`images` (`auto`, or an explicit comma separated list) and `openNoticePr`.
+Triggers: `v*` tags (not `v*-upstream-*`), and every Monday 06:00 UTC on `main`, which also
+opens or updates the NOTICE pull request. Parameters: `images` (`auto`, or an explicit comma
+separated list) and `openNoticePr`, which opens the pull request from a manual run.
 
 ## Inputs
 
@@ -82,7 +83,10 @@ lists every registered component without an entry, by reason.
 a draft pull request into the built branch. It replaces that branch only when its tip was
 written by this automation and carries `Source-Commit` and `Build-Id` trailers from an
 older source commit or an earlier build, and pushes with a lease on the tip it saw. The
-commit skips no CI, so the pull request's required checks run.
+commit skips no CI, so the pull request's required checks run. A weekly run whose refresh
+branch already holds the same NOTICE for the same commit pushes nothing, so an unchanged
+`main` does not rerun those checks every week; it only opens a pull request if the branch
+has none.
 
 While `.github/upstream-filter.yml` still says `NOTICE: keep`, the same commit changes it
 to `strip` and the pull request body gives the one-time cutover steps: the `port` label

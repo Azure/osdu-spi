@@ -364,7 +364,7 @@ BOT="osdu-spi-component-governance@users.noreply.github.com"
 
 pr_routes() {  # open-pulls compare-status
   cat > "$TMP/r.json" <<EOF
-[{"method": "GET", "path": "/repos/$REPO/pulls.head=Azure%3Achore%2Fnotice-refresh%2Fmain&base=main&state=open",
+[{"method": "GET", "path": "/repos/$REPO/pulls.head=Azure%3Achore%2Fnotice-refresh%2Fmain&base=main&state=(open|all)",
   "responses": [{"status": 200, "json": $1}]},
  {"method": "POST", "path": "/repos/$REPO/pulls",
   "responses": [{"status": 201, "json": {"number": 1, "html_url": "https://github.com/$REPO/pull/1", "user": {"login": "azure-pipelines[bot]"}}}]},
@@ -409,10 +409,20 @@ request_body POST body | grep -qF "report body" || die "gap report not in the PR
 ok "draft PR with NOTICE, the strip verdict, trailers and cutover steps"
 
 note "notice PR: only a newer source or a later build replaces the branch"
+printf 'Generated NOTICE, rescanned\n' > "$TMP/gen/NOTICE"
 pr_routes '[{"number": 1}]'
 expect_out "updated pull request #1" refresh "$MAIN" 101
 [ "$(tip_trailer Build-Id)" = 101 ] || die "later build did not replace the branch"
 run_fail "an earlier build of the same commit" "was refreshed by build 101, not older than this build 100" refresh "$MAIN" 100
+pr_routes '[{"number": 1, "state": "open"}]'
+expect_out "already holds this NOTICE for $MAIN (pull request #1, open); nothing to push" refresh "$MAIN" 102
+[ "$(tip_trailer Build-Id)" = 101 ] || die "a weekly run of an unchanged base pushed the same refresh again"
+[ "$(api_calls '"method": "P')" = 0 ] || die "a weekly run of an unchanged base changed the pull request"
+ok "a later build with the same NOTICE for the same commit leaves the branch and its checks alone"
+pr_routes '[]'
+expect_out "opened pull request #1" refresh "$MAIN" 103
+[ "$(tip_trailer Build-Id)" = 101 ] || die "the branch was pushed again just to open its pull request"
+ok "a held refresh without a pull request gets one"
 git -C "$SEED" commit -q --allow-empty -m "feat: next" && git -C "$SEED" push -q origin main
 NEXT=$(git -C "$SEED" rev-parse HEAD)
 pr_routes '[{"number": 1}]' behind
@@ -487,5 +497,8 @@ grep -qF 'sparseCheckoutPatterns: /NOTICE /.github/upstream-filter.yml /.github/
   || die "the NOTICE job does not check out its scripts and the files it changes"
 grep -qF 'displayName: ${{ variables.CG_SCAN_PHASE }}' "$PIPELINE" || die "scan job is not named by CG_SCAN_PHASE"
 ok "every script the pipeline runs exists and the NOTICE job checks it out"
+[ "$(grep -cF "or(eq(parameters.openNoticePr, true), eq(variables['Build.Reason'], 'Schedule'))" "$PIPELINE")" = 2 ] \
+  || die "scheduled runs do not both persist the credential and open the NOTICE pull request"
+ok "scheduled runs open the NOTICE pull request"
 
 printf '\nAll component governance checks passed.\n'

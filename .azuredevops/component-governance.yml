@@ -35,8 +35,9 @@ parameters:
     type: string
     default: auto
   # Opens or updates a draft pull request that replaces NOTICE, targeting the branch this run built.
+  # Scheduled runs of main always do.
   - name: openNoticePr
-    displayName: Open a NOTICE pull request into the built branch
+    displayName: Open a NOTICE pull request into the built branch (scheduled runs always do)
     type: boolean
     default: false
 
@@ -54,7 +55,7 @@ pr: none
 
 schedules:
   - cron: '0 6 * * 1'
-    displayName: Weekly registration of main
+    displayName: Weekly registration and NOTICE pull request of main
     branches:
       include:
         - main
@@ -218,10 +219,11 @@ extends:
                   sbomEnabled: false
                   condition: succeededOrFailed()
             steps:
-              # The pull request step pushes with the Azure Pipelines GitHub App token the checkout persists.
+              # The pull request step pushes with the Azure Pipelines GitHub App token the checkout persists. It runs
+              # in scheduled runs and with openNoticePr; Build.Reason is available at template compile time.
               - checkout: self
                 fetchDepth: 1
-                persistCredentials: ${{ parameters.openNoticePr }}
+                persistCredentials: ${{ or(eq(parameters.openNoticePr, true), eq(variables['Build.Reason'], 'Schedule')) }}
                 sparseCheckoutPatterns: /NOTICE /.github/upstream-filter.yml /.github/actions/component-governance/
 
               - bash: |
@@ -232,7 +234,7 @@ extends:
                 env:
                   SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
-              - ${{ if eq(parameters.openNoticePr, true) }}:
+              - ${{ if or(eq(parameters.openNoticePr, true), eq(variables['Build.Reason'], 'Schedule')) }}:
                 - bash: python3 "$CG_SCRIPTS/notice_pr.py"
                   displayName: Open or update the NOTICE pull request
                   condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/'))

@@ -36,7 +36,7 @@ The first run asks for permission to use the `adme-custom-pool-eus2` pool, the `
 
 ## 3. Run it on main
 
-Queue the pipeline on `main` with **Open a NOTICE pull request into the built branch** checked and images left at `auto`.
+Queue the pipeline on `main` with **Open a NOTICE pull request into the built branch** checked and images left at `auto`. Without this, the first Monday run does the same; from then on the weekly run keeps the NOTICE pull request current.
 
 **Expected result:** both jobs succeed. The **Register shipped components** job logs the resolved inputs and `Docker Push succeeded for <sha>`. CG lists the fork as a governed repository, with the shipped module's Maven components, the image's operating system packages, the upstream commit and the Application Insights agent. The **Generate NOTICE** job publishes the `cg-notice` artifact, adds the gap report to the run summary, and opens a draft pull request from `chore/notice-refresh/main`.
 
@@ -62,7 +62,7 @@ The first refresh also changes `NOTICE: keep` to `NOTICE: strip` in `.github/ups
 
 ## Routine operation
 
-The pipeline registers `main` every Monday at 06:00 UTC and every `v*` release tag. Compliance is read from `main`. To refresh `NOTICE`, queue a run on `main` with the pull request option; a refresh only replaces an older one, and nothing is opened when `NOTICE` already matches.
+The pipeline registers `main` every Monday at 06:00 UTC and every `v*` release tag. Compliance is read from `main`. The Monday run also refreshes `NOTICE`: it opens or updates the draft pull request from `chore/notice-refresh/main` when the generated NOTICE differs from `main`'s, and leaves it alone when the branch already holds the same NOTICE for the same commit. Review and merge it like any other pull request; a pull request someone closed is not reopened for the same `main` commit. To refresh sooner, queue a run on `main` with the pull request option; a refresh only replaces an older one, and nothing is opened when `NOTICE` already matches. Don't queue a run while another run of the same branch is in progress.
 
 ## Failures
 
