@@ -90,6 +90,24 @@ resolve_suite "$WSP" "$TMP/outp.txt" SERVICE_NAME=unit >/dev/null
 [ "$(output_value "$TMP/outp.txt" pytest_suites)" = "unit-acceptance-test=requirements.txt,v3/requirements.txt" ] \
   || die "pytest suite requirements wrong: $(output_value "$TMP/outp.txt" pytest_suites)"
 grep -qx 'pytest_suites=' "$TMP/out2.txt" || die "a Maven-only descriptor must emit an empty pytest_suites"
+cat > "$WSP/.spi/service.yaml" <<'EOF'
+schemaVersion: 3
+service: { name: unit, archetype: java-maven-azure }
+tests:
+  acceptance:
+    type: pytest
+    path: unit-acceptance-test
+    requirements: [requirements.txt, v3/requirements.txt]
+  smoke:
+    type: pytest
+    path: unit-acceptance-test
+    requirements: [requirements.txt, v3/requirements.txt]
+EOF
+resolve_suite "$WSP" "$TMP/outp-shared.txt" SERVICE_NAME=unit >/dev/null
+[ "$(output_value "$TMP/outp-shared.txt" pytest_suites)" = "unit-acceptance-test=requirements.txt,v3/requirements.txt" ] \
+  || die "a pytest path shared by named suites must build its venv once: $(output_value "$TMP/outp-shared.txt" pytest_suites)"
+[ "$(output_value "$TMP/outp-shared.txt" suite_dirs)" = "unit-acceptance-test" ] \
+  || die "a path shared by named suites must be baked once: $(output_value "$TMP/outp-shared.txt" suite_dirs)"
 rm "$WSP/unit-acceptance-test/v3/requirements.txt"
 RC=0
 resolve_suite "$WSP" "$TMP/outp2.txt" SERVICE_NAME=unit >/dev/null 2>&1 || RC=$?
@@ -201,6 +219,7 @@ grep -q 'install -DskipTests -DskipITs' "$DOCKERFILE" || die "a reactor suite mu
 grep -qF -- "'-Dtest=**/*#spiPrewarmNoTestMethod' '-Dit.test=**/*#spiPrewarmNoTestMethod'" "$DOCKERFILE" || die "surefire and failsafe providers must be prewarmed with a method filter that selects every class and no method"
 ! grep -q 'excludesFile' "$DOCKERFILE" || die "a method filter in an excludes file is rejected by surefire and failsafe older than 3.0.0-M6"
 grep -qF -- '-Dsurefire.failIfNoSpecifiedTests=false -Dit.failIfNoSpecifiedTests=false' "$DOCKERFILE" || die "a module with no test classes must not fail the prewarm"
+grep -qF -- '-Dcucumber.execution.dry-run=true' "$DOCKERFILE" || die "a Cucumber runner ignores the method filter, so the prewarm must dry-run it: no hook or step may run at build"
 grep -qF -- '-name surefire-reports -o -name failsafe-reports' "$DOCKERFILE" || die "prewarm reports must not reach the image, where a suite verdict would read them"
 grep -q 'linux/amd64' "$HERE/../../actions/acceptance-image/action.yml" || die "amd64-only platform lost"
 head -1 "$ENTRYPOINT" | grep -q '^#!/bin/sh' || die "entrypoint must be POSIX sh"

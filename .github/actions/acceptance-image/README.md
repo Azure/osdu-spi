@@ -81,9 +81,16 @@ excludes file: surefire and failsafe older than 3.0.0-M6 reject a method filter
 there, and several upstream suites pin 3.0.0-M3 or M5.
 `failIfNoSpecifiedTests=false` keeps a module with no test classes from failing
 the build. A plain test class runs no method, but a suite runner
-(`@RunWith(JUnitPlatform.class)`, Cucumber) does not apply the filter to its
-children, so those run, or error, without the suite's environment. Their
-results are ignored there, and the reports that pass leaves are deleted.
+(`@RunWith(JUnitPlatform.class)`, a JUnit Platform `@Suite`, Cucumber) does not
+apply the filter to its children. So the pass also sets
+`-Dcucumber.execution.dry-run=true`. Surefire and failsafe hand it to the forked
+JVM as a system property, which Cucumber 5 and later read through both the JUnit 4
+runner (`@RunWith(Cucumber.class)`) and the JUnit Platform engine. Scenarios are
+matched to steps but no hook or step body runs, so nothing calls a service. An
+older Cucumber runner (`info.cukes`) does not read the property, but under the
+JUnit 4 provider the method filter already removes its scenarios. Anything else
+that runs, or errors, without the suite's environment is ignored there, and the
+reports that pass leaves are deleted.
 
 ## Forward trust store
 
