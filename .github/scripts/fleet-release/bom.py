@@ -247,6 +247,10 @@ class GitHubSource:
         proc = gh_api(f"repos/{repo}/actions/variables/UPSTREAM_REPO_URL", check=False)
         return json.loads(proc.stdout)["value"] if proc.returncode == 0 else None
 
+    def service_name(self, repo):
+        proc = gh_api(f"repos/{repo}/actions/variables/SERVICE_NAME", check=False)
+        return json.loads(proc.stdout)["value"] if proc.returncode == 0 else None
+
     def clone(self, repo):
         path = os.path.join(self.work_dir, repo.replace("/", "__") + ".git")
         if not os.path.isdir(path):
@@ -304,7 +308,7 @@ def fork_entry(fork, source, template_dir, target):
         return exclude(f"{tag} is on template {recorded[:12]}, before the target {target[:12]}")
 
     version = tag[1:] if tag.startswith("v") else tag
-    image = fork.get("image") or fork["repo"].split("/", 1)[1]
+    image = source.service_name(fork["repo"]) or fork["repo"].split("/", 1)[1]
     owner = fork["repo"].split("/", 1)[0].lower()
     images = []
     for suffix in IMAGE_SUFFIXES:

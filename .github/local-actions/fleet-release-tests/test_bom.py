@@ -188,8 +188,9 @@ class ToolchainTest(unittest.TestCase):
 
 
 class FakeSource:
-    def __init__(self, clones, releases, digests):
+    def __init__(self, clones, releases, digests, service_names=None):
         self.clones, self.releases, self.digests = clones, releases, digests
+        self.service_names = service_names or {}
 
     def latest_release(self, repo):
         return self.releases.get(repo)
@@ -199,6 +200,9 @@ class FakeSource:
 
     def upstream_repository(self, repo):
         return "https://example.com/upstream.git"
+
+    def service_name(self, repo):
+        return self.service_names.get(repo)
 
     def digest(self, image, tag):
         return self.digests.get(f"{image}:{tag}")
@@ -221,11 +225,12 @@ class ReadinessTest(unittest.TestCase):
         self.fork.commit("chore: sync", {bom.MARKER: template_commit + "\n", "pom.xml": ROOT_POM})
         self.fork.git("tag", tag)
 
-    def entry(self, releases=None, digests=None):
+    def entry(self, releases=None, digests=None, service_names=None):
         source = FakeSource({self.repo: self.fork.path},
                             {self.repo: "v1.0.0"} if releases is None else releases,
                             {"azure/osdu-spi-demo:1.0.0": "sha256:aa",
-                             "azure/osdu-spi-demo-acceptance:1.0.0": "sha256:bb"} if digests is None else digests)
+                             "azure/osdu-spi-demo-acceptance:1.0.0": "sha256:bb"} if digests is None else digests,
+                            service_names)
         return bom.fork_entry(self.fork_def, source, self.template.path, self.target)
 
     def test_a_release_on_the_target_records_its_digests_and_commit(self):
@@ -251,6 +256,12 @@ class ReadinessTest(unittest.TestCase):
         self.release_on(self.target)
         entry = self.entry(digests={"azure/osdu-spi-demo-acceptance:1.0.0": "sha256:bb"})
         self.assertIn("no service image", entry["excluded"]["reason"])
+
+    def test_a_fork_with_service_name_set_records_images_under_that_name(self):
+        self.release_on(self.target)
+        entry = self.entry(digests={"azure/demo:1.0.0": "sha256:aa"}, service_names={self.repo: "Demo"})
+        self.assertIsNone(entry["excluded"])
+        self.assertEqual(entry["images"], [{"name": "ghcr.io/azure/demo", "digest": "sha256:aa"}])
 
     def test_a_version_tag_moved_off_the_release_commit_is_excluded(self):
         self.release_on(self.target)
