@@ -604,7 +604,7 @@ jobs:
               reason="spi status --json produced no JSON"
             fi
             if [ $SECONDS -ge $deadline ]; then
-              echo "::error::environment is not deployable after 10 minutes: $reason"
+              echo "::error title=Environment::environment is not deployable after 10 minutes: $reason"
               echo "Deploy and Test: environment not deployable after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
@@ -649,7 +649,7 @@ jobs:
               reason="environment not deployable, $(jq -r '.reason.message // "no reason given"' status.json)"
             fi
             if [ $SECONDS -ge $deadline ]; then
-              echo "::error::pin still refused after 10 minutes: $reason"
+              echo "::error title=Environment::pin still refused after 10 minutes: $reason"
               echo "Deploy and Test: pin still refused after 10 minutes, $reason" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
@@ -664,7 +664,7 @@ jobs:
           until spi service verify "$SERVICE" --image "$SERVICE_IMAGE" --json | tee verify.json | tail -n1 | jq -e '.outcome == "verified"' > /dev/null; do
             code=$(tail -n1 verify.json | jq -r '.code // empty' 2>/dev/null || true)
             if [ "$code" = "lock_mismatch" ]; then echo "::error::pin replaced mid-borrow"; exit 1; fi
-            if [ $SECONDS -ge $deadline ]; then echo "::error::digest not live after 15 minutes"; exit 1; fi
+            if [ $SECONDS -ge $deadline ]; then echo "::error title=Environment::digest not live after 15 minutes"; exit 1; fi
             sleep 20
           done
 

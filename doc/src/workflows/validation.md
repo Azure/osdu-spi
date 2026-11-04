@@ -138,6 +138,7 @@ The integration-branch ruleset does not currently require status checks.
 | "Branch status validation failed" | Branch protection or merge issues | Ensure branch is up to date with target |
 | "Deploy and Test skipped" | The gate declined; the notice names why | Onboard the fork with `spi onboard`, add `.spi/service.yaml`, or open the PR from a branch in this repository |
 | "environment is not deployable after 10 minutes" | The stack stayed in maintenance, or another service's lane held it, for longer than the lane waits | Check `spi status` for the reason; rerun once it reports deployable |
+| An error annotation titled "Environment" | Deploy and Test timed out waiting on the shared backing environment: not deployable, pin still refused, or the digest not live. Every other Deploy and Test failure is a failure of the change | Check `spi status`, then rerun the failed jobs once after other lanes finish |
 | "pin still refused after 10 minutes" | Borrow kept getting a refusal: the environment stayed not deployable, or the pin kept refusing for readiness after `spi status` reported deployable | The message names which. For the second, run `spi service pin` by hand to see what it checks |
 
 ## Configuration
