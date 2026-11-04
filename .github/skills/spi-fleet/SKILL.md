@@ -10,7 +10,7 @@ The fleet is the `forks:` list in osdu-spi-stack `ops/environments/shared.yaml`.
 ## Never
 
 - Start more than `lanes` validations at once. Every fork PR and every main merge borrows the shared backing environment, and the environment has no queue across forks. Dispatch `gh workflow run sync-template.yml -R <repo>` for `lanes` forks, then wait until `watch` shows no pending runs before dispatching more.
-- Rerun a failed run without the person's go. Rerun an environment failure once, after the other lanes drain: `gh run rerun <id> --failed`.
+- Rerun a failed run without the person's go. Rerun an environment failure once, after the other lanes drain: `gh run rerun <id> --failed -R Azure/osdu-spi-<service>`.
 - Patch a fork by hand to get it green. Stop the line and fix forward in the template.
 - Approve a pull request, or merge without the person's go.
 

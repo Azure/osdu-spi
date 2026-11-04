@@ -28,7 +28,7 @@ Each fork is judged by the Validation run for its PR's head SHA.
 
 | Result | What to do |
 |---|---|
-| `environment` | Deploy and Test timed out on the shared backing environment (an error titled `Environment`). Check `spi status`, then rerun the failed jobs once after the other lanes drain: `gh run rerun <id> --failed` |
+| `environment` | Deploy and Test timed out on the shared backing environment (an error titled `Environment`). Check `spi status`, then rerun the failed jobs once after the other lanes drain: `gh run rerun <id> --failed -R Azure/osdu-spi-<service>` |
 | `real` | A failure of the change, or an environment failure that came back after its rerun. Stop the rollout and fix it forward in the template. Never patch a fork by hand. |
 
 ## Merge
