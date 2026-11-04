@@ -165,29 +165,36 @@ git -C "$GATE" add -A && git -C "$GATE" commit -qm "feat: code"
 CODE=$(git -C "$GATE" rev-parse HEAD)
 mkdir -p "$GATE/.github/workflows" && echo "name: x" > "$GATE/.github/workflows/x.yml"
 echo more >> "$GATE/docs/index.md"
-# A template sync from long ago: its grace period is over.
-git -C "$GATE" add -A && GIT_COMMITTER_DATE="2026-01-01T00:00:00Z" git -C "$GATE" commit -qm "chore: template sync"
+git -C "$GATE" add -A && git -C "$GATE" commit -qm "chore: template sync"
 DOCS=$(git -C "$GATE" rev-parse HEAD)
 echo "LICENSE text" > "$GATE/LICENSE" && echo "notice" > "$GATE/NOTICE"
 git -C "$GATE" add -A && git -C "$GATE" commit -qm "chore(notice): refresh"
 NOTICEC=$(git -C "$GATE" rev-parse HEAD)
-# A documentation tip pushed just now, whose push may still publish an image for code below it.
+# A documentation tip committed long ago: only its check suites say when it was pushed.
 echo again >> "$GATE/docs/index.md"
-git -C "$GATE" add -A && git -C "$GATE" commit -qm "docs: tip"
+git -C "$GATE" add -A && GIT_COMMITTER_DATE="2026-01-01T00:00:00Z" git -C "$GATE" commit -qm "docs: tip"
 FRESH=$(git -C "$GATE" rev-parse HEAD)
 
 check_run() {  # status conclusion suite
   printf '{"status": "%s", "conclusion": %s, "app": {"slug": "github-actions"}, "check_suite": {"id": %s}}' "$1" "$2" "$3"
 }
-gate_routes() {  # file; then lines "sha|check-runs json|actions-runs json"
-  local file="$1" first=1 sha runs push
+ago() { date -u -d "@$(( $(date +%s) - $1 ))" +%Y-%m-%dT%H:%M:%SZ; }
+suite() {  # created_at status app: a check suite of main
+  printf '{"head_branch": "main", "created_at": "%s", "status": "%s", "app": {"slug": "%s"}}' "$1" "$2" "$3"
+}
+suites() { local IFS=,; printf '[{"status": 200, "json": {"check_suites": [%s]}}]' "$*"; }
+# A push long ago: the Azure Pipelines App's suite (queued forever) and a finished workflow.
+OLD_PUSH=$(suites "$(suite 2026-01-01T00:00:00Z queued azure-pipelines)" "$(suite 2026-01-01T00:00:01Z completed github-actions)")
+gate_routes() {  # file; then lines "sha|check-runs json|actions-runs json[|check-suites json, default OLD_PUSH]"
+  local file="$1" first=1 sha runs push pushed
   shift
   { echo "["
     for spec in "$@"; do
-      IFS='|' read -r sha runs push <<<"$spec"
+      IFS='|' read -r sha runs push pushed <<<"$spec"
       [ $first = 1 ] || echo ","
       first=0
       printf '{"method": "GET", "path": "/repos/%s/commits/%s/check-runs.*", "responses": %s},\n' "$REPO" "$sha" "$runs"
+      printf '{"method": "GET", "path": "/repos/%s/commits/%s/check-suites.*", "responses": %s},\n' "$REPO" "$sha" "${pushed:-$OLD_PUSH}"
       printf '{"method": "GET", "path": "/repos/%s/actions/runs.head_sha=%s.*", "responses": %s}\n' "$REPO" "$sha" "$push"
     done
     printf ',{"method": "GET", "path": "/repos/%s/pulls.head=Azure%%3Amain.*", "responses": [{"status": 200, "json": %s}]}\n' "$REPO" "${PULLS_FROM_MAIN:-[]}"
@@ -196,6 +203,8 @@ gate_routes() {  # file; then lines "sha|check-runs json|actions-runs json"
 }
 ok_runs() { printf '[{"status": 200, "json": {"check_runs": [%s]}}]' "$(check_run "$@")"; }
 no_runs='[{"status": 200, "json": {"check_runs": []}}]'
+EMPTY='{"status": 200, "json": {"check_runs": []}}'
+PUSHED="{\"status\": 200, \"json\": {\"check_runs\": [$(check_run completed '"success"' 7)]}}"
 push_suite='[{"status": 200, "json": {"workflow_runs": [{"check_suite_id": 7}]}}]'
 no_push='[{"status": 200, "json": {"workflow_runs": []}}]'
 forbidden='[{"status": 403, "json": {"message": "Resource not accessible by integration"}}]'
@@ -222,10 +231,12 @@ grep -qF '"auth": "Bearer tok-123"' "$TMP/api.log" || die "gate did not use the 
 no_credential
 ok "in-progress run waited out; token used, then removed"
 
-note "gate: a push Validation ignores falls back to its first parent once its grace is over"
-gate_routes "$TMP/r.json" "$DOCS|$no_runs|$no_push" "$CODE|$(ok_runs completed '"success"' 7)|$push_suite"
+note "gate: a push Validation ignores falls back to its first parent once it has settled"
+# A scheduled workflow running on the tip now did not come from its push and does not hold the gate.
+gate_routes "$TMP/r.json" "$DOCS|$no_runs|$no_push|$(suites "$(suite 2026-01-01T00:00:00Z queued azure-pipelines)" "$(suite "$(ago 5)" in_progress github-actions)")" \
+  "$CODE|$(ok_runs completed '"success"' 7)|$push_suite"
 start_api "$TMP/r.json"
-out=$(GRACE=600 gate "$DOCS" 2>&1) || die "an old template-sync commit did not fall back to its parent: $out"
+out=$(GRACE=600 gate "$DOCS" 2>&1) || die "a template sync pushed long ago did not fall back to its parent: $out"
 c12=${CODE:0:12}
 grep -qF "changes only files Validation's push filter ignores" <<<"$out" || die "fallback not explained: $out"
 grep -qxF "##vso[task.setvariable variable=dockerImagesToScan]ghcr.io/azure/osdu-spi-demo:sha-$c12,ghcr.io/azure/osdu-spi-demo-load:sha-$c12" <<<"$out" \
@@ -237,12 +248,18 @@ gate_routes "$TMP/r.json" "$NOTICEC|$no_runs|$no_push" "$DOCS|$no_runs|$no_push"
 start_api "$TMP/r.json"
 run_fail "a NOTICE refresh is validated, so it is not skipped" "No push-triggered Docker Push run exists for $NOTICEC" gate "$NOTICEC"
 no_credential
-gate_routes "$TMP/r.json" "$FRESH|[{\"status\": 200, \"json\": {\"check_runs\": []}}, {\"status\": 200, \"json\": {\"check_runs\": [$(check_run completed '"success"' 7)]}}]|$push_suite"
+gate_routes "$TMP/r.json" "$FRESH|[$EMPTY, $PUSHED]|$push_suite|$(suites "$(suite "$(ago 5)" queued azure-pipelines)")"
 start_api "$TMP/r.json"
-out=$(GRACE=600 gate "$FRESH" 2>&1) || die "a recent documentation tip did not wait for its own push: $out"
-grep -qF "Docker Push succeeded for $FRESH" <<<"$out" || die "a recent tip's own image was not awaited: $out"
-! grep -qF "changes only files" <<<"$out" || die "a recent tip fell back before its checks could appear"
-ok "a recent documentation tip waits for its own push before falling back"
+out=$(GRACE=600 gate "$FRESH" 2>&1) || die "an old commit pushed just now did not wait for its own push: $out"
+grep -qF "Docker Push succeeded for $FRESH" <<<"$out" || die "the tip's own image was not awaited: $out"
+! grep -qF "changes only files" <<<"$out" || die "the tip fell back before its checks could appear"
+ok "the grace period counts from the push, not from an old commit time"
+gate_routes "$TMP/r.json" "$FRESH|[$EMPTY, $EMPTY, $PUSHED]|$push_suite|$(suites "$(suite "$(ago 1200)" queued azure-pipelines)" "$(suite "$(ago 1199)" in_progress github-actions)")"
+start_api "$TMP/r.json"
+out=$(GRACE=600 gate "$FRESH" 2>&1) || die "a push still being validated did not wait for Docker Push: $out"
+grep -qF "Docker Push succeeded for $FRESH" <<<"$out" || die "the tip's own image was not awaited: $out"
+! grep -qF "changes only files" <<<"$out" || die "the tip fell back while its push's Validation was still running"
+ok "a push whose Validation has not yet reached Docker Push is waited for past the grace period"
 
 note "gate: refusals"
 gate_routes "$TMP/r.json" "$CODE|$no_runs|$no_push"
@@ -309,6 +326,7 @@ notice_routes "$(snapshot 99), $(snapshot 100)" "Detection completed"
 fetch > /dev/null
 ! grep -q $'\r' "$TMP/notice/NOTICE" && grep -qx "foo 1.0 - MIT" "$TMP/notice/NOTICE" || die "NOTICE not written with LF endings"
 grep -qF '`com.azure:azure-core:1.60.0`' "$TMP/notice/notice-report.md" || die "gap report misses the noDefinition component"
+grep -qF '`openssl:3.3 (os)`' "$TMP/notice/notice-report.md" || die "gap report does not list the image's operating system packages"
 ok "waited for build 100's scan-job snapshot, ignoring other definitions, jobs and builds"
 notice_routes "$(snapshot 100), $(snapshot 101)" "ok"
 run_fail "snapshot superseded by a concurrent run" "now belongs to build ['101']" fetch

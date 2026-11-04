@@ -85,8 +85,8 @@ def report(out, gid, tid, build, content, excluded):
         m = re.match(r"(\S+) (\S+) - (.+)$", lines[0].strip()) if lines else None
         if m:
             entries.add((m.group(1).lower(), m.group(2).lower()))
-    gaps = {k: sorted({label(i) for i in v}) for k, v in sorted(excluded.items())
-            if v and k not in ("noCopyright", "notSupported")}
+    # noCopyright components are in the NOTICE, without a copyright line; every other reason is a missing entry.
+    gaps = {k: sorted({label(i) for i in v}) for k, v in sorted(excluded.items()) if v and k != "noCopyright"}
     os_packages = len(excluded.get("notSupported") or [])
     no_copyright = len(excluded.get("noCopyright") or [])
     data = {"governedRepository": gid, "snapshotType": tid, "build": build, "noticeEntries": len(entries),
@@ -99,9 +99,9 @@ def report(out, gid, tid, build, content, excluded):
     md = ["## Component Governance NOTICE", "",
           f"Snapshot type {tid} of build {build}: {len(entries)} entries, {no_copyright} without a copyright line.", "",
           "Registered components that Component Governance leaves out of the NOTICE. Registrations include test",
-          "scope, so `excluded` is mostly test dependencies. The NOTICE is not yet checked against the jar the",
-          f"image ships (ADR-047). The {os_packages} operating system packages of the container image are not",
-          "supported by the Component Governance NOTICE.", "",
+          "scope, so `excluded` is mostly test dependencies. `notSupported` are the container image's operating",
+          f"system packages ({os_packages}), which the Component Governance NOTICE does not cover. The NOTICE is not",
+          "yet checked against the jar the image ships (ADR-047).", "",
           "| Reason | Count |", "| --- | --- |"]
     md += [f"| {k} | {len(v)} |" for k, v in gaps.items()]
     for k, v in gaps.items():

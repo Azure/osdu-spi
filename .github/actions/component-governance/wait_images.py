@@ -22,8 +22,9 @@ image never replaces a complete snapshot.
 With images "auto" the gate looks for a successful push-event Docker Push run
 of the built commit, through the GitHub API with the checkout's GitHub App
 token. A push whose files Validation's push filter ignores publishes no image;
-the gate then steps to the first parent and scans that commit's images, which
-the ignored files cannot change. Explicit images are scanned unverified.
+once that push has settled the gate steps to the first parent and scans that
+commit's images, which the ignored files cannot change. Explicit images are
+scanned unverified.
 
 The checkout's GitHub credential is removed on every exit, so the scan never
 sees it.
@@ -33,6 +34,7 @@ CG_IMAGE_WAIT_SECONDS (1800), CG_IMAGE_GRACE_SECONDS (600), CG_POLL_SECONDS
 (30), GITHUB_API_URL, CG_GITHUB_TOKEN (default: the checkout's credential).
 """
 
+import datetime
 import json
 import os
 import re
@@ -121,25 +123,48 @@ def publishing_runs(token, repo, sha):
     return [c for c in runs if heads[c["check_suite"]["id"]] == "main"], "check suites of main"
 
 
+def push_state(token, repo, sha, grace_seconds):
+    """When the commit was pushed to main, and whether a workflow that push started is still running.
+
+    Every GitHub App installed with checks permission gets a check suite of main as soon as the commit is pushed
+    there, before any workflow starts, so the earliest one dates the push; the commit time can be much older.
+    Workflow suites created within the grace period after it belong to that push (scheduled workflows on the
+    same tip come later). Validation's Docker Push job starts only after its build, often more than 10 minutes
+    after the push, so while such a suite is unfinished the run can still appear.
+    """
+    suites = [(datetime.datetime.fromisoformat(s["created_at"].replace("Z", "+00:00")).timestamp(), s)
+              for s in github(token, f"repos/{repo}/commits/{sha}/check-suites", query={"per_page": 100})["check_suites"]
+              if s.get("head_branch") == "main"]
+    if not suites:
+        return None, False
+    pushed = min(t for t, _ in suites)
+    running = any(t - pushed < grace_seconds and s["status"] != "completed"
+                  and (s.get("app") or {}).get("slug") == "github-actions" for t, s in suites)
+    return pushed, running
+
+
 def wait(token, repo, commit):
     """Returns the commit whose published images to scan: the built commit or a first-parent ancestor.
 
-    A commit gets the grace period, counted from its commit time or from the start of the wait, whichever
-    is longer, before its missing run means anything: a push's checks appear a little after the push. Only
-    then does an ignored-paths commit fall back to its parent, or a missing run fail the job.
+    A missing Docker Push run means nothing until the commit has settled: its push to main (or, for a commit
+    never pushed to main, the start of the wait) is older than the grace period, and no workflow that push
+    started is still running. Only then does an ignored-paths commit fall back to its parent, or a missing run
+    fail the job.
     """
     wait_seconds = int(os.environ.get("CG_IMAGE_WAIT_SECONDS", "1800"))
     grace_seconds = int(os.environ.get("CG_IMAGE_GRACE_SECONDS", "600"))
     start = time.time()
     skipped = 0
+    ready = False
 
     def settled(c):
-        age = time.time() - int(git("log", "-1", "--format=%ct", c))
-        return max(age, time.time() - start) >= grace_seconds
+        pushed, running = push_state(token, repo, c, grace_seconds)
+        return not running and time.time() - (pushed or start) >= grace_seconds
 
     while True:
         try:
             runs, method = publishing_runs(token, repo, commit)
+            ready = not runs and settled(commit)
         except urllib.error.HTTPError as e:
             if e.code < 500 and e.code != 429:
                 fail(f"GitHub API returned HTTP {e.code} for {e.url}")
@@ -157,7 +182,7 @@ def wait(token, repo, commit):
                 fail(f"{CHECK} for {commit} ended without success "
                      f"({', '.join(sorted({str(c['conclusion']) for c in done}))}); its images were not published, so "
                      "nothing is registered")
-        elif runs is not None and settled(commit) and ignored_only(commit):
+        elif runs is not None and ready and ignored_only(commit):
             if skipped == MAX_SKIPPED:
                 fail(f"No published image within {MAX_SKIPPED} first-parent commits of {commit}")
             parent = git("log", "-1", "--format=%P", commit).split()[0]
@@ -165,7 +190,7 @@ def wait(token, repo, commit):
                   f"its first parent {parent} ships the same image", flush=True)
             commit, skipped = parent, skipped + 1
             continue
-        elif runs is not None and settled(commit):
+        elif runs is not None and ready:
             fail(f"No push-triggered {CHECK} run exists for {commit}: Validation published no image for it, for "
                  "example a commit that never reached main or a push Validation skipped. Queue the run with explicit "
                  "images, or scan a commit that has a published image.")

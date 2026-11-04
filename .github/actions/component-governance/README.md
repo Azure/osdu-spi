@@ -52,15 +52,21 @@ the snapshot without it. `wait_images.py` fails the job first:
 - The Azure Pipelines GitHub App cannot read the Actions API, so the gate falls back to
   check suites whose head branch is `main`, and refuses when the repository has any pull
   request from `main`, which would make that ambiguous.
+- A missing run means nothing until the commit's push to `main` has **settled**: it is
+  more than 10 minutes old and no workflow it started is still running. The push is dated
+  by the commit's earliest check suite of `main`, which every installed app with checks
+  permission gets on push, not by the commit time, which can be much older. Validation's
+  `Docker Push` job starts after its build, 7 to 12 minutes after the push in the forks
+  and sometimes much later, so a running Validation holds the gate. Suites created after
+  the grace period, such as scheduled workflows on the same tip, do not.
 - A commit that changes only paths Validation's push filter ignores publishes no image,
-  and the files it changes cannot change one. Once the commit is older than the grace
-  period (10 minutes from its commit time), so its own push's checks would have appeared,
-  the gate steps to its first parent, up to 50 commits, and scans that commit's images. A
-  push whose tip is documentation but which also carries code publishes the tip; the grace
-  period keeps the gate from leaving it too early. The harness keeps the gate's copy of
-  the filter equal to `validate.yml`.
-- No qualifying run once the grace period is over, or no finished run after 30 minutes,
-  fails the job. Explicit `images` skip the gate with a warning.
+  and the files it changes cannot change one. Once its push has settled, the gate steps to
+  its first parent, up to 50 commits, and scans that commit's images. A push whose tip is
+  documentation but which also carries code publishes the tip, which is why the gate must
+  not leave a push that has not settled. The harness keeps the gate's copy of the filter
+  equal to `validate.yml`.
+- No qualifying run once the push has settled, or no finished run after 30 minutes, fails
+  the job. Explicit `images` skip the gate with a warning.
 - The checkout's GitHub credential is removed on every exit, and again by an `always()`
   step, so the scan never sees it.
 
