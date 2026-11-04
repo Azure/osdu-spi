@@ -121,7 +121,7 @@ The integration-branch ruleset does not currently require status checks.
 - **Sync PRs**: Build `core` only and skip image validation
 - **Release and automation PRs**: Skip semantic PR-title validation
 - **Dependabot PRs**: Build with coverage and validate the image through `dependabot-validation.yml`. A bump that edits an upstream-owned file, typically an inherited version in the root `pom.xml`, is closed by that workflow with a comment instead of building (ADR-026, ADR-038)
-- **Docs/config-only PRs**: Changes limited to `.github/**`, `devops/**`, `docs/**`, other dotfiles, or Markdown skip Java and container work while summary checks still report. `.mvn/**` and `.spi/**` are never config-only, so a change there always passes the path filter and the build runs; the branch and deploy-gate rules above still apply
+- **Docs/config-only PRs**: Changes limited to `.github/**`, `devops/**`, `docs/**`, other dotfiles, or Markdown skip Java and container work while summary checks still report. A push of the same kind, such as a release merge that changes only `CHANGELOG.md` and the release manifest, still builds and pushes images so the release can tag them, and the Deploy Gate skips the borrow. `.mvn/**` and `.spi/**` are never config-only, so a change there always passes the path filter and the build runs; the branch and deploy-gate rules above still apply
 - **Upstream-owned files on a PR to `main`**: Check Paths fails when a changed file exists on `origin/fork_upstream` (ADR-038), unless the PR carries the `port` label declaring a deliberate port (add the label and re-run Check Paths; a fork initialized before the label existed creates it once with `gh label create port`, as the template-sync labels issue for that fork also notes), targets a branch other than `main`, or is a `fork_integration`/`release/upstream-*` head, mirror mode, or a fork with no `.github/upstream-filter.yml`
 - **Pull requests from other repositories**: Build and validate only; the deploy lane skips because such a run carries no deploy identity
 
@@ -138,6 +138,7 @@ The integration-branch ruleset does not currently require status checks.
 | "Branch status validation failed" | Branch protection or merge issues | Ensure branch is up to date with target |
 | "Deploy and Test skipped" | The gate declined; the notice names why | Onboard the fork with `spi onboard`, add `.spi/service.yaml`, or open the PR from a branch in this repository |
 | "environment is not deployable after 10 minutes" | The stack stayed in maintenance, or another service's lane held it, for longer than the lane waits | Check `spi status` for the reason; rerun once it reports deployable |
+| An error annotation titled "Environment" | Deploy and Test timed out waiting on the shared backing environment: not deployable, pin still refused, or the digest not live. Every other Deploy and Test failure is a failure of the change | Check `spi status`, then rerun the failed jobs once after other lanes finish |
 | "pin still refused after 10 minutes" | Borrow kept getting a refusal: the environment stayed not deployable, or the pin kept refusing for readiness after `spi status` reported deployable | The message names which. For the second, run `spi service pin` by hand to see what it checks |
 
 ## Configuration

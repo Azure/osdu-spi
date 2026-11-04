@@ -40,6 +40,7 @@ jobs:
       # Manifest config (.release-please-config.json) emits path-prefixed outputs; fall back to top-level.
       version: ${{ steps.release.outputs['.--version'] || steps.release.outputs.version }}
       tag_name: ${{ steps.release.outputs['.--tag_name'] || steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs['.--sha'] || steps.release.outputs.sha }}
     permissions:
       contents: write
       pull-requests: write
@@ -108,15 +109,19 @@ jobs:
       - name: "Update Release Tags"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          RELEASE_SHA: ${{ needs.release-please.outputs.sha }}
         run: |
-          RELEASE_TAG=$(gh release list -L 1 | cut -f 3)
+          RELEASE_TAG="${TAG_NAME:-$(gh release list -L 1 | cut -f 3)}"
+          # From the API, not the local ref: the upstream tag fetch above can overwrite a same-named tag.
+          RELEASE_SHA="${RELEASE_SHA:-$(gh api "repos/${GH_REPO}/commits/${RELEASE_TAG}" --jq .sha)}"
           
           # Additive: the release tag itself is never moved.
           CORRELATION_TAG="${RELEASE_TAG}-upstream-${UPSTREAM_VERSION}"
           
           if ! git tag -l "${CORRELATION_TAG}" | grep -q .; then
-            git tag $CORRELATION_TAG
-            git push origin $CORRELATION_TAG
+            git tag "$CORRELATION_TAG" "$RELEASE_SHA"
+            git push origin "$CORRELATION_TAG"
           fi
           
           RELEASE_NOTES=$(gh release view $RELEASE_TAG --json body -q .body)
@@ -143,7 +148,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: "Resolve release commit"
+        # The release can be created on a later push than the one that merged it, so the images
+        # and the descriptor come from the commit the release tag names, not from GITHUB_SHA.
+        id: commit
+        env:
+          RELEASE_SHA: ${{ needs.release-please.outputs.sha }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$RELEASE_SHA"
+          if [ -z "$sha" ] && [ -n "$TAG_NAME" ]; then
+            sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" --jq .sha)
+          fi
+          [ -n "$sha" ] || { echo "::error::could not resolve the release commit for ${TAG_NAME:-this release}"; exit 1; }
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "short=${sha:0:12}" >> "$GITHUB_OUTPUT"
+          echo "Release commit: \`${sha}\`" >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          fetch-depth: 0
+
+      - name: "Switch to the release commit"
+        # The helper comes from the triggering commit, which carries this workflow; an older
+        # release commit may predate it.
+        env:
+          RELEASE_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          cp .github/actions/release-retag/retag.sh "$RUNNER_TEMP/retag.sh"
+          git checkout -q --detach "$RELEASE_SHA"
 
       - name: "Tag release image with semver"
         id: service_tag
@@ -152,31 +188,16 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           SERVICE_NAME: ${{ vars.SERVICE_NAME }}
           REPO_NAME: ${{ github.event.repository.name }}
+          SHORT_SHA: ${{ steps.commit.outputs.short }}
         run: |
           set -euo pipefail
           # Registry-side retag: add :<version> to the release commit's image. No rebuild.
           OWNER_LC=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
           SERVICE=$(printf '%s' "${SERVICE_NAME:-$REPO_NAME}" | tr '[:upper:]' '[:lower:]')
           REPO="ghcr.io/${OWNER_LC}/${SERVICE}"
-          # Source the immutable :sha-<short> of this commit, not :main-snapshot, which can still
-          # point at the prior commit until validate.yml's concurrent docker-push catches up.
-          SRC="${REPO}:sha-${GITHUB_SHA:0:12}"
-
-          # validate.yml's docker-push for this same push may still be building (many minutes on
-          # a cold cache); the loop exits as soon as the image appears.
-          found=false
-          for attempt in $(seq 1 60); do
-            if docker buildx imagetools inspect "$SRC" >/dev/null 2>&1; then found=true; break; fi
-            echo "Source ${SRC} not present yet (attempt ${attempt}/60); waiting for docker-push…"
-            sleep 20
-          done
-          if [ "$found" != "true" ]; then
-            echo "::error::Release image source ${SRC} did not appear within ~20 min; validate.yml docker-push may have failed for this commit."
-            exit 1
-          fi
-
-          docker buildx imagetools create --tag "${REPO}:${VERSION}" "$SRC"
-          echo "Tagged \`${REPO}:${VERSION}\` from \`${SRC}\`" >> "$GITHUB_STEP_SUMMARY"
+          # The immutable :sha-<short> of the release commit, not :main-snapshot, which can still
+          # point at an earlier commit while validate.yml's docker-push is building.
+          "$RUNNER_TEMP/retag.sh" "${REPO}:sha-${SHORT_SHA}" "${REPO}:${VERSION}"
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
 
       - name: "Resolve acceptance suite"
@@ -189,11 +210,11 @@ jobs:
           RESOLVER: .github/actions/acceptance-resolver/resolve.py
 
       - name: "Tag acceptance image with semver"
-        # Same commit as the service image, so "prove release X on stack Y" stays one command
-        # later. docker-push publishes it right after the service image, so this poll is normally instant.
+        # Same commit as the service image, so "prove release X on stack Y" stays one command later.
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           REPO: ${{ steps.service_tag.outputs.repo }}
+          SHORT_SHA: ${{ steps.commit.outputs.short }}
           ACCEPTANCE_BUILDABLE: ${{ steps.suite.outputs.buildable }}
         run: |
           set -euo pipefail
@@ -201,20 +222,7 @@ jobs:
             echo "No acceptance suite on this commit; acceptance image retag skipped." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          ACC_REPO="${REPO}-acceptance"
-          ACC_SRC="${ACC_REPO}:sha-${GITHUB_SHA:0:12}"
-          acc_found=false
-          for attempt in $(seq 1 60); do
-            if docker buildx imagetools inspect "$ACC_SRC" >/dev/null 2>&1; then acc_found=true; break; fi
-            echo "Acceptance ${ACC_SRC} not present yet (attempt ${attempt}/60); waiting for its push…"
-            sleep 20
-          done
-          if [ "$acc_found" != "true" ]; then
-            echo "::error::Acceptance image ${ACC_SRC} did not appear within ~20 min; the acceptance push may have failed for this commit."
-            exit 1
-          fi
-          docker buildx imagetools create --tag "${ACC_REPO}:${VERSION}" "$ACC_SRC"
-          echo "Tagged \`${ACC_REPO}:${VERSION}\` from \`${ACC_SRC}\`" >> "$GITHUB_STEP_SUMMARY"
+          "$RUNNER_TEMP/retag.sh" "${REPO}-acceptance:sha-${SHORT_SHA}" "${REPO}-acceptance:${VERSION}"
 
       - name: "Resolve load payload"
         id: payload
@@ -226,6 +234,7 @@ jobs:
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           REPO: ${{ steps.service_tag.outputs.repo }}
+          SHORT_SHA: ${{ steps.commit.outputs.short }}
           LOAD_BUILDABLE: ${{ steps.payload.outputs.buildable }}
         run: |
           set -euo pipefail
@@ -233,17 +242,4 @@ jobs:
             echo "No shared-schemas payload on this commit; load image retag skipped." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          LOAD_REPO="${REPO}-load"
-          LOAD_SRC="${LOAD_REPO}:sha-${GITHUB_SHA:0:12}"
-          load_found=false
-          for attempt in $(seq 1 60); do
-            if docker buildx imagetools inspect "$LOAD_SRC" >/dev/null 2>&1; then load_found=true; break; fi
-            echo "Load image ${LOAD_SRC} not present yet (attempt ${attempt}/60); waiting for its push…"
-            sleep 20
-          done
-          if [ "$load_found" != "true" ]; then
-            echo "::error::Load image ${LOAD_SRC} did not appear within ~20 min; the load image push may have failed for this commit."
-            exit 1
-          fi
-          docker buildx imagetools create --tag "${LOAD_REPO}:${VERSION}" "$LOAD_SRC"
-          echo "Tagged \`${LOAD_REPO}:${VERSION}\` from \`${LOAD_SRC}\`" >> "$GITHUB_STEP_SUMMARY"
+          "$RUNNER_TEMP/retag.sh" "${REPO}-load:sha-${SHORT_SHA}" "${REPO}-load:${VERSION}"
