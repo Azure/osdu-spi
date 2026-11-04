@@ -112,6 +112,7 @@ nav:
       - Fork Lifecycle: runbooks/fork-lifecycle.md
       - Service Descriptor: runbooks/service-descriptor.md
       - Fleet Rollout: runbooks/fleet-rollout.md
+      - Component Governance: runbooks/component-governance.md
       - Customer Fork Adoption: workflows/adoption.md
   - Decisions:
       - Index: adr/index.md

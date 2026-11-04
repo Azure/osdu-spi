@@ -4,6 +4,8 @@
 
 Accepted (2026-08-31)
 
+**Amended by [ADR-046](046-component-governance-notice.md)** - 2026-11-04: the descriptor may carry a `componentGovernance` section, the inputs of the Component Governance pipeline. The resolver validates it with the rest of the closed contract and does not read it.
+
 ## Context
 
 The engineering system builds and pushes a digest-addressed service image per commit, but nothing yet deploys that image or runs the acceptance suite against a live platform. Every OSDU acceptance test needs the same answers first: where the service is, how to authenticate, and which tenant, partition, and legal tag to use. Upstream keeps those answers in four providers' pipelines. The filter transform (ADR-038) removes those pipelines, so the tests are in the repository and the knowledge of how to run them is not.
