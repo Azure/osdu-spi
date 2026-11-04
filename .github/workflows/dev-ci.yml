@@ -51,6 +51,9 @@ jobs:
       - name: Run spi-fleet harness
         run: bash .github/local-actions/spi-fleet-tests/run-tests.sh
 
+      - name: Run fleet release harness
+        run: bash .github/local-actions/fleet-release-tests/run-tests.sh
+
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
