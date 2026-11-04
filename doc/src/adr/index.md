@@ -94,6 +94,7 @@ Decisions for the container image build, the image registry, the acceptance-test
 | [041](041-borrow-prove-restore-lane.md) | **Borrow, Prove, Restore Lane** | :material-trending-up: High |
 | [042](042-paired-loader-image.md) | **Paired Loader Image from the Service Fork** | :material-minus: Medium |
 | [044](044-pytest-acceptance-suites.md) | **Pytest Acceptance Suites** | :material-minus: Medium |
+| [045](045-paced-fleet-rollouts.md) | **Paced Fleet Rollouts** | :material-minus: Medium |
 
 ### :material-package-variant: Release Management
 

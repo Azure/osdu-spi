@@ -156,6 +156,14 @@
       {
         "path": ".github/local-actions/",
         "reason": "Template-only actions used during initialization, not needed in fork instances"
+      },
+      {
+        "path": ".github/fleet/",
+        "reason": "Fleet rollout config, read only from the template"
+      },
+      {
+        "path": ".github/skills/",
+        "reason": "Fleet skills, run only from the template"
       }
     ],
     "files": [
