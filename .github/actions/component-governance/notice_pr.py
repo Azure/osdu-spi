@@ -22,7 +22,7 @@ branch, or a later build of the same commit, and only at the tip this run saw.
 
 While the fork's upstream filter still keeps upstream's NOTICE, the refresh
 also changes that verdict to strip, so syncs stop overwriting the generated
-file, and the pull request body explains the one-time cutover (ADR-046).
+file, and the pull request body explains the one-time cutover (ADR-047).
 
 Environment: NOTICE_OUT (from fetch_notice.py), BUILD_SOURCESDIRECTORY,
 BUILD_REPOSITORY_NAME, BUILD_SOURCEBRANCH, BUILD_SOURCEVERSION, BUILD_BUILDID,
@@ -109,7 +109,7 @@ def body(base, run_url, report, cutover):
     if cutover:
         text += ("### One-time cutover: NOTICE becomes fork-owned\n\n"
                  f"This pull request also changes `NOTICE: keep` to `NOTICE: strip` in `{FILTER}`, so upstream "
-                 "syncs stop replacing the generated file (ADR-046).\n\n"
+                 "syncs stop replacing the generated file (ADR-047).\n\n"
                  "1. `NOTICE` is still upstream-owned on this branch, so the ownership check fails: add the `port` "
                  "label and re-run Check Paths.\n"
                  "2. The next sync that regenerates `fork_upstream` removes upstream's `NOTICE` there, and the "

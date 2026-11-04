@@ -1,7 +1,7 @@
 # Component Governance
 
 The steps of the Component Governance pipeline, `.azuredevops/component-governance.yml`
-(ADR-046). The pipeline runs in Azure DevOps, not in GitHub Actions, so this directory
+(ADR-047). The pipeline runs in Azure DevOps, not in GitHub Actions, so this directory
 has no `action.yml`: the pipeline calls the scripts directly. Both sync to every fork,
 the directory with `.github/actions` and the pipeline as a `sync-config.json` file entry.
 

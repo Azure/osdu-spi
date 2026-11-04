@@ -48,7 +48,7 @@
       },
       {
         "path": ".azuredevops/component-governance.yml",
-        "description": "Azure DevOps pipeline that registers the fork with Component Governance and generates its NOTICE (ADR-046)"
+        "description": "Azure DevOps pipeline that registers the fork with Component Governance and generates its NOTICE (ADR-047)"
       }
     ],
     "workflows": {
@@ -127,6 +127,10 @@
         {
           "path": ".github/workflows/scorecard.yml",
           "description": "OpenSSF Scorecard security analysis (template only)"
+        },
+        {
+          "path": ".github/workflows/fleet-release.yml",
+          "description": "Fleet release and bill of materials across all forks (template only)"
         }
       ],
       "development_only": [
@@ -168,6 +172,10 @@
       {
         "path": ".github/skills/",
         "reason": "Fleet skills, run only from the template"
+      },
+      {
+        "path": ".github/scripts/fleet-release/",
+        "reason": "Fleet release script, run only from the template"
       }
     ],
     "files": [
@@ -232,6 +240,10 @@
       {
         "path": ".github/workflows/dev-ci.yml",
         "reason": "Template development CI/CD - not needed in fork instances"
+      },
+      {
+        "path": ".github/workflows/fleet-release.yml",
+        "reason": "Fleet release runs only from the template"
       }
     ]
   }

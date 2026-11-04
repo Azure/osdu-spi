@@ -238,7 +238,7 @@ or plain scalars, comments — no anchors, no multi-line scalars, no tabs),
 parsed by the engine itself so the contract never depends on the runner image.
 
 The descriptor may also carry a `componentGovernance` section, the inputs of the Component
-Governance pipeline (ADR-046, [`component-governance`](../component-governance/README.md)). The
+Governance pipeline (ADR-047, [`component-governance`](../component-governance/README.md)). The
 engine validates its shape so that one closed contract covers the whole file, and does not read it
 when it resolves a suite.
 

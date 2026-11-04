@@ -100,7 +100,7 @@ def report(out, gid, tid, build, content, excluded):
           f"Snapshot type {tid} of build {build}: {len(entries)} entries, {no_copyright} without a copyright line.", "",
           "Registered components that Component Governance leaves out of the NOTICE. Registrations include test",
           "scope, so `excluded` is mostly test dependencies. The NOTICE is not yet checked against the jar the",
-          f"image ships (ADR-046). The {os_packages} operating system packages of the container image are not",
+          f"image ships (ADR-047). The {os_packages} operating system packages of the container image are not",
           "supported by the Component Governance NOTICE.", "",
           "| Reason | Count |", "| --- | --- |"]
     md += [f"| {k} | {len(v)} |" for k, v in gaps.items()]

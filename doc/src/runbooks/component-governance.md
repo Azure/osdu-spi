@@ -1,6 +1,6 @@
 # Component Governance
 
-Each service fork registers what its image ships with Component Governance (CG) and keeps its `NOTICE` generated from that registration. The pipeline is `.azuredevops/component-governance.yml`, synced from the template, and it runs in Azure DevOps. This runbook connects a fork, runs it the first time, and makes `NOTICE` fork-owned. [ADR-046](../adr/046-component-governance-notice.md) records the decision, and the README in `.github/actions/component-governance/` describes each step.
+Each service fork registers what its image ships with Component Governance (CG) and keeps its `NOTICE` generated from that registration. The pipeline is `.azuredevops/component-governance.yml`, synced from the template, and it runs in Azure DevOps. This runbook connects a fork, runs it the first time, and makes `NOTICE` fork-owned. [ADR-047](../adr/047-component-governance-notice.md) records the decision, and the README in `.github/actions/component-governance/` describes each step.
 
 ## Before you start
 

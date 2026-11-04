@@ -14,7 +14,7 @@
 # limitations under the License.
 
 #
-# Fixture harness for the Component Governance pipeline steps (ADR-046). It covers the
+# Fixture harness for the Component Governance pipeline steps (ADR-047). It covers the
 # logic a live run rarely exercises and that would fail silently: which commit's images
 # the gate trusts, which NOTICE refresh may replace another, the one-time NOTICE cutover,
 # and the gate's copy of Validation's push filter. Fixture repositories and a scripted

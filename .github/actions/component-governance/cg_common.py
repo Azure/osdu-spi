@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Helpers shared by the Component Governance pipeline steps (ADR-046).
+"""Helpers shared by the Component Governance pipeline steps (ADR-047).
 
 The steps run on an Azure DevOps agent. Errors and warnings use the agent's
 logging commands, so they show in the run summary.

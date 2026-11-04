@@ -1,4 +1,4 @@
-# Component Governance registration and NOTICE for an OSDU SPI service fork (ADR-046).
+# Component Governance registration and NOTICE for an OSDU SPI service fork (ADR-047).
 #
 # Synced from the template (osdu-spi) into every fork; do not edit it in a fork. Per-fork inputs
 # come from the componentGovernance section of .spi/service.yaml, read at run time:

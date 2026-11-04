@@ -79,7 +79,7 @@ K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
 # Pod names are DNS subdomains: dot-separated labels, at most 253 characters.
 K8S_SUBDOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")
-# componentGovernance (ADR-046): the OSDU community project the fork is built from,
+# componentGovernance (ADR-047): the OSDU community project the fork is built from,
 # and repository-relative directories with no "." or ".." segment.
 UPSTREAM_URL_RE = re.compile(r"^https://community\.opengroup\.org/osdu(/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$")
 MAVEN_PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -375,7 +375,7 @@ def _repo_dir(value, where):
 
 
 def validate_component_governance(cg):
-    """The optional componentGovernance section (ADR-046). The resolver only validates it;
+    """The optional componentGovernance section (ADR-047). The resolver only validates it;
     the component governance pipeline reads it."""
     where = "descriptor.componentGovernance"
     if not isinstance(cg, dict):

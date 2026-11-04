@@ -1,4 +1,4 @@
-# ADR-046: Component Governance Registration and Generated NOTICE
+# ADR-047: Component Governance Registration and Generated NOTICE
 
 ## Status
 
@@ -77,4 +77,4 @@ The filter keeps upstream's `NOTICE` (ADR-038), so a sync would overwrite the ge
 
 ---
 
-[← ADR-045](045-paced-fleet-rollouts.md) | :material-arrow-up: [Catalog](index.md)
+[← ADR-046](046-fleet-release-bom.md) | :material-arrow-up: [Catalog](index.md)

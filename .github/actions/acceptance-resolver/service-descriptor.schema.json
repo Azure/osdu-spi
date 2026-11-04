@@ -51,7 +51,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["upstream"],
-      "description": "Inputs of the Component Governance pipeline (.azuredevops/component-governance.yml, ADR-046), which registers what the fork ships and generates its NOTICE. Optional; the acceptance resolver validates it and does not read it.",
+      "description": "Inputs of the Component Governance pipeline (.azuredevops/component-governance.yml, ADR-047), which registers what the fork ships and generates its NOTICE. Optional; the acceptance resolver validates it and does not read it.",
       "properties": {
         "upstream": {
           "type": "string",

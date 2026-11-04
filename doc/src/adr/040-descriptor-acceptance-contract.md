@@ -4,7 +4,7 @@
 
 Accepted (2026-08-31)
 
-**Amended by [ADR-046](046-component-governance-notice.md)** - 2026-11-04: the descriptor may carry a `componentGovernance` section, the inputs of the Component Governance pipeline. The resolver validates it with the rest of the closed contract and does not read it.
+**Amended by [ADR-047](047-component-governance-notice.md)** - 2026-11-04: the descriptor may carry a `componentGovernance` section, the inputs of the Component Governance pipeline. The resolver validates it with the rest of the closed contract and does not read it.
 
 ## Context
 
