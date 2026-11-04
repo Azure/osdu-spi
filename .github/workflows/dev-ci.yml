@@ -48,6 +48,9 @@ jobs:
       - name: Run java release harness
         run: bash .github/local-actions/java-release-tests/run-tests.sh
 
+      - name: Run spi-fleet harness
+        run: bash .github/local-actions/spi-fleet-tests/run-tests.sh
+
   validate:
     name: Validate Template
     runs-on: ubuntu-latest

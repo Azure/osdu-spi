@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "lanes": 5,
+  "ordering": [
+    {
+      "service": "search",
+      "after": ["storage", "indexer"],
+      "reason": "the search suites read records through storage and the indexer"
+    }
+  ]
+}
