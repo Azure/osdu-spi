@@ -148,12 +148,12 @@ class MergePlan(unittest.TestCase):
     def test_plan_without_go_merges_nothing(self):
         rows = self.rows()
         forks = [{"service": s, "repo": r["repo"]} for s, r in rows.items()]
-        args = mock.Mock(prefix="template-sync/", lanes=1, go=False, log="unused.jsonl", interval=0, timeout=0)
+        args = mock.Mock(prefix="template-sync/", lanes=1, go=False, log="unused.jsonl", interval=0, timeout=0, grace=0)
         out = io.StringIO()
         with mock.patch.object(fleet, "pr_row", side_effect=lambda f, p: rows[f["service"]]), \
              mock.patch.object(fleet, "gh") as gh, mock.patch.object(fleet, "merge_one") as merge_one, \
              contextlib.redirect_stdout(out):
-            code = fleet.cmd_merge(args, forks, CONFIG)
+            code = fleet.cmd_merge(args, forks, CONFIG, forks)
         self.assertEqual(code, fleet.EXIT_OK)
         gh.assert_not_called()
         merge_one.assert_not_called()
@@ -162,6 +162,114 @@ class MergePlan(unittest.TestCase):
         self.assertIn("group 2   legal", text)
         self.assertIn("held      search: green, but ordered after", text)
         self.assertIn("held      file: green (needs approval)", text)
+
+
+class MergeRun(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.log = Path(self.tmp.name) / "merge.jsonl"
+        self.merged = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def go(self, services, lanes, busy=0, skip=(), main_verdict="green"):
+        rows = {s: {"service": s, "repo": f"Azure/osdu-spi-{s}", "pr": 1, "head": "h", "verdict": "green",
+                    "mergeState": "CLEAN", "review": "APPROVED", "otherFailures": []} for s in services}
+        forks = [{"service": s, "repo": r["repo"]} for s, r in rows.items()]
+        args = mock.Mock(prefix="template-sync/", lanes=lanes, go=True, log=str(self.log),
+                         interval=0, timeout=0, grace=0)
+        waves = []
+
+        def merge_one(row):
+            if row["service"] in skip:
+                return {**row, "verdict": "skipped", "note": "head moved since it was checked"}
+            self.merged.append(row["service"])
+            return {**row, "mergeSha": "m" * 40, "verdict": "no-run"}
+
+        def wait(merged, *_):
+            waves.append([m["service"] for m in merged])
+            return [{**m, "verdict": main_verdict, "response": "stop"} for m in merged]
+
+        with mock.patch.object(fleet, "pr_row", side_effect=lambda f, p: rows[f["service"]]), \
+             mock.patch.object(fleet, "active_lanes", return_value=busy), \
+             mock.patch.object(fleet, "image_name", side_effect=lambda r: r.lower()), \
+             mock.patch.object(fleet, "ghcr_digest", return_value="sha256:old"), \
+             mock.patch.object(fleet, "merge_one", side_effect=merge_one), \
+             mock.patch.object(fleet, "wait_for_main", side_effect=wait), \
+             contextlib.redirect_stdout(io.StringIO()):
+            code = fleet.cmd_merge(args, forks, CONFIG, forks)
+        return code, waves
+
+    def events(self):
+        return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def test_lanes_already_in_use_shrink_the_group(self):
+        code, waves = self.go(["unit", "legal", "file"], lanes=3, busy=1)
+        self.assertEqual(code, fleet.EXIT_OK)
+        self.assertEqual(waves, [["unit", "legal"], ["file"]])
+
+    def test_no_free_lane_merges_nothing(self):
+        code, waves = self.go(["unit"], lanes=2, busy=2)
+        self.assertEqual((code, waves, self.merged), (fleet.EXIT_PENDING, [], []))
+
+    def test_a_skipped_merge_stops_before_the_next_group(self):
+        code, waves = self.go(["unit", "legal", "file"], lanes=2, skip={"legal"})
+        self.assertEqual(code, fleet.EXIT_PENDING)
+        self.assertEqual(waves, [["unit"]])
+        self.assertNotIn("file", self.merged)
+
+    def test_a_group_where_every_merge_skipped_still_stops(self):
+        code, waves = self.go(["unit", "legal"], lanes=1, skip={"unit"})
+        self.assertEqual((code, self.merged), (fleet.EXIT_PENDING, []))
+
+    def test_each_merge_is_logged_before_its_main_run_is_judged(self):
+        self.go(["unit"], lanes=1, main_verdict="real")
+        kinds = [(e["event"], e["service"]) for e in self.events()]
+        self.assertEqual(kinds, [("merged", "unit"), ("validated", "unit")])
+        self.assertEqual(self.events()[0]["previousMainDigest"], "sha256:old")
+        self.assertEqual(self.events()[1]["result"], "real")
+
+
+class MainRuns(unittest.TestCase):
+    def test_a_merge_with_no_push_run_after_the_grace_period_is_unvalidated(self):
+        clock = iter([0, 700, 700, 700])
+        with mock.patch.object(fleet, "latest_run", return_value=None), \
+             mock.patch.object(fleet.time, "time", side_effect=lambda: next(clock)), \
+             mock.patch.object(fleet.time, "sleep"), contextlib.redirect_stderr(io.StringIO()):
+            out = fleet.wait_for_main([{"service": "unit", "repo": "Azure/x", "mergeSha": "m"}], 0, 7200, 600)
+        self.assertEqual(out[0]["verdict"], "unvalidated")
+        self.assertEqual(fleet.exit_code(out), fleet.EXIT_OK)
+
+    def test_a_late_push_run_inside_the_grace_period_is_waited_for(self):
+        runs = iter([None, run("success")])
+        with mock.patch.object(fleet, "latest_run", side_effect=lambda *a: next(runs)), \
+             mock.patch.object(fleet.time, "sleep"), contextlib.redirect_stderr(io.StringIO()):
+            out = fleet.wait_for_main([{"service": "unit", "repo": "Azure/x", "mergeSha": "m"}], 0, 7200, 600)
+        self.assertEqual(out[0]["verdict"], "green")
+
+
+class Watch(unittest.TestCase):
+    def test_wait_keeps_polling_while_a_pr_has_no_run_yet(self):
+        rows = iter([{"service": "unit", "pr": 1, "verdict": "no-run"}, {"service": "unit", "pr": 1, "verdict": "green"}])
+        args = mock.Mock(main=False, wait=True, prefix="template-sync/", interval=0, json=False)
+        with mock.patch.object(fleet, "pr_row", side_effect=lambda f, p: next(rows)), \
+             mock.patch.object(fleet.time, "sleep") as sleep, \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = fleet.cmd_watch(args, [{"service": "unit", "repo": "Azure/x"}], CONFIG)
+        self.assertEqual((code, sleep.call_count), (fleet.EXIT_OK, 1))
+
+
+class Arguments(unittest.TestCase):
+    def test_lanes_must_be_positive(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            fleet.main(["merge", "--lanes", "0"])
+
+    def test_printing_no_rows_prints_nothing(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            fleet.print_rows([], False)
+        self.assertEqual(out.getvalue(), "")
 
 
 if __name__ == "__main__":

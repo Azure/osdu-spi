@@ -31,7 +31,9 @@ python3 .github/skills/spi-fleet/fleet.py merge          # print the groups
 python3 .github/skills/spi-fleet/fleet.py merge --go     # merge them, after the person says go
 ```
 
-`merge` re-reads every PR first. It merges green, approved PRs up to `lanes` at a time, in fleet order. Ordering exceptions follow `rollout.json`. It waits for each merge SHA's push run on main, and it stops the line on any failure. Each merge appends the fork, PR, merge SHA, previous `main-snapshot` digest and result to `fleet-merge-<date>.jsonl`. When a forward fix is slow, that digest is the last-good pin the person can choose.
+`merge` re-reads every PR first. It merges green, approved PRs in fleet order, and ordering exceptions follow `rollout.json`. Before each group it counts the Validation runs already queued or running across the whole fleet, PR and main alike, and merges only into the lanes left free. It waits for each merge SHA's push run on main and stops the line on any failure, or on any PR that did not merge. A merge whose push changed only paths Validation ignores shows no run; after `--grace` seconds (default 600) it is reported `unvalidated` and the line carries on.
+
+Each merge is written to `fleet-merge-<date>.jsonl` as it happens, with the PR, merge SHA, image and the `main-snapshot` digest it replaced, and a second record follows with the main run's result. When a forward fix is slow, that digest is the last-good pin the person can choose.
 
 ## Change the rollout
 

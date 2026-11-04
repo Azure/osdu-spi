@@ -38,7 +38,11 @@ python3 .github/skills/spi-fleet/fleet.py merge        # print the groups
 python3 .github/skills/spi-fleet/fleet.py merge --go   # merge them
 ```
 
-`merge` merges green, approved pull requests `lanes` at a time, in fleet order. A service with an ordering entry, such as search, waits for the services it names. After each group it waits for the push run on `main` for each merge SHA, and it stops on any failure. Every merge is appended to `fleet-merge-<date>.jsonl` with its merge SHA and the `main-snapshot` digest it replaced, which is the last-good pin if a forward fix is slow.
+`merge` merges green, approved pull requests in fleet order. A service with an ordering entry, such as search, waits for the services it names. Before each group it counts the Validation runs already queued or running across the fleet and merges only into the free lanes, so a group can be smaller than `lanes`. After each group it waits for the push run on `main` for each merge SHA. It stops on any failed run, and on any pull request that did not merge.
+
+A merge that changed only paths Validation ignores starts no push run. After `--grace` seconds (default 600) it shows as `unvalidated` and the rollout continues.
+
+Each merge is appended to `fleet-merge-<date>.jsonl` as it happens, with its merge SHA and the `main-snapshot` digest it replaced, which is the last-good pin if a forward fix is slow. A `validated` record with the main run's result follows once that run finishes.
 
 ## Change the rollout
 
