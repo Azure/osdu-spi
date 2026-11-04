@@ -51,3 +51,7 @@ Raise `lanes` in `.github/fleet/rollout.json` once a rollout at the current valu
 ```bash
 bash .github/local-actions/spi-fleet-tests/run-tests.sh
 ```
+
+## Mark a fleet release
+
+Once the forks have released, run **Fleet Release** from the osdu-spi Actions tab (ADR-046). Leave `template_target` empty to require the current template, and leave `publish` off for a first pass. The run's summary lists each fork as included or excluded with the reason, and `bom.json` is attached to the run. Run it again with `publish` on to create the `fleet-YYYY.MM.DD` release. A rerun with the same contents changes nothing, and a rerun with different contents fails.
