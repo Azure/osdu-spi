@@ -219,6 +219,7 @@ grep -q 'install -DskipTests -DskipITs' "$DOCKERFILE" || die "a reactor suite mu
 grep -qF -- "'-Dtest=**/*#spiPrewarmNoTestMethod' '-Dit.test=**/*#spiPrewarmNoTestMethod'" "$DOCKERFILE" || die "surefire and failsafe providers must be prewarmed with a method filter that selects every class and no method"
 ! grep -q 'excludesFile' "$DOCKERFILE" || die "a method filter in an excludes file is rejected by surefire and failsafe older than 3.0.0-M6"
 grep -qF -- '-Dsurefire.failIfNoSpecifiedTests=false -Dit.failIfNoSpecifiedTests=false' "$DOCKERFILE" || die "a module with no test classes must not fail the prewarm"
+grep -qF -- '-Dcucumber.execution.dry-run=true' "$DOCKERFILE" || die "a Cucumber runner ignores the method filter, so the prewarm must dry-run it: no hook or step may run at build"
 grep -qF -- '-name surefire-reports -o -name failsafe-reports' "$DOCKERFILE" || die "prewarm reports must not reach the image, where a suite verdict would read them"
 grep -q 'linux/amd64' "$HERE/../../actions/acceptance-image/action.yml" || die "amd64-only platform lost"
 head -1 "$ENTRYPOINT" | grep -q '^#!/bin/sh' || die "entrypoint must be POSIX sh"

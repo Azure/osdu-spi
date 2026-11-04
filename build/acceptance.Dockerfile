@@ -55,10 +55,13 @@ COPY --chmod=0755 build/acceptance-entrypoint.sh /usr/local/bin/acceptance-entry
 # own <skipTests> ignores the user property. resolve, not go-offline: go-offline also fetches
 # conflict losers and unevaluated classifiers the mediated build never uses.
 # Surefire and failsafe fetch their test provider only when a run selects test classes, so
-# verify runs once with a method filter no test method matches; a runner that errors without the
-# suite's environment is ignored, and its reports are removed so a suite verdict reads only a real
-# run. The filter goes through -Dtest/-Dit.test: plugins older than 3.0.0-M6 reject one in an
-# excludes file.
+# verify runs once with a method filter no test method matches. A suite runner (a JUnit Platform
+# @Suite, Cucumber) does not apply that filter to its scenarios, so Cucumber's dry run is set too:
+# the forked JVM gets it as a system property, which Cucumber 5+ reads through both its JUnit 4
+# runner and its JUnit Platform engine, and no hook or step body runs. Anything that still errors
+# without the suite's environment is ignored, and its reports are removed so a suite verdict reads
+# only a real run. The filter goes through -Dtest/-Dit.test: plugins older than 3.0.0-M6 reject
+# one in an excludes file.
 RUN set -eu; \
     SETTINGS=""; \
     if [ -f /suite/.mvn/community-maven.settings.xml ]; then SETTINGS="--settings /suite/.mvn/community-maven.settings.xml"; fi; \
@@ -72,7 +75,7 @@ RUN set -eu; \
       mvn -B -q --no-transfer-progress $SETTINGS -f "/suite/$dir/pom.xml" verify \
         '-Dtest=**/*#spiPrewarmNoTestMethod' '-Dit.test=**/*#spiPrewarmNoTestMethod' \
         -Dsurefire.failIfNoSpecifiedTests=false -Dit.failIfNoSpecifiedTests=false \
-        -Dmaven.test.failure.ignore=true; \
+        -Dcucumber.execution.dry-run=true -Dmaven.test.failure.ignore=true; \
     done; \
     find /suite -type d \( -name surefire-reports -o -name failsafe-reports \) -prune -exec rm -rf {} +
 
