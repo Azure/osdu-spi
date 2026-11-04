@@ -51,6 +51,9 @@ jobs:
       - name: Run spi-fleet harness
         run: bash .github/local-actions/spi-fleet-tests/run-tests.sh
 
+      - name: Run component governance harness
+        run: bash .github/local-actions/component-governance-tests/run-tests.sh
+
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
@@ -87,8 +90,8 @@ jobs:
             fi
           done
           
-          echo "Validating template workflows..."
-          for file in .github/template-workflows/*.yml; do
+          echo "Validating template workflows and Azure DevOps pipelines..."
+          for file in .github/template-workflows/*.yml .azuredevops/*.yml; do
             echo "Validating $file"
             if yq e '.' "$file" >/dev/null 2>&1; then
               echo "✅ $file is valid"
