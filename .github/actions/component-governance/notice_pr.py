@@ -113,8 +113,10 @@ def body(base, run_url, report, cutover):
                  "1. `NOTICE` is still upstream-owned on this branch, so the ownership check fails: add the `port` "
                  "label and re-run Check Paths.\n"
                  "2. The next sync that regenerates `fork_upstream` removes upstream's `NOTICE` there, and the "
-                 "cascade stops once on a modify/delete conflict on `NOTICE` in `fork_integration`. Resolve it by "
-                 "keeping this repository's file (`git add NOTICE`). Later syncs no longer touch it.\n\n")
+                 "cascade stops once on a modify/delete conflict on `NOTICE` and pushes nothing. In "
+                 "`fork_integration`, merge `main` first, then `fork_upstream`, and keep this repository's file "
+                 "(`git add NOTICE`); merging `fork_upstream` alone deletes it. Later syncs no longer touch it "
+                 "(runbook: Component Governance).\n\n")
     return text + report
 
 

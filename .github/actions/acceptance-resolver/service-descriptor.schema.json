@@ -59,6 +59,11 @@
           "not": {"pattern": "\\.git$"},
           "description": "The OSDU community project the fork is built from, without .git. Registered as the git component of the generated upstream commit."
         },
+        "image": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9._-]{0,98}[a-z0-9])?$",
+          "description": "GHCR package name of the service image, when the fork's SERVICE_NAME variable makes Validation publish it under a name other than the repository's. Default: the repository name. The loader image is <image>-load."
+        },
         "module": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$",

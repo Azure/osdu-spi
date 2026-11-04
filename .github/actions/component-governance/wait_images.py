@@ -122,11 +122,21 @@ def publishing_runs(token, repo, sha):
 
 
 def wait(token, repo, commit):
-    """Returns the commit whose published images to scan: the built commit or a first-parent ancestor."""
+    """Returns the commit whose published images to scan: the built commit or a first-parent ancestor.
+
+    A commit gets the grace period, counted from its commit time or from the start of the wait, whichever
+    is longer, before its missing run means anything: a push's checks appear a little after the push. Only
+    then does an ignored-paths commit fall back to its parent, or a missing run fail the job.
+    """
     wait_seconds = int(os.environ.get("CG_IMAGE_WAIT_SECONDS", "1800"))
     grace_seconds = int(os.environ.get("CG_IMAGE_GRACE_SECONDS", "600"))
     start = time.time()
     skipped = 0
+
+    def settled(c):
+        age = time.time() - int(git("log", "-1", "--format=%ct", c))
+        return max(age, time.time() - start) >= grace_seconds
+
     while True:
         try:
             runs, method = publishing_runs(token, repo, commit)
@@ -147,7 +157,7 @@ def wait(token, repo, commit):
                 fail(f"{CHECK} for {commit} ended without success "
                      f"({', '.join(sorted({str(c['conclusion']) for c in done}))}); its images were not published, so "
                      "nothing is registered")
-        elif runs is not None and ignored_only(commit):
+        elif runs is not None and settled(commit) and ignored_only(commit):
             if skipped == MAX_SKIPPED:
                 fail(f"No published image within {MAX_SKIPPED} first-parent commits of {commit}")
             parent = git("log", "-1", "--format=%P", commit).split()[0]
@@ -155,7 +165,7 @@ def wait(token, repo, commit):
                   f"its first parent {parent} ships the same image", flush=True)
             commit, skipped = parent, skipped + 1
             continue
-        elif runs is not None and time.time() - start > grace_seconds:
+        elif runs is not None and settled(commit):
             fail(f"No push-triggered {CHECK} run exists for {commit}: Validation published no image for it, for "
                  "example a commit that never reached main or a push Validation skipped. Queue the run with explicit "
                  "images, or scan a commit that has a published image.")

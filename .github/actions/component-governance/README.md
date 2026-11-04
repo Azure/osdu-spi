@@ -29,6 +29,7 @@ resolver's descriptor contract (`service-descriptor.schema.json`):
 ```yaml
 componentGovernance:
   upstream: https://community.opengroup.org/osdu/platform/system/partition   # required, no .git
+  image: osdu-spi-partition                 # default: the repository name; set to the fork's SERVICE_NAME
   module: provider/partition-azure          # default: the Spring Boot module under provider/*-azure
   profiles: [core, azure]                   # default: [core, azure]
   ignoreDirectories: [partition-acceptance-test/python]   # not scanned; must not contain module
@@ -37,7 +38,7 @@ componentGovernance:
 | Output | Value |
 | --- | --- |
 | `MAVEN_ARGS` | `--settings=<checkout>/.mvn/community-maven.settings.xml -P <profiles> -pl <module> -am`. Maven 3.9+ reads it when the Maven detector runs `dependency:tree`, so detection covers the shipped module and its parents only. |
-| `dockerImagesToScan` | `ghcr.io/<owner>/<repo>:sha-<12>`, plus `<repo>-load:sha-<12>` when `deployments/shared-schemas` is not empty. |
+| `dockerImagesToScan` | `ghcr.io/<owner>/<image>:sha-<12>`, plus `<image>-load:sha-<12>` when `deployments/shared-schemas` is not empty. Validation names both by the fork's `SERVICE_NAME` variable, which Azure DevOps cannot read, so a fork that sets it repeats it as `image`. |
 | `cgmanifest.json` | The upstream commit of the newest generated upstream tree (its `Upstream-Sha`, which must equal its last parent), every `Seeded-From` commit, and the Application Insights agent version from `build/Dockerfile`. No detector sees these. |
 | `cg-inputs.json` | Everything above, in the `cg-scan` artifact. |
 
@@ -52,11 +53,14 @@ the snapshot without it. `wait_images.py` fails the job first:
   check suites whose head branch is `main`, and refuses when the repository has any pull
   request from `main`, which would make that ambiguous.
 - A commit that changes only paths Validation's push filter ignores publishes no image,
-  and the files it changes cannot change one. The gate steps to its first parent, up to
-  50 commits, and scans that commit's images. The harness keeps its copy of the filter
-  equal to `validate.yml`.
-- No qualifying run after 10 minutes, or no finished run after 30, fails the job.
-  Explicit `images` skip the gate with a warning.
+  and the files it changes cannot change one. Once the commit is older than the grace
+  period (10 minutes from its commit time), so its own push's checks would have appeared,
+  the gate steps to its first parent, up to 50 commits, and scans that commit's images. A
+  push whose tip is documentation but which also carries code publishes the tip; the grace
+  period keeps the gate from leaving it too early. The harness keeps the gate's copy of
+  the filter equal to `validate.yml`.
+- No qualifying run once the grace period is over, or no finished run after 30 minutes,
+  fails the job. Explicit `images` skip the gate with a warning.
 - The checkout's GitHub credential is removed on every exit, and again by an `always()`
   step, so the scan never sees it.
 

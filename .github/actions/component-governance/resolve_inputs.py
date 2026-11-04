@@ -161,15 +161,17 @@ def main():
     maven_args = f"--settings={settings} -P {','.join(profiles)} -pl {module} -am"
 
     owner, repo = env["BUILD_REPOSITORY_NAME"].lower().split("/", 1)
+    image = cg.get("image") or repo
     sha = env["BUILD_SOURCEVERSION"]
     images = env.get("CG_IMAGES", "").strip()
     images_auto = images in ("", "auto")
     if images_auto:
-        # Validation's Docker Push job publishes these for the commit: the service image, and the loader
-        # image when the fork carries shared schemas. The acceptance image is test tooling and not scanned.
-        refs = [f"ghcr.io/{owner}/{repo}:sha-{sha[:12]}"]
+        # Validation's Docker Push job publishes these for the commit, named by the fork's SERVICE_NAME
+        # variable or the repository: the service image, and the loader image when the fork carries
+        # shared schemas. The acceptance image is test tooling and not scanned.
+        refs = [f"ghcr.io/{owner}/{image}:sha-{sha[:12]}"]
         if os.path.isdir("deployments/shared-schemas") and os.listdir("deployments/shared-schemas"):
-            refs.append(f"ghcr.io/{owner}/{repo}-load:sha-{sha[:12]}")
+            refs.append(f"ghcr.io/{owner}/{image}-load:sha-{sha[:12]}")
         images = ",".join(refs)
     if not IMAGES_RE.fullmatch(images):
         fail(f"images: {images!r} is not a comma separated list of image references")

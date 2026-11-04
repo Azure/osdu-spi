@@ -3,6 +3,7 @@
 # Synced from the template (osdu-spi) into every fork; do not edit it in a fork. Per-fork inputs
 # come from the componentGovernance section of .spi/service.yaml, read at run time:
 #   upstream           OSDU community project URL (required)
+#   image              GHCR package name, when the fork's SERVICE_NAME differs from the repository name
 #   module             shipped Spring Boot module (default: the one under provider/*-azure)
 #   profiles           Maven profiles (default: core, azure)
 #   ignoreDirectories  directories Component Governance must not scan, such as Python test suites

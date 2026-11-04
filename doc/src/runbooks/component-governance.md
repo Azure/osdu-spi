@@ -21,6 +21,7 @@ componentGovernance:
 
 | Key | Default | Set it when |
 |---|---|---|
+| `image` | The repository name | The fork's `SERVICE_NAME` variable makes Validation publish its image under another name. Azure DevOps cannot read GitHub variables, so the descriptor repeats it |
 | `module` | The Spring Boot module under `provider/*-azure` | The fork ships a module elsewhere, or has several under `provider/*-azure`. Indexer Queue sets `indexer-queue-azure-enqueue` |
 | `profiles` | `[core, azure]` | The module builds with other profiles. Indexer Queue sets `[azure]` |
 | `ignoreDirectories` | none | Directories that hold dependency files no image ships, such as Python acceptance suites (`crs-catalog_acceptance_test`, `testing`) or upstream's `data/` images |
@@ -46,14 +47,18 @@ The first refresh also changes `NOTICE: keep` to `NOTICE: strip` in `.github/ups
 1. Read the gap report in the pull request body. It lists the shipped components the generated NOTICE has no entry for.
 2. `NOTICE` is upstream-owned until this merges, so the ownership check fails. Add the `port` label and re-run Check Paths.
 3. Mark the pull request ready, get it reviewed and merge it. Validation publishes the image that ships the new `NOTICE`.
-4. The next upstream sync removes upstream's `NOTICE` from `fork_upstream`, and the cascade stops on one modify/delete conflict on `NOTICE` in `fork_integration`. Resolve it by keeping the fork's file:
+4. The next upstream sync removes upstream's `NOTICE` from `fork_upstream`, and the cascade stops on one modify/delete conflict on `NOTICE` in `fork_integration` and opens a conflict issue. The cascade pushes nothing when it stops, so the remote `fork_integration` still lacks the generated file: merge `main` first, then `fork_upstream`, and keep the fork's file:
 
     ```bash
-    git checkout fork_integration && git merge origin/fork_upstream
-    git add NOTICE && git commit --no-edit && git push origin fork_integration
+    git fetch origin
+    git checkout -B fork_integration origin/fork_integration
+    git merge --no-edit origin/main
+    git merge origin/fork_upstream            # stops: NOTICE deleted upstream, modified here
+    git add NOTICE && git commit --no-edit
+    git push origin fork_integration
     ```
 
-    Later syncs never touch `NOTICE` again.
+    Merging `fork_upstream` without `main` first deletes `NOTICE` without a conflict. Later syncs never touch `NOTICE` again.
 
 ## Routine operation
 

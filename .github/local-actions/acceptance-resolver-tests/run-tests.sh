@@ -467,6 +467,7 @@ cg_variant() {
   { cat "$DESCRIPTOR"; printf 'componentGovernance:\n%s\n' "$body"; } > "$out"
 }
 cg_variant "$TMP/cg.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  image: demo-service
   module: provider/demo-azure
   profiles: [core, azure]
   ignoreDirectories: [demo-acceptance-test/python, testing]'
@@ -506,11 +507,15 @@ cg_variant "$TMP/cg-profiles.yaml" '  upstream: https://community.opengroup.org/
   profiles: []'
 expect_fail "empty profile list" 2 "at least one profile" "DESCRIPTOR_INVALID" \
   engine --contract-only --descriptor "$TMP/cg-profiles.yaml"
+cg_variant "$TMP/cg-image.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  image: Demo/Service'
+expect_fail "image name that is not a GHCR package" 2 "lowercase GHCR package name" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-image.yaml"
 python3 -c "
 import json
 cg = json.load(open('$SCHEMA'))['properties']['componentGovernance']
 assert cg['required'] == ['upstream'] and cg['additionalProperties'] is False
-assert set(cg['properties']) == {'upstream', 'module', 'profiles', 'ignoreDirectories'}
+assert set(cg['properties']) == {'upstream', 'image', 'module', 'profiles', 'ignoreDirectories'}
 "
 ok "schema publishes the same closed componentGovernance section"
 

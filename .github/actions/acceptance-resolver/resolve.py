@@ -83,6 +83,8 @@ K8S_SUBDOMAIN_RE = re.compile(
 # and repository-relative directories with no "." or ".." segment.
 UPSTREAM_URL_RE = re.compile(r"^https://community\.opengroup\.org/osdu(/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$")
 MAVEN_PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# A GHCR package name, as Validation's image_name (the fork's SERVICE_NAME variable).
+IMAGE_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]{0,98}[a-z0-9])?$")
 MAX_IGNORE_DIRECTORIES = 32
 VALUE_SOURCES = ("static", "template")
 CALLER_SOURCES = ("user", "token", "memberToken", "noAccessToken")
@@ -380,12 +382,15 @@ def validate_component_governance(cg):
     where = "descriptor.componentGovernance"
     if not isinstance(cg, dict):
         raise Halt("DESCRIPTOR_INVALID", f"{where} must be a mapping")
-    _require_keys(cg, ("upstream", "module", "profiles", "ignoreDirectories"), ("upstream",), where)
+    _require_keys(cg, ("upstream", "image", "module", "profiles", "ignoreDirectories"), ("upstream",), where)
     upstream = _string_field(cg, "upstream", where)
     if not UPSTREAM_URL_RE.fullmatch(upstream) or upstream.endswith(".git"):
         raise Halt("DESCRIPTOR_INVALID",
                    f"{where}.upstream must be an OSDU community project URL without .git, "
                    f"https://community.opengroup.org/osdu/...: {upstream}")
+    if "image" in cg and not IMAGE_NAME_RE.fullmatch(_string_field(cg, "image", where)):
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"{where}.image must be a lowercase GHCR package name: {cg['image']}")
     if "module" in cg:
         _repo_dir(cg["module"], f"{where}.module")
     if "profiles" in cg:

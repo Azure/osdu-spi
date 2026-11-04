@@ -16,9 +16,10 @@
 #
 # Fixture harness for the Component Governance pipeline steps (ADR-047). It covers the
 # logic a live run rarely exercises and that would fail silently: which commit's images
-# the gate trusts, which NOTICE refresh may replace another, the one-time NOTICE cutover,
-# and the gate's copy of Validation's push filter. Fixture repositories and a scripted
-# HTTP API on 127.0.0.1; no network.
+# the gate trusts, whether a downloaded NOTICE belongs to this run's complete scan, which
+# NOTICE refresh may replace another, the one-time NOTICE cutover, and the gate's copy of
+# Validation's push filter. Fixture repositories and a scripted HTTP API on 127.0.0.1;
+# no network.
 
 set -euo pipefail
 
@@ -149,6 +150,11 @@ PY
 [ "$(json_get "$TMP/out/cg-inputs.json" 'd["generatedCommit"], d["upstreamCommit"], d["seeds"], d["imagesAuto"], d["imagesCommit"]')" \
   = "$G $U ['$S'] True $F" ] || die "cg-inputs.json does not record the provenance and the image commit"
 ok "upstream + seed commits and the agent registered; module inferred; images and ignores set"
+rm -rf "$TMP/named" && cp -a "$FORK" "$TMP/named"
+echo "  image: demo-service" >> "$TMP/named/.spi/service.yaml"
+expect_out "##vso[task.setvariable variable=dockerImagesToScan]ghcr.io/azure/demo-service:sha-$sha12,ghcr.io/azure/demo-service-load:sha-$sha12" \
+  resolve "$TMP/named"
+ok "image names Validation's package when SERVICE_NAME differs from the repository"
 
 # ---------------------------------------------------------------- image gate
 
@@ -159,11 +165,16 @@ git -C "$GATE" add -A && git -C "$GATE" commit -qm "feat: code"
 CODE=$(git -C "$GATE" rev-parse HEAD)
 mkdir -p "$GATE/.github/workflows" && echo "name: x" > "$GATE/.github/workflows/x.yml"
 echo more >> "$GATE/docs/index.md"
-git -C "$GATE" add -A && git -C "$GATE" commit -qm "chore: template sync"
+# A template sync from long ago: its grace period is over.
+git -C "$GATE" add -A && GIT_COMMITTER_DATE="2026-01-01T00:00:00Z" git -C "$GATE" commit -qm "chore: template sync"
 DOCS=$(git -C "$GATE" rev-parse HEAD)
 echo "LICENSE text" > "$GATE/LICENSE" && echo "notice" > "$GATE/NOTICE"
 git -C "$GATE" add -A && git -C "$GATE" commit -qm "chore(notice): refresh"
 NOTICEC=$(git -C "$GATE" rev-parse HEAD)
+# A documentation tip pushed just now, whose push may still publish an image for code below it.
+echo again >> "$GATE/docs/index.md"
+git -C "$GATE" add -A && git -C "$GATE" commit -qm "docs: tip"
+FRESH=$(git -C "$GATE" rev-parse HEAD)
 
 check_run() {  # status conclusion suite
   printf '{"status": "%s", "conclusion": %s, "app": {"slug": "github-actions"}, "check_suite": {"id": %s}}' "$1" "$2" "$3"
@@ -211,10 +222,10 @@ grep -qF '"auth": "Bearer tok-123"' "$TMP/api.log" || die "gate did not use the 
 no_credential
 ok "in-progress run waited out; token used, then removed"
 
-note "gate: a push Validation ignores falls back to its first parent"
+note "gate: a push Validation ignores falls back to its first parent once its grace is over"
 gate_routes "$TMP/r.json" "$DOCS|$no_runs|$no_push" "$CODE|$(ok_runs completed '"success"' 7)|$push_suite"
 start_api "$TMP/r.json"
-out=$(gate "$DOCS")
+out=$(GRACE=600 gate "$DOCS" 2>&1) || die "an old template-sync commit did not fall back to its parent: $out"
 c12=${CODE:0:12}
 grep -qF "changes only files Validation's push filter ignores" <<<"$out" || die "fallback not explained: $out"
 grep -qxF "##vso[task.setvariable variable=dockerImagesToScan]ghcr.io/azure/osdu-spi-demo:sha-$c12,ghcr.io/azure/osdu-spi-demo-load:sha-$c12" <<<"$out" \
@@ -226,6 +237,12 @@ gate_routes "$TMP/r.json" "$NOTICEC|$no_runs|$no_push" "$DOCS|$no_runs|$no_push"
 start_api "$TMP/r.json"
 run_fail "a NOTICE refresh is validated, so it is not skipped" "No push-triggered Docker Push run exists for $NOTICEC" gate "$NOTICEC"
 no_credential
+gate_routes "$TMP/r.json" "$FRESH|[{\"status\": 200, \"json\": {\"check_runs\": []}}, {\"status\": 200, \"json\": {\"check_runs\": [$(check_run completed '"success"' 7)]}}]|$push_suite"
+start_api "$TMP/r.json"
+out=$(GRACE=600 gate "$FRESH" 2>&1) || die "a recent documentation tip did not wait for its own push: $out"
+grep -qF "Docker Push succeeded for $FRESH" <<<"$out" || die "a recent tip's own image was not awaited: $out"
+! grep -qF "changes only files" <<<"$out" || die "a recent tip fell back before its checks could appear"
+ok "a recent documentation tip waits for its own push before falling back"
 
 note "gate: refusals"
 gate_routes "$TMP/r.json" "$CODE|$no_runs|$no_push"
@@ -252,6 +269,51 @@ expect_out "not verified before registration" gate "$CODE" "ghcr.io/azure/osdu-s
 [ ! -s "$TMP/api.log" ] || die "gate called GitHub for explicit images"
 no_credential
 ok "warned, no API call, credential removed"
+stop_api
+
+# ---------------------------------------------------------------- NOTICE download
+
+fetch() {
+  rm -rf "$TMP/notice"
+  NOTICE_OUT="$TMP/notice" CG_SCAN_PHASE="Register shipped components" SYSTEM_ACCESSTOKEN=ado-tok \
+    SYSTEM_TEAMPROJECTID=proj1 BUILD_REPOSITORY_NAME="$REPO" BUILD_BUILDID=100 SYSTEM_COLLECTIONID=coll1 \
+    SYSTEM_DEFINITIONID=12 CG_POLL_ATTEMPTS=3 SYSTEM_COLLECTIONURI="$API/org/" python3 "$CG/fetch_notice.py"
+}
+snapshot() {  # build of the scan job's snapshot; other definitions and jobs never match
+  printf '{"status": 200, "json": {"value": [{"moniker": "refs/heads/main", "snapshotTypes": [
+    {"typeId": 9, "buildType": "vsts://coll1/proj1/12/x", "phaseDisplayName": "Register shipped components", "latestScanBuildIdentifier": "%s"},
+    {"typeId": 8, "buildType": "vsts://coll1/proj1/13/x", "phaseDisplayName": "Register shipped components", "latestScanBuildIdentifier": "100"},
+    {"typeId": 10, "buildType": "vsts://coll1/proj1/12/x", "phaseDisplayName": "Generate NOTICE from Component Governance", "latestScanBuildIdentifier": "100"}]}]}}' "$1"
+}
+notice_routes() {  # branches-responses scan-log
+  cat > "$TMP/r.json" <<EOF
+[{"method": "GET", "path": "/org/_apis/resourceareas/7136235f-d277-4c27-9194-e3ada05fea2c.*",
+  "responses": [{"status": 200, "json": {"locationUrl": "{base}/gov/"}}]},
+ {"method": "GET", "path": "/gov/proj1/_apis/componentgovernance/governedrepositories.api-version=7.1-preview.1",
+  "responses": [{"status": 200, "json": {"value": [{"id": 5, "name": "azure/osdu-spi-demo"}]}}]},
+ {"method": "GET", "path": "/gov/proj1/_apis/componentgovernance/governedrepositories/5/branches.*", "responses": [$1]},
+ {"method": "GET", "path": "/gov/proj1/_apis/componentgovernance/governedrepositories/5/Notice.snapshotTypeId=9&.*",
+  "responses": [{"status": 200, "json": {"content": "NOTICES\r\n---------------------------------------------------------\r\nfoo 1.0 - MIT\r\n",
+    "excludedComponents": {"noDefinition": ["maven/mavencentral/com.azure/azure-core/1.60.0"], "notSupported": [{"displayName": "openssl", "displayVersion": "3.3"}]}}}]},
+ {"method": "GET", "path": "/org/proj1/_apis/build/builds/100/timeline.*",
+  "responses": [{"status": 200, "json": {"records": [{"id": "j1", "type": "Job", "name": "Register shipped components"},
+    {"id": "t1", "type": "Task", "parentId": "j1", "name": "Component Detection", "result": "succeeded",
+     "task": {"name": "ComponentGovernanceComponentDetection"}, "log": {"url": "{base}/org/proj1/_apis/build/builds/100/logs/7"}}]}}]},
+ {"method": "GET", "path": "/org/proj1/_apis/build/builds/100/logs/7", "responses": [{"status": 200, "text": "$2"}]}]
+EOF
+  start_api "$TMP/r.json"
+}
+
+note "notice: this build's snapshot, its NOTICE and the gap report"
+notice_routes "$(snapshot 99), $(snapshot 100)" "Detection completed"
+fetch > /dev/null
+! grep -q $'\r' "$TMP/notice/NOTICE" && grep -qx "foo 1.0 - MIT" "$TMP/notice/NOTICE" || die "NOTICE not written with LF endings"
+grep -qF '`com.azure:azure-core:1.60.0`' "$TMP/notice/notice-report.md" || die "gap report misses the noDefinition component"
+ok "waited for build 100's scan-job snapshot, ignoring other definitions, jobs and builds"
+notice_routes "$(snapshot 100), $(snapshot 101)" "ok"
+run_fail "snapshot superseded by a concurrent run" "now belongs to build ['101']" fetch
+notice_routes "$(snapshot 100)" 'Processing of image ghcr.io/azure/osdu-spi-demo:sha-0123 (kind \"DockerImage\") failed'
+run_fail "an image the scan could not process" "ghcr.io/azure/osdu-spi-demo:sha-0123 could not be scanned" fetch
 stop_api
 
 # ---------------------------------------------------------------- NOTICE pull request

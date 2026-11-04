@@ -202,7 +202,7 @@ Each suite runs from its declared path with its declared arguments, both read fr
 
 ## Component Governance inputs
 
-The descriptor also carries the inputs of the Component Governance pipeline, in an optional `componentGovernance` section: the fork's OSDU community `upstream` URL, and where the defaults do not fit, the shipped `module`, its Maven `profiles` and `ignoreDirectories`. The resolver checks the section with the rest of the file but does not use it to run suites. The [Component Governance runbook](component-governance.md) explains each key.
+The descriptor also carries the inputs of the Component Governance pipeline, in an optional `componentGovernance` section: the fork's OSDU community `upstream` URL, and where the defaults do not fit, the published `image` name, the shipped `module`, its Maven `profiles` and `ignoreDirectories`. The resolver checks the section with the rest of the file but does not use it to run suites. The [Component Governance runbook](component-governance.md) explains each key.
 
 ## Common mistakes
 
