@@ -25,7 +25,6 @@ on:
       - '**.md'
       - '**.txt'
       - 'LICENSE'
-      - 'NOTICE'
   workflow_dispatch:
     inputs:
       post_init:

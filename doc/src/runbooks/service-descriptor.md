@@ -200,6 +200,10 @@ done
 
 Each suite runs from its declared path with its declared arguments, both read from its report; the image runs Maven or pytest by the suite's type. The arguments go through an array, as they do in the lane, so an argument such as `-Dtest=*Test` reaches the runner as one token instead of being expanded by the shell. The loop stops at the first failing suite, as the lane fails when any suite fails, and runs in Bash 3.2 and zsh alike.
 
+## Component Governance inputs
+
+The descriptor also carries the inputs of the Component Governance pipeline, in an optional `componentGovernance` section: the fork's OSDU community `upstream` URL, and where the defaults do not fit, the published `image` name, the shipped `module`, its Maven `profiles` and `ignoreDirectories`. The resolver checks the section with the rest of the file but does not use it to run suites. The [Component Governance runbook](component-governance.md) explains each key.
+
 ## Common mistakes
 
 - **A `user` binding with a default token.** A default is stored in the repository, so a default token is a secret committed to the file. Use `token`.

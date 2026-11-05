@@ -1,0 +1,246 @@
+# Component Governance registration and NOTICE for an OSDU SPI service fork (ADR-047).
+#
+# Synced from the template (osdu-spi) into every fork; do not edit it in a fork. Per-fork inputs
+# come from the componentGovernance section of .spi/service.yaml, read at run time:
+#   upstream           OSDU community project URL (required)
+#   image              GHCR package name, when the fork's SERVICE_NAME differs from the repository name
+#   module             shipped Spring Boot module (default: the one under provider/*-azure)
+#   profiles           Maven profiles (default: core, azure)
+#   ignoreDirectories  directories Component Governance must not scan, such as Python test suites
+#
+# Runs in the OpenEnergyPlatform/OSDU-SPI Azure DevOps project through the Azure Pipelines GitHub App
+# service connection, on the 1ES Official pipeline template. The template's enforced Component
+# Governance step registers what the fork ships:
+#   - the Maven graph of the shipped module (MAVEN_ARGS limits detection to it and its parents),
+#   - the published container images, ghcr.io/<owner>/<repo>[-load]:sha-<commit> (dockerImagesToScan),
+#   - the OSDU community upstream commits and the Application Insights agent (cgmanifest.json).
+# Nothing is registered until the fork's Validation workflow has published those images. The
+# template always registers (scanType Register), so every run, including manual runs of other
+# branches, records a snapshot for its branch. Compliance is read from main.
+#
+# 1ES network isolation applies to the job steps below and blocks public registries such as Maven
+# Central and ghcr.io. The steps therefore only prepare tools and inputs and do not build. The
+# Component Governance step runs after isolation stops: its Maven detector resolves the dependency
+# tree from the public repositories in pom.xml and it pulls the images itself.
+#
+# The steps are in .github/actions/component-governance (README there); setup is in the
+# Component Governance runbook.
+
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+parameters:
+  # auto scans the images Validation published for the built commit.
+  - name: images
+    displayName: Container images to scan (comma separated, or auto for the built commit's images)
+    type: string
+    default: auto
+  # Opens or updates a draft pull request that replaces NOTICE, targeting the branch this run built.
+  # Scheduled runs of main always do.
+  - name: openNoticePr
+    displayName: Open a NOTICE pull request into the built branch (scheduled runs always do)
+    type: boolean
+    default: false
+
+trigger:
+  branches:
+    exclude:
+      - '*'
+  tags:
+    include:
+      - v*
+    exclude:
+      - v*-upstream-*
+
+pr: none
+
+schedules:
+  - cron: '0 6 * * 1'
+    displayName: Weekly registration and NOTICE pull request of main
+    branches:
+      include:
+        - main
+    always: true
+
+resources:
+  repositories:
+    - repository: 1ESPipelineTemplates
+      type: git
+      name: 1ESPipelineTemplates/1ESPipelineTemplates
+      ref: refs/tags/release
+
+variables:
+  - name: POOL_NAME
+    value: adme-custom-pool-eus2
+  - name: MAVEN_VERSION
+    value: 3.9.12
+  - name: MAVEN_SHA512
+    value: 0a1be79f02466533fc1a80abbef8796e4f737c46c6574ede5658b110899942a94db634477dfd3745501c80aef9aac0d4f841d38574373f7e2d24cce89d694f70
+  - name: CG_SCRIPTS
+    value: .github/actions/component-governance
+  - name: OUT
+    value: $(Build.ArtifactStagingDirectory)/cg-scan
+  - name: NOTICE_OUT
+    value: $(Build.ArtifactStagingDirectory)/cg-notice
+  # The NOTICE job finds this run's snapshot by the scan job's display name.
+  - name: CG_SCAN_PHASE
+    value: Register shipped components
+
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1ESPipelineTemplates
+  parameters:
+    serviceTreeId: 461b68e8-f849-47b4-8b85-3182a2def8a7
+    pool:
+      name: $(POOL_NAME)
+      os: linux
+    sdl:
+      sourceAnalysisPool:
+        name: $(POOL_NAME)
+        os: linux
+      credscan:
+        enabled: true
+      policheck:
+        enabled: false
+      antimalwareScan:
+        enabled: false
+        justificationForDisabling: 'Defender for Linux antimalware is unsupported on Azure Linux 3 (adme-custom-pool-eus2, the only 1ES pool available to this project) and network isolation precludes the ClamAV fallback. This pipeline only registers components with Component Governance; it publishes scan evidence, not binaries.'
+      psscriptanalyzer:
+        enabled: false
+        justificationForDisabling: 'PSScriptAnalyzer (Guardian) is unsupported on Azure Linux 3 (adme-custom-pool-eus2); the repository contains no PowerShell.'
+      binskim:
+        enabled: false
+      codeql:
+        compiled:
+          enabled: false
+
+    stages:
+      - stage: component_governance
+        displayName: Component Governance
+        jobs:
+          - job: cg_scan
+            displayName: ${{ variables.CG_SCAN_PHASE }}
+            timeoutInMinutes: 60
+            templateContext:
+              outputs:
+                - output: pipelineArtifact
+                  displayName: Publish scan inputs
+                  targetPath: $(OUT)
+                  artifactName: cg-scan
+                  sbomEnabled: false
+                  condition: succeededOrFailed()
+            steps:
+              # The image gate reads the persisted GitHub App token and removes it before the scan.
+              - checkout: self
+                fetchDepth: 0
+                persistCredentials: true
+
+              # Sets MAVEN_ARGS (Maven 3.9+ reads it when the Maven detector runs dependency:tree),
+              # dockerImagesToScan and ComponentDetection.IgnoreDirectories, and writes cgmanifest.json.
+              - bash: |
+                  set -euo pipefail
+                  command -v python3 >/dev/null || { echo "##[error]python3 is required on the agent"; exit 1; }
+                  python3 "$CG_SCRIPTS/resolve_inputs.py"
+                displayName: Resolve component governance inputs from .spi/service.yaml
+                env:
+                  CG_IMAGES: ${{ parameters.images }}
+
+              # Registers nothing unless the images are published: the Component Governance step only warns when an
+              # image cannot be pulled and would register a snapshot without it.
+              - bash: python3 "$CG_SCRIPTS/wait_images.py"
+                displayName: Wait for the published images
+                timeoutInMinutes: 35
+
+              # Also runs when an earlier step failed, so no later step ever sees the GitHub credential.
+              - bash: |
+                  keys=$(git config --local --get-regexp '^http\..*\.extraheader$' | cut -d' ' -f1 | sort -u || true)
+                  for key in $keys; do git config --local --unset-all "$key"; done
+                  ! git config --local --get-regexp '^http\..*\.extraheader$' >/dev/null
+                displayName: Remove the GitHub credential
+                condition: always()
+
+              - bash: |
+                  set -euo pipefail
+                  for t in curl tar sha256sum sha512sum git; do
+                    command -v "$t" >/dev/null || { echo "##[error]$t is required on the agent"; exit 1; }
+                  done
+                  # Same release the fork's Java build uses (maven.compiler.release, then java.version).
+                  v=$(python3 .github/actions/java-release/resolve.py pom.xml)
+                  jh="$AGENT_TOOLSDIRECTORY/microsoft-jdk-$v"
+                  if [ ! -x "$jh/bin/java" ]; then
+                    url="https://aka.ms/download-jdk/microsoft-jdk-$v-linux-x64.tar.gz"
+                    tgz="$AGENT_TEMPDIRECTORY/microsoft-jdk-$v.tar.gz"
+                    curl -fsSL --retry 3 -o "$tgz" "$url"
+                    want=$(curl -fsSL --retry 3 "$url.sha256sum.txt" | awk '{print $1}')
+                    got=$(sha256sum "$tgz" | awk '{print $1}')
+                    [ -n "$want" ] && [ "$want" = "$got" ] || { echo "##[error]JDK checksum mismatch: $got != $want"; exit 1; }
+                    mkdir -p "$jh"
+                    tar -xzf "$tgz" -C "$jh" --strip-components=1
+                  fi
+                  mh="$AGENT_TOOLSDIRECTORY/apache-maven-$MAVEN_VERSION"
+                  if [ ! -x "$mh/bin/mvn" ]; then
+                    tgz="$AGENT_TEMPDIRECTORY/apache-maven-$MAVEN_VERSION-bin.tar.gz"
+                    rm -f "$tgz"
+                    for base in https://archive.apache.org/dist/maven/maven-3 https://dlcdn.apache.org/maven/maven-3; do
+                      curl -fsSL --retry 2 --max-time 300 -o "$tgz" "$base/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.tar.gz" && break
+                      echo "Maven download from $base failed"; rm -f "$tgz"
+                    done
+                    [ -s "$tgz" ] || { echo "##[error]Maven $MAVEN_VERSION could not be downloaded"; exit 1; }
+                    echo "$MAVEN_SHA512  $tgz" | sha512sum -c -
+                    mkdir -p "$mh"
+                    tar -xzf "$tgz" -C "$mh" --strip-components=1
+                  fi
+                  "$jh/bin/java" -version 2>&1 | head -1
+                  JAVA_HOME="$jh" MAVEN_ARGS= "$mh/bin/mvn" -v | head -1
+                  echo "MAVEN_ARGS=$MAVEN_ARGS"
+                  echo "dockerImagesToScan=${DOCKERIMAGESTOSCAN:-}"
+                  echo "##vso[task.setvariable variable=JAVA_HOME]$jh"
+                  echo "##vso[task.prependpath]$jh/bin"
+                  echo "##vso[task.prependpath]$mh/bin"
+                displayName: Set up JDK (pom.xml Java release) and Maven for detection
+
+          # Runs after cg_scan because the template adds its Component Governance step after all steps of a job,
+          # so a NOTICE step inside cg_scan would read the previous snapshot. Component Governance is disabled
+          # for this job: it checks out a few files, and an empty snapshot would become the branch's most
+          # recent scan, which Component Governance then keeps as the production snapshot.
+          - job: cg_notice
+            displayName: Generate NOTICE from Component Governance
+            dependsOn: cg_scan
+            condition: succeeded()
+            timeoutInMinutes: 30
+            templateContext:
+              sdl:
+                componentgovernance:
+                  enabled: false
+                  justificationForDisabling: 'This job only downloads the NOTICE that Component Governance generates from the cg_scan job of the same run, which registers the components. It checks out only its scripts and the files it may change, so a scan here would record an empty snapshot that replaces the real one as the production snapshot of the branch.'
+              outputs:
+                - output: pipelineArtifact
+                  displayName: Publish Component Governance NOTICE
+                  targetPath: $(NOTICE_OUT)
+                  artifactName: cg-notice
+                  sbomEnabled: false
+                  condition: succeededOrFailed()
+            steps:
+              # The pull request step pushes with the Azure Pipelines GitHub App token the checkout persists. It runs
+              # in scheduled runs and with openNoticePr; Build.Reason is available at template compile time.
+              - checkout: self
+                fetchDepth: 1
+                persistCredentials: ${{ or(eq(parameters.openNoticePr, true), eq(variables['Build.Reason'], 'Schedule')) }}
+                sparseCheckoutPatterns: /NOTICE /.github/upstream-filter.yml /.github/actions/component-governance/
+
+              - bash: |
+                  set -euo pipefail
+                  command -v python3 >/dev/null || { echo "##[error]python3 is required on the agent"; exit 1; }
+                  python3 "$CG_SCRIPTS/fetch_notice.py"
+                displayName: Fetch NOTICE for this run's snapshot
+                env:
+                  SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+              - ${{ if or(eq(parameters.openNoticePr, true), eq(variables['Build.Reason'], 'Schedule')) }}:
+                - bash: python3 "$CG_SCRIPTS/notice_pr.py"
+                  displayName: Open or update the NOTICE pull request
+                  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/'))
+
+                - bash: |
+                    keys=$(git config --local --get-regexp '^http\..*\.extraheader$' | cut -d' ' -f1 | sort -u || true)
+                    for key in $keys; do git config --local --unset-all "$key"; done
+                  displayName: Remove the GitHub credential
+                  condition: always()

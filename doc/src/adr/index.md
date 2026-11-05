@@ -96,6 +96,7 @@ Decisions for the container image build, the image registry, the acceptance-test
 | [044](044-pytest-acceptance-suites.md) | **Pytest Acceptance Suites** | :material-minus: Medium |
 | [045](045-paced-fleet-rollouts.md) | **Paced Fleet Rollouts** | :material-minus: Medium |
 | [046](046-fleet-release-bom.md) | **Fleet Release and Bill of Materials** | :material-minus: Medium |
+| [047](047-component-governance-notice.md) | **Component Governance Registration and Generated NOTICE** | :material-trending-up: High |
 
 ### :material-package-variant: Release Management
 

@@ -39,7 +39,7 @@ import re
 import sys
 import urllib.parse
 
-ENGINE_VERSION = "1.4.0"
+ENGINE_VERSION = "1.5.0"
 REPORT_SCHEMA = 1
 
 FACTS_API_VERSION = "spi.osdu.dev/v1"
@@ -79,6 +79,13 @@ K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
 # Pod names are DNS subdomains: dot-separated labels, at most 253 characters.
 K8S_SUBDOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")
+# componentGovernance (ADR-047): the OSDU community project the fork is built from,
+# and repository-relative directories with no "." or ".." segment.
+UPSTREAM_URL_RE = re.compile(r"^https://community\.opengroup\.org/osdu(/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$")
+MAVEN_PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# A GHCR package name, as Validation's image_name (the fork's SERVICE_NAME variable).
+IMAGE_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]{0,98}[a-z0-9])?$")
+MAX_IGNORE_DIRECTORIES = 32
 VALUE_SOURCES = ("static", "template")
 CALLER_SOURCES = ("user", "token", "memberToken", "noAccessToken")
 SOURCE_VOCABULARY = FACT_SOURCES + VALUE_SOURCES + CALLER_SOURCES + (
@@ -362,6 +369,53 @@ def _slug_list(value, where, pattern, label):
     return value
 
 
+def _repo_dir(value, where):
+    if (not isinstance(value, str) or not PATH_RE.fullmatch(value) or value.endswith("/")
+            or any(part in ("", ".", "..") for part in value.split("/"))):
+        raise Halt("DESCRIPTOR_INVALID", f"{where}: '{value}' is not a repository-relative directory")
+    return value
+
+
+def validate_component_governance(cg):
+    """The optional componentGovernance section (ADR-047). The resolver only validates it;
+    the component governance pipeline reads it."""
+    where = "descriptor.componentGovernance"
+    if not isinstance(cg, dict):
+        raise Halt("DESCRIPTOR_INVALID", f"{where} must be a mapping")
+    _require_keys(cg, ("upstream", "image", "module", "profiles", "ignoreDirectories"), ("upstream",), where)
+    upstream = _string_field(cg, "upstream", where)
+    if not UPSTREAM_URL_RE.fullmatch(upstream) or upstream.endswith(".git"):
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"{where}.upstream must be an OSDU community project URL without .git, "
+                   f"https://community.opengroup.org/osdu/...: {upstream}")
+    if "image" in cg and not IMAGE_NAME_RE.fullmatch(_string_field(cg, "image", where)):
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"{where}.image must be a lowercase GHCR package name: {cg['image']}")
+    if "module" in cg:
+        _repo_dir(cg["module"], f"{where}.module")
+    if "profiles" in cg:
+        profiles = _slug_list(cg["profiles"], f"{where}.profiles", MAVEN_PROFILE_RE, "Maven profile id")
+        if not profiles:
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.profiles must name at least one profile")
+    if "ignoreDirectories" in cg:
+        dirs = cg["ignoreDirectories"]
+        if dirs == {}:
+            dirs = []
+        if not isinstance(dirs, list):
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.ignoreDirectories must be a list")
+        if len(dirs) > MAX_IGNORE_DIRECTORIES:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.ignoreDirectories names more than {MAX_IGNORE_DIRECTORIES} directories")
+        for index, item in enumerate(dirs):
+            _repo_dir(item, f"{where}.ignoreDirectories[{index}]")
+        if len(set(dirs)) != len(dirs):
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.ignoreDirectories lists a directory twice")
+        module = cg.get("module")
+        if module and any(module == d or module.startswith(d + "/") for d in dirs):
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.ignoreDirectories must not contain the module {module}")
+    return cg
+
+
 def _validate_binding(name, binding, where):
     if not isinstance(binding, dict):
         raise Halt("DESCRIPTOR_INVALID", f"{where} must be a mapping")
@@ -426,7 +480,7 @@ def _validate_binding(name, binding, where):
 
 
 def validate_descriptor(data, suite="acceptance"):
-    _require_keys(data, ("schemaVersion", "service", "tests"),
+    _require_keys(data, ("schemaVersion", "service", "tests", "componentGovernance"),
                   ("schemaVersion", "service", "tests"), "descriptor")
     version = data["schemaVersion"]
     if version != 3:
@@ -449,6 +503,8 @@ def validate_descriptor(data, suite="acceptance"):
             raise Halt("DESCRIPTOR_INVALID",
                        "descriptor.service.description exceeds 200 characters, "
                        "the published schema maximum")
+    if "componentGovernance" in data:
+        validate_component_governance(data["componentGovernance"])
 
     tests = data["tests"]
     if not isinstance(tests, dict):

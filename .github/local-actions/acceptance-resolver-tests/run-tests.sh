@@ -460,6 +460,65 @@ variant "$TMP/bad-version.yaml" "schemaVersion: 3" "schemaVersion: 2"
 expect_fail "schemaVersion 2" 2 "schemaVersion" "UNSUPPORTED_SCHEMA_VERSION" \
   engine --mode bind --descriptor "$TMP/bad-version.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
 
+note "componentGovernance: the optional section validates and leaves the suite contract unchanged"
+# Appends a componentGovernance section to the fixture descriptor.
+cg_variant() {
+  local out="$1" body="$2"
+  { cat "$DESCRIPTOR"; printf 'componentGovernance:\n%s\n' "$body"; } > "$out"
+}
+cg_variant "$TMP/cg.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  image: demo-service
+  module: provider/demo-azure
+  profiles: [core, azure]
+  ignoreDirectories: [demo-acceptance-test/python, testing]'
+engine --contract-only --descriptor "$DESCRIPTOR" --report "$TMP/cg-base.json" > /dev/null || die "base descriptor rejected"
+engine --contract-only --descriptor "$TMP/cg.yaml" --report "$TMP/cg-ok.json" > /dev/null \
+  || die "descriptor with a componentGovernance section rejected"
+[ "$(report_field "$TMP/cg-ok.json" "r['contract']")" = "$(report_field "$TMP/cg-base.json" "r['contract']")" ] \
+  || die "componentGovernance changed the suite contract"
+ok "valid section accepted, contract unchanged"
+cg_variant "$TMP/cg-key.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  command: rm -rf /'
+expect_fail "unknown componentGovernance key" 2 "descriptor.componentGovernance.command" "UNKNOWN_KEY" \
+  engine --contract-only --descriptor "$TMP/cg-key.yaml"
+cg_variant "$TMP/cg-noup.yaml" '  module: provider/demo-azure'
+expect_fail "missing upstream" 2 "descriptor.componentGovernance.upstream is required" "MISSING_KEY" \
+  engine --contract-only --descriptor "$TMP/cg-noup.yaml"
+cg_variant "$TMP/cg-host.yaml" '  upstream: https://example.com/osdu/platform/system/demo'
+expect_fail "upstream outside the OSDU community" 2 "OSDU community project URL" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-host.yaml"
+cg_variant "$TMP/cg-git.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo.git'
+expect_fail "upstream with .git" 2 "without .git" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-git.yaml"
+cg_variant "$TMP/cg-escape.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  module: provider/../../etc'
+expect_fail "module escaping the repository" 2 "not a repository-relative directory" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-escape.yaml"
+cg_variant "$TMP/cg-root.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  ignoreDirectories: [./testing]'
+expect_fail "ignored directory with a dot segment" 2 "ignoreDirectories[0]" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-root.yaml"
+cg_variant "$TMP/cg-module.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  module: provider/demo-azure
+  ignoreDirectories: [provider]'
+expect_fail "ignoring the shipped module" 2 "must not contain the module" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-module.yaml"
+cg_variant "$TMP/cg-profiles.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  profiles: []'
+expect_fail "empty profile list" 2 "at least one profile" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-profiles.yaml"
+cg_variant "$TMP/cg-image.yaml" '  upstream: https://community.opengroup.org/osdu/platform/system/demo
+  image: Demo/Service'
+expect_fail "image name that is not a GHCR package" 2 "lowercase GHCR package name" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/cg-image.yaml"
+python3 -c "
+import json
+cg = json.load(open('$SCHEMA'))['properties']['componentGovernance']
+assert cg['required'] == ['upstream'] and cg['additionalProperties'] is False
+assert set(cg['properties']) == {'upstream', 'image', 'module', 'profiles', 'ignoreDirectories'}
+"
+ok "schema publishes the same closed componentGovernance section"
+
 note "halt: templates may reference only non-template, non-secret bindings"
 variant "$TMP/bad-tref.yaml" '${DEMO_BASE_URL}search' '${SEARCH_URL}again'
 expect_fail "template referencing template" 2 "SEARCH_URL" "TEMPLATE_REF" \

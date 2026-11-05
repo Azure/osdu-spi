@@ -45,6 +45,10 @@
       {
         "path": ".github/security-patterns.txt",
         "description": "Security scanning patterns"
+      },
+      {
+        "path": ".azuredevops/component-governance.yml",
+        "description": "Azure DevOps pipeline that registers the fork with Component Governance and generates its NOTICE (ADR-047)"
       }
     ],
     "workflows": {
