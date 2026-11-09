@@ -24,7 +24,7 @@ No workflow in the template or its forks declares `pull_request_target`. `dev-ci
 | `integration-cleanup.yml` | PR closed into `main` | `push` to `main`. The job finds the merged PR with `GET /repos/{repo}/commits/{sha}/pulls` and applies the same match as before: the `upstream-sync` label, a `fork_integration` head, or a `release/upstream-*` head. `workflow_dispatch` resets `fork_integration` to `main` for recovery. |
 | `validate.yml` (filter-mode sync PRs) | `pull_request_target` lane building the PR head | The `Sync Build` job in `sync.yml` builds the commit the sync job just pushed, with the `core` profile, and posts a `Sync Build` commit status on the sync PR. |
 
-The sync build holds `contents: read` and `statuses: write`. It builds upstream code that reaches `main` through the cascade anyway, and it runs from a schedule or a manual dispatch, so no PR author controls what it checks out.
+The sync build runs from a schedule or a manual dispatch, so no PR author controls what it checks out. The tree is still unreviewed upstream code, so the build job holds `contents: read` only, with no secret and no persisted checkout credential. The sync job marks the status pending and a separate `report-sync` job, which never checks out the tree, posts the result. A `statuses: write` token inside the build would let upstream build code forge any status in the repository, including the required checks on `main`.
 
 A mirror-mode `fork_upstream` carries the parent's workflows (ADR-039), so its sync PRs take the ordinary `pull_request` trigger of `validate.yml`. The routing that used to send same-repository `sync/` PRs away from that trigger is gone.
 

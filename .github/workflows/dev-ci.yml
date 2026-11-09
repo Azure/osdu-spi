@@ -169,8 +169,16 @@ jobs:
             "Sync Build must build the exact commit the sync job pushed"
           assert_yq '.jobs."build-sync".steps[] | select(.id == "build") | .with.checkout == "false"' "$SYNC" \
             "Sync Build must keep its checkout of the sync commit; java-build's own checkout would build main"
-          assert_yq '.jobs."build-sync".permissions | (.contents == "read" and .statuses == "write" and (keys | length) == 2)' "$SYNC" \
-            "Sync Build holds read access plus commit statuses, nothing else"
+          assert_yq '.jobs."build-sync".permissions | (.contents == "read" and (keys | length) == 1)' "$SYNC" \
+            "Sync Build runs unreviewed upstream code and must hold read access only"
+          assert_yq '[.jobs."build-sync" | .. | select(tag == "!!str" and test("secrets\."))] | length == 0' "$SYNC" \
+            "Sync Build must not hand a secret to the upstream build"
+          assert_yq '.jobs."build-sync".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with."persist-credentials" == false' "$SYNC" \
+            "Sync Build must not leave the checkout token in .git/config"
+          assert_yq '.jobs."report-sync".permissions | (.statuses == "write" and (keys | length) == 1)' "$SYNC" \
+            "Report Sync Build holds commit statuses only"
+          assert_yq '[.jobs."report-sync".steps[] | select(.uses != null)] | length == 0' "$SYNC" \
+            "Report Sync Build must not check out or run the generated tree"
 
           CHECK_PATHS=$(yq -r '.jobs."check-paths".steps[] | select(.id == "filter") | .run' "$VALIDATE")
           assert_contains "$CHECK_PATHS" 'case "$file" in .mvn/*|.spi/*)' \
