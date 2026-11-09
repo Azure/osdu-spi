@@ -165,7 +165,7 @@ jobs:
           assert_yq '.on.push.branches | (length == 1 and .[0] == "main")' ".github/template-workflows/integration-cleanup.yml" \
             "integration-cleanup must run on the push to main, where main's own workflow definition applies"
           SYNC=".github/template-workflows/sync.yml"
-          assert_yq '.jobs."build-sync".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref | contains("needs.sync.outputs.sync_sha")' "$SYNC" \
+          assert_yq '.jobs."build-sync".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref | contains("needs.sync.outputs.sync_tip")' "$SYNC" \
             "Sync Build must build the exact commit the sync job pushed"
           assert_yq '.jobs."build-sync".steps[] | select(.id == "build") | .with.checkout == "false"' "$SYNC" \
             "Sync Build must keep its checkout of the sync commit; java-build's own checkout would build main"

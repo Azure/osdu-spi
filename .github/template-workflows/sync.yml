@@ -9,7 +9,8 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     outputs:
-      sync_sha: ${{ steps.sync-changes.outputs.sync_sha }}
+      # A head/sha/commit/ref name makes CodeQL read build-sync's checkout as a PR head.
+      sync_tip: ${{ steps.sync-changes.outputs.sync_sha }}
     env:
       GH_REPO: ${{ github.repository }}
     permissions:
@@ -495,14 +496,14 @@ jobs:
     # The tree is unreviewed upstream code, so this job holds no write scope; report-sync posts the result.
     name: "Sync Build"
     needs: sync
-    if: needs.sync.outputs.sync_sha != '' && vars.SYNC_MODE != 'mirror'
+    if: needs.sync.outputs.sync_tip != '' && vars.SYNC_MODE != 'mirror'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
-          ref: ${{ needs.sync.outputs.sync_sha }}
+          ref: ${{ needs.sync.outputs.sync_tip }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -522,7 +523,7 @@ jobs:
   report-sync:
     name: "Report Sync Build"
     needs: [sync, build-sync]
-    if: always() && needs.sync.outputs.sync_sha != '' && vars.SYNC_MODE != 'mirror'
+    if: always() && needs.sync.outputs.sync_tip != '' && vars.SYNC_MODE != 'mirror'
     runs-on: ubuntu-latest
     permissions:
       statuses: write
@@ -530,7 +531,7 @@ jobs:
       - name: Report on the sync PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SYNC_SHA: ${{ needs.sync.outputs.sync_sha }}
+          SYNC_SHA: ${{ needs.sync.outputs.sync_tip }}
           BUILD_RESULT: ${{ needs.build-sync.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
