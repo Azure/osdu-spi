@@ -493,7 +493,7 @@ jobs:
     # A filtered sync PR carries no workflows, so validate.yml never sees it; the build runs here and
     # lands on the PR as the "Sync Build" status (ADR-021). Mirror-mode trees carry the parent's
     # workflows and validate through validate.yml's pull_request trigger (ADR-039).
-    # The tree is unreviewed upstream code, so this job holds no write scope; report-sync posts the result.
+    # Unreviewed upstream code in main's cache scope: no write scope, Maven runs in sandbox-build.sh.
     name: "Sync Build"
     needs: sync
     if: needs.sync.outputs.sync_tip != '' && vars.SYNC_MODE != 'mirror'
@@ -511,14 +511,36 @@ jobs:
         # The generated tree carries no .github/; build it with main's copy of the actions.
         run: git checkout origin/main -- .github/actions
 
-      - name: Build
-        id: build
-        uses: ./.github/actions/java-build
+      - name: Check for pom.xml
+        id: pom
+        run: |
+          if [ -f pom.xml ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Resolve Java release
+        if: steps.pom.outputs.present == 'true'
+        id: java
+        uses: ./.github/actions/java-release
+
+      - name: Set up JDK
+        if: steps.pom.outputs.present == 'true'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
         with:
-          checkout: 'false'
+          java-version: ${{ steps.java.outputs.version }}
+          distribution: 'temurin'
+
+      - name: Setup Maven
+        if: steps.pom.outputs.present == 'true'
+        uses: ./.github/actions/setup-maven
+
+      - name: Build
+        if: steps.pom.outputs.present == 'true'
+        id: build
+        env:
+          SANDBOX_IMAGE: ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
           # The filtered tree has no provider/ until the cascade merges it (ADR-038).
-          maven_profile: core
-          build_env: ${{ vars.BUILD_ENV }}
+          MAVEN_PROFILE: core
+          BUILD_ENV: ${{ vars.BUILD_ENV }}
+        run: bash .github/actions/java-build/sandbox-build.sh
 
   report-sync:
     name: "Report Sync Build"

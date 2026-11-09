@@ -167,8 +167,19 @@ jobs:
           SYNC=".github/template-workflows/sync.yml"
           assert_yq '.jobs."build-sync".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref | contains("needs.sync.outputs.sync_tip")' "$SYNC" \
             "Sync Build must build the exact commit the sync job pushed"
-          assert_yq '.jobs."build-sync".steps[] | select(.id == "build") | .with.checkout == "false"' "$SYNC" \
-            "Sync Build must keep its checkout of the sync commit; java-build's own checkout would build main"
+          assert_yq '.jobs."build-sync".steps[-1] | (.id == "build" and (.run | contains("sandbox-build.sh")))' "$SYNC" \
+            "Sync Build must run Maven through sandbox-build.sh as its last step, so no host step runs after the tree builds"
+          assert_yq '[.jobs."build-sync".steps[] | select(.uses != null and (.uses | test("java-build|actions/cache")))] | length == 0' "$SYNC" \
+            "Sync Build must not run the unreviewed tree on the host, where it can reach main's Actions cache"
+          assert_yq '[.jobs."build-sync".steps[] | select(.uses != null and (.uses | test("setup-java")) and .with.cache != null)] | length == 0' "$SYNC" \
+            "Sync Build must not save a setup-java cache"
+          assert_yq '.jobs."build-sync".steps[-1].env.SANDBOX_IMAGE | test("@sha256:[0-9a-f]{64}$")' "$SYNC" \
+            "The sandbox image must be pinned by digest"
+          SANDBOX=$(cat .github/actions/java-build/sandbox-build.sh)
+          assert_contains "$SANDBOX" '-v "$GITHUB_WORKSPACE/.git:$GITHUB_WORKSPACE/.git:ro"' \
+            "The sandbox must mount .git read-only so checkout's post-job git commands cannot be steered"
+          assert_contains "$SANDBOX" '--cap-drop ALL --security-opt no-new-privileges' \
+            "The sandbox must drop capabilities"
           assert_yq '.jobs."build-sync".permissions | (.contents == "read" and (keys | length) == 1)' "$SYNC" \
             "Sync Build runs unreviewed upstream code and must hold read access only"
           assert_yq '[.jobs."build-sync" | .. | select(tag == "!!str" and test("secrets\."))] | length == 0' "$SYNC" \
