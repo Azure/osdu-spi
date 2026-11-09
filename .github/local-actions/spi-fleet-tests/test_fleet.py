@@ -132,6 +132,34 @@ class RunVerdicts(unittest.TestCase):
         self.assertEqual(fleet.exit_code([{"verdict": "green"}, {"verdict": "no-pr"}]), fleet.EXIT_OK)
 
 
+class SyncPrVerdicts(unittest.TestCase):
+    def row(self, rollup, run_lookup=None):
+        pr = {"number": 7, "url": "u", "headRefName": "sync/upstream-1", "headRefOid": "abc",
+              "mergeStateStatus": "CLEAN", "reviewDecision": "APPROVED", "statusCheckRollup": rollup}
+        lookup = mock.Mock(return_value=run_lookup)
+        with mock.patch.object(fleet, "find_pr", return_value=pr), mock.patch.object(fleet, "latest_run", lookup):
+            return fleet.pr_row({"service": "partition", "repo": "Azure/x"}, "sync/"), lookup
+
+    def status(self, state):
+        return {"__typename": "StatusContext", "context": "Sync Build", "state": state, "targetUrl": "https://run"}
+
+    def test_a_filter_mode_sync_pr_is_judged_by_its_sync_build_status(self):
+        for state, verdict in (("PENDING", "pending"), ("SUCCESS", "green"), ("FAILURE", "real"), ("ERROR", "real")):
+            row, lookup = self.row([self.status(state)])
+            self.assertEqual(row["verdict"], verdict, state)
+            lookup.assert_not_called()
+
+    def test_a_failed_sync_build_stops_and_is_not_listed_as_another_failure(self):
+        row, _ = self.row([self.status("FAILURE")])
+        self.assertEqual((row["response"], row["otherFailures"]), ("stop", []))
+        self.assertEqual(fleet.exit_code([row]), fleet.EXIT_REAL)
+
+    def test_without_a_sync_build_status_the_validation_run_decides(self):
+        row, lookup = self.row([], run_lookup=run("success"))
+        self.assertEqual(row["verdict"], "green")
+        lookup.assert_called_once()
+
+
 class MergePlan(unittest.TestCase):
     def rows(self):
         def row(service, verdict="green", merge_state="CLEAN", review="APPROVED"):

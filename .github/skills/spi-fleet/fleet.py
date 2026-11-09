@@ -28,6 +28,7 @@ DEFAULT_CONFIG = HERE.parent.parent / "fleet" / "rollout.json"
 STACK_REPO = "Azure/osdu-spi-stack"
 FLEET_PATH = "ops/environments/shared.yaml"
 WORKFLOW = "Validation"
+SYNC_BUILD = "Sync Build"
 ENVIRONMENT_TITLE = "Environment"
 MERGEABLE = {"CLEAN", "UNSTABLE", "HAS_HOOKS"}
 EXIT_OK, EXIT_REAL, EXIT_PENDING, EXIT_ENVIRONMENT = 0, 1, 2, 3
@@ -176,21 +177,38 @@ def judge_run(repo: str, run: dict | None) -> dict:
     return {**out, "verdict": "environment", "response": "rerun failed jobs once, after the other lanes drain"}
 
 
+def judge_status(status: dict) -> dict:
+    """A commit status posted from another ref's run, which no head_sha run lookup can find."""
+    out = {"runUrl": status.get("targetUrl") or ""}
+    state = (status.get("state") or "").upper()
+    if state in ("PENDING", "EXPECTED"):
+        return {**out, "verdict": "pending"}
+    if state == "SUCCESS":
+        return {**out, "verdict": "green"}
+    return {**out, "verdict": "real", "response": "stop", "failedJobs": [status["context"]]}
+
+
 def pr_row(fork: dict, prefix: str) -> dict:
     row = {"service": fork["service"], "repo": fork["repo"]}
     pr = find_pr(fork["repo"], prefix)
     if pr is None:
         return {**row, "verdict": "no-pr"}
-    run = latest_run(fork["repo"], f"head_sha={pr['headRefOid']}&event=pull_request")
+    rollup = pr.get("statusCheckRollup") or []
     blockers = [
         c.get("name") or c.get("context")
-        for c in pr.get("statusCheckRollup") or []
+        for c in rollup
         if (c.get("conclusion") or c.get("state") or "").upper() in ("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED")
-        and (c.get("name") or c.get("context")) != WORKFLOW
+        and (c.get("name") or c.get("context")) not in (WORKFLOW, SYNC_BUILD)
     ]
+    # A filter-mode sync PR carries no workflows; sync.yml builds it and posts a Sync Build status.
+    sync_build = next((c for c in rollup if c.get("context") == SYNC_BUILD), None)
+    if sync_build is not None:
+        verdict = judge_status(sync_build)
+    else:
+        verdict = judge_run(fork["repo"], latest_run(fork["repo"], f"head_sha={pr['headRefOid']}&event=pull_request"))
     return {**row, "pr": pr["number"], "url": pr["url"], "head": pr["headRefOid"],
             "mergeState": pr["mergeStateStatus"], "review": pr.get("reviewDecision") or "",
-            "otherFailures": [b for b in blockers if b], **judge_run(fork["repo"], run)}
+            "otherFailures": [b for b in blockers if b], **verdict}
 
 
 def main_row(fork: dict) -> dict:
