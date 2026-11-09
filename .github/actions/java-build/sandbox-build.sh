@@ -43,7 +43,8 @@ if [ -n "${MAVEN_PROFILE:-}" ]; then
   args+=(-P "$MAVEN_PROFILE")
 fi
 
-docker run --rm \
+# exec: this script sits in the writable mount, and bash would read anything the build appends.
+exec docker run --rm \
   --user "$(id -u):$(id -g)" \
   --cap-drop ALL --security-opt no-new-privileges \
   --env-file "$env_file" \
