@@ -71,7 +71,7 @@ Auto-merge waits for both the required approval and any required status checks b
 The original asymmetric strategy is preserved: humans still gate production. The mechanism for expressing that gate moves from "click the right merge button" to "approve the PR." Both are explicit human actions, but approval has no dropdown of conflicting choices, so the merge-method foot-gun is eliminated.
 
 ### Prerequisites
-- `allow_auto_merge=true` on the repository (set during init by `setup-fork-repo.sh`, and by `adopt-fork.yml` for adopted repositories)
+- `allow_auto_merge=true` and `allow_merge_commit=true` on the repository (set during init by `setup-fork-repo.sh`, by `adopt-fork.yml` for adopted repositories, and kept on by the weekly Settings Apply run for forks created before init set them)
 - `required_approving_review_count: 1` (or higher) on `main` via ruleset (`.github/rulesets/default-branch.json`)
 - No `required_linear_history` rule on `main` (it forbids merge commits and would block the auto-merge)
 

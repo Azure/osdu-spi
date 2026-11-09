@@ -140,6 +140,11 @@ jobs:
               "check-required-variables.sh requires $name but settings-apply.yml passes no HAVE_${name} flag"
           done
 
+          # A helper settings-apply.yml never calls would sync to every fork and do nothing.
+          for helper in .github/scripts/settings-apply/*.sh; do
+            assert_contains "$(cat "$SETTINGS")" "$helper" "settings-apply.yml never runs $helper"
+          done
+
           # build.yml is push-only; PR events belong to the validation workflows.
           assert_yq '.on.pull_request == null' "$BUILD" \
             "Build workflow must not duplicate protected-branch PR validation"
