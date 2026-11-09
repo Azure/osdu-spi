@@ -13,6 +13,10 @@ inputs:
     description: 'The fork''s BUILD_ENV variable: KEY=VALUE lines exported before Maven runs, with $GITHUB_WORKSPACE expanded. Empty exports nothing.'
     required: false
     default: ''
+  checkout:
+    description: 'Check out github.sha with full history first. sync.yml passes false to build the tree it already placed in the workspace.'
+    required: false
+    default: 'true'
 
 outputs:
   is_java_project:
@@ -26,27 +30,9 @@ runs:
   using: "composite"
   steps:
     - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-      if: |
-        github.event_name != 'pull_request_target' ||
-        github.event.pull_request.base.ref != 'fork_upstream' ||
-        !startsWith(github.event.pull_request.head.ref, 'sync/')
+      if: inputs.checkout == 'true'
       with:
-        # On pull_request_target a ref-less checkout would silently replace the PR
-        # head the calling workflow checked out with the base branch.
-        ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
-
-    - name: "Assert the PR head is checked out"
-      if: github.event_name == 'pull_request_target'
-      shell: bash
-      env:
-        EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      run: |
-        HEAD_SHA="$(git rev-parse HEAD)"
-        if [ "$HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]; then
-          echo "::error::Workspace is at $HEAD_SHA, not the PR head $EXPECTED_HEAD_SHA; validation would build the wrong revision"
-          exit 1
-        fi
 
     - name: "Check for pom.xml"
       id: check_pom

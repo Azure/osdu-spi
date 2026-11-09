@@ -50,7 +50,7 @@ Two cascade steps exist to defend the first tier's ownership split: the assertio
 
 Template sync is off entirely at this tier. Workflow and configuration updates reach the customer fork through the mirror of the parent's `main`, which is where the template's changes land after the parent's own template sync. A second delivery channel would fight the first: it would overwrite files the mirror also delivers and would plant a filter config derived from the wrong repository name. One channel, the mirror, carries everything.
 
-Validation regains coverage instead. At the first tier, sync PRs build `core` only because the filtered tree has no `provider/`. At the mirror tier `fork_upstream` carries the full product, so sync PRs build the full profile set and a broken Azure module fails on the sync PR rather than later inside the cascade. Container validation lags by one step: the Docker build worker stays out of the `pull_request_target` lane at both tiers (a PR-head checkout in that read-only job is a CodeQL cache-poisoning finding in every fork, #164), so a mirror-tier sync PR reports the Docker check as deferred, and the image is validated on the `fork_upstream` push right after merge and again on the cascade PR.
+Validation regains coverage instead. At the first tier, sync PRs build `core` only, in `sync.yml`, because the filtered tree has no `provider/` and no workflows (ADR-021). At the mirror tier `fork_upstream` carries the full product and the parent's workflows, so sync PRs take `validate.yml`'s `pull_request` trigger, build the full profile set and the images, and a broken Azure module fails on the sync PR rather than later inside the cascade.
 
 ### Adoption replaces initialization
 

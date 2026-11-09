@@ -192,7 +192,7 @@ graph TD
     Monitoring system that detects completed synchronizations and dispatches cascade or recovery operations
 
     - **Detection**: Automated monitoring for completed upstream synchronizations
-    - **Schedule**: Six-hour safety-net checks for missed events and stale conflicts
+    - **Schedule**: Hourly safety-net checks for missed events and stale conflicts
     - **Escalation**: Labels and comments on cascades that stay blocked
     - **Recovery**: Retries failure issues after maintainers mark them ready
 

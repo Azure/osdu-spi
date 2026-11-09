@@ -49,10 +49,11 @@ The system is tied to GitHub and subject to Actions usage limits, timeouts, and 
 ### Workflow Triggers
 - **init.yml**: push to `main` (fires on template creation; blocked on the template repository itself)
 - **init-complete.yml**: `issue_comment` on the initialization issue
-- **sync.yml**: daily schedule plus `workflow_dispatch`
+- **sync.yml**: daily schedule plus `workflow_dispatch`; its `Sync Build` job builds filter-mode sync PRs (ADR-021)
 - **cascade.yml**: `workflow_dispatch` only (human-triggered, or dispatched by the monitor)
-- **cascade-monitor.yml**: every 6 hours, `pull_request_target` closed on `fork_upstream`, plus `workflow_dispatch`
-- **validate.yml**: `pull_request` and `pull_request_target` against the three branches, push to the three branches, plus `workflow_dispatch`
+- **cascade-monitor.yml**: hourly, plus `workflow_dispatch`
+- **validate.yml**: `pull_request` against the three branches, push to the three branches, plus `workflow_dispatch`
+- **integration-cleanup.yml**: push to `main`, plus `workflow_dispatch`
 - **build.yml**: push to feature branches only; PR events are covered by validate.yml and dependabot-validation.yml so a commit is not built twice
 - **release.yml**: push to `main`
 

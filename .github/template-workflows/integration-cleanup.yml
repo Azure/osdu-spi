@@ -1,10 +1,11 @@
 name: Integration Branch Cleanup
 
 on:
-  pull_request_target:
-    types: [closed]
+  # push, not a pull request event: this runs main's own copy with no PR code in reach (ADR-036).
+  push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,29 +19,53 @@ concurrency:
 jobs:
   update-integration-branch:
     name: "🔄 Update Fork Integration"
-    # Also match by head branch: a manual PR merged without the upstream-sync
-    # label would otherwise leave fork_integration stuck ahead of main.
-    if: >
-      github.event.pull_request.merged == true && (
-        contains(github.event.pull_request.labels.*.name, 'upstream-sync') ||
-        github.event.pull_request.head.ref == 'fork_integration' ||
-        startsWith(github.event.pull_request.head.ref, 'release/upstream-')
-      )
     runs-on: ubuntu-latest
     steps:
+      - name: Find the merged integration PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "Manual run: resetting fork_integration to main"
+            echo "matched=true" >> "$GITHUB_OUTPUT"
+            echo "summary=Manual reset of fork_integration to main" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Also match by head branch: a manual PR merged without the upstream-sync
+          # label would otherwise leave fork_integration stuck ahead of main.
+          PR_NUMBER=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '
+            [.[] | select(.merged_at != null and .base.ref == "main")
+                 | select(any(.labels[]; .name == "upstream-sync")
+                          or .head.ref == "fork_integration"
+                          or (.head.ref | startswith("release/upstream-")))]
+            | .[0].number // empty')
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Push to main is not an integration merge; nothing to clean up"
+            echo "matched=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Integration PR #$PR_NUMBER merged"
+          echo "matched=true" >> "$GITHUB_OUTPUT"
+          echo "summary=Production PR #$PR_NUMBER merged to main" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
+        if: steps.pr.outputs.matched == 'true'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
+        if: steps.pr.outputs.matched == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Fast-forward fork_integration to main
         id: update_integration
+        if: steps.pr.outputs.matched == 'true'
         run: |
           echo "Fetching latest branch states..."
           git fetch origin --prune
@@ -85,6 +110,7 @@ jobs:
         if: steps.update_integration.outputs.updated == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGED_BY: ${{ steps.pr.outputs.summary }}
         run: |
           HELD_ISSUES=$(gh issue list --label "upstream-held" --json number,title --state open)
           HELD_COUNT=$(echo "$HELD_ISSUES" | jq 'length')
@@ -104,7 +130,7 @@ jobs:
               gh issue comment "$ISSUE_NUMBER" --body "✅ **Integration Complete - Processing Held Changes** - $(date '+%Y-%m-%d %H:%M:%S UTC')
 
               The integration pipeline has completed successfully:
-              - Production PR #${{ github.event.pull_request.number }} merged to main
+              - $MERGED_BY
               - \`fork_integration\` branch synchronized with \`main\`
               - Pipeline cleared for processing held upstream changes
 
@@ -124,11 +150,13 @@ jobs:
 
       - name: Log completion
         if: steps.update_integration.outputs.updated == 'true'
+        env:
+          MERGED_BY: ${{ steps.pr.outputs.summary }}
         run: |
           echo "✅ Integration cleanup completed successfully"
           echo ""
           echo "Summary:"
-          echo "  - Production PR #${{ github.event.pull_request.number }} merged to main"
+          echo "  - $MERGED_BY"
           echo "  - fork_integration branch synchronized with main"
           echo "  - Integration pipeline cleared for new cascades"
           echo "  - Upstream-held issues processed"

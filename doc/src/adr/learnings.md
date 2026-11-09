@@ -68,7 +68,7 @@ See [ADR-006](006-two-workflow-initialization.md) and [ADR-015](015-template-wor
 
 ## Human-triggered steps need a sweeper
 
-The cascade is meant to be started by a person after reviewing the sync PR. People forget, and transient failures leave work stuck. `cascade-monitor.yml` runs every six hours, compares `fork_upstream` with `fork_integration`, finds merged sync PRs with no cascade, starts one, and retries a cascade whose `human-required` label has been removed after a fix. The sweeper is a safety net behind the manual path, not a replacement for it.
+The cascade is meant to be started by a person after reviewing the sync PR. People forget, and transient failures leave work stuck. `cascade-monitor.yml` runs every hour, compares `fork_upstream` with `fork_integration`, finds merged sync PRs with no cascade, starts one, and retries a cascade whose `human-required` label has been removed after a fix. The sweeper is a safety net behind the manual path, not a replacement for it.
 
 See [ADR-019](019-cascade-monitor-pattern.md).
 
@@ -76,7 +76,7 @@ See [ADR-019](019-cascade-monitor-pattern.md).
 
 ## Know the event context before building a workaround
 
-Cascade triggering failed because `pull_request` runs the workflow from the PR branch, and the branch did not contain the workflow yet. Switching to `pull_request_target`, which runs the workflow from the target branch, fixed weeks of unreliability with one line. The same context has a sharp edge: a read-only job that checks out the PR head under `pull_request_target` is a cache-poisoning finding in CodeQL (#164), so the validate-only Docker job never sets a checkout ref and never takes that lane.
+Cascade triggering failed because `pull_request` runs the workflow from the PR branch, and the branch did not contain the workflow yet. Switching to `pull_request_target`, which runs the workflow from the default branch, fixed weeks of unreliability with one line, and carried a sharp edge: a job that checks out the PR head in that context runs PR code next to a write token. In November 2026 GitHub blocked the trigger by default on public repositories, and every use was replaced by an event that needs no PR context: a schedule, a push to `main`, and a build inside `sync.yml`.
 
 See [ADR-021](021-pull-request-target-trigger-pattern.md) and [ADR-036](036-workflow-trust-boundaries.md).
 
@@ -131,7 +131,7 @@ See [ADR-014](014-ai-enhanced-development-workflow.md).
 
 ## Enforce trust boundaries in the workflow, not in review
 
-The only job with a write credential today, `docker-push`, is gated by an `if:` clause that excludes Dependabot, `pull_request_target`, external-fork heads, and plain `workflow_dispatch`. The clause is the policy; a reviewer noticing a missing guard is not. Any future credential-bearing job copies it verbatim.
+The only job with a write credential today, `docker-push`, is gated by an `if:` clause that excludes Dependabot, `pull_request_target` (kept as a backstop), external-fork heads, and plain `workflow_dispatch`. The clause is the policy; a reviewer noticing a missing guard is not. Any future credential-bearing job copies it verbatim.
 
 See [ADR-036](036-workflow-trust-boundaries.md).
 

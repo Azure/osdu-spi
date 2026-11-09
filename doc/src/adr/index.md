@@ -49,7 +49,7 @@ Decisions for synchronizing with upstream repositories and integrating changes:
 | [005](005-conflict-management.md) | **Conflict Management Strategy** | :material-star: Critical |
 | [009](009-asymmetric-cascade-review-strategy.md) | **Asymmetric Cascade Review** | :material-minus: Medium |
 | [019](019-cascade-monitor-pattern.md) | **Cascade Monitor Pattern** | :material-trending-up: High |
-| [021](021-pull-request-target-trigger-pattern.md) | **Pull Request Target Pattern** | :material-minus: Medium |
+| [021](021-pull-request-target-trigger-pattern.md) | **No pull_request_target Triggers** | :material-minus: Medium |
 | [023](023-meta-commit-strategy-for-release-please.md) | **Meta Commit Strategy** | :material-trending-up: High |
 | [024](024-sync-workflow-duplicate-prevention-architecture.md) | **Duplicate Prevention Architecture** | :material-minus: Medium |
 | [038](038-upstream-filter-transform.md) | **Upstream Filter Transform** | :material-star: Critical |

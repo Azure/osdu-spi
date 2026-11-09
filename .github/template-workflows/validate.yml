@@ -1,13 +1,11 @@
 name: Validation
 
 on:
-  # No paths-ignore on either PR trigger: a path-skipped workflow leaves the required
+  # No paths-ignore on the PR trigger: a path-skipped workflow leaves the required
   # "Validation Summary" check Pending and wedges the PR (ADR-030). check-paths gates the heavy jobs.
+  # A filtered sync PR carries no workflows and never reaches this file; sync.yml builds it (ADR-021).
   pull_request:
     branches: [main, fork_integration, fork_upstream]
-  pull_request_target:
-    branches: [main, fork_integration, fork_upstream]
-    types: [opened, synchronize, reopened]
   push:
     branches: [main, fork_integration, fork_upstream]
     paths-ignore:
@@ -45,16 +43,9 @@ permissions:
 jobs:
   check-initialization:
     name: "Check Initialization"
-    # One lane per PR: same-repo sync/ PRs take pull_request_target, which reads this file from
-    # the default branch (fork_upstream has none in filter mode). Every other PR takes pull_request.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' &&
-       !(github.event.pull_request.head.repo.full_name == github.repository &&
-         startsWith(github.event.pull_request.head.ref, 'sync/'))) ||
-      (github.event_name == 'pull_request_target' &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       startsWith(github.event.pull_request.head.ref, 'sync/')) ||
+      github.event_name == 'pull_request' ||
       (github.event_name == 'push' && 
        !contains(github.event.head_commit.message, 'chore: complete repository initialization') &&
        !contains(github.event.head_commit.message, 'chore: clean up template files after initialization'))
@@ -64,9 +55,6 @@ jobs:
     steps:
       - name: "Checkout Code"
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-        with:
-          # pull_request_target must build the PR head, not the base.
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: "Verify Initialization Status"
         id: check
@@ -112,8 +100,6 @@ jobs:
       is_java_repo: ${{ steps.check_java.outputs.is_java }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-        with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: "Check Repository Initialization"
         id: check_init
@@ -144,8 +130,6 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
-          # pull_request_target diffs against the PR head; pull_request resolves to the merge sha.
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: "Check for build-relevant changes"
@@ -160,7 +144,7 @@ jobs:
           # One classifier for pull requests and pushes. A config-only pull request skips the build;
           # a config-only push still builds, so a release merge has images to retag, but never borrows.
           case "$EVENT" in
-            pull_request|pull_request_target) BASE="$PR_BASE"; HEAD="$PR_HEAD" ;;
+            pull_request) BASE="$PR_BASE"; HEAD="$PR_HEAD" ;;
             push) BASE="$PUSH_BEFORE"; HEAD="$PUSH_AFTER" ;;
             *) BASE=""; HEAD="" ;;
           esac
@@ -206,9 +190,6 @@ jobs:
 
       - name: "List upstream-owned files the PR changes"
         id: owned
-        # pull_request only: the pull_request_target lane checks out the PR head, and a local action
-        # resolved from there would run PR-controlled code with this lane's token (ADR-036). That
-        # lane carries same-repo sync PRs to fork_upstream, which the split never applies to.
         if: github.event_name == 'pull_request'
         uses: ./.github/actions/upstream-owned-files
         with:
@@ -260,27 +241,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: "Restore local actions for sync PRs"
-        if: |
-          github.event_name == 'pull_request_target' &&
-          github.event.pull_request.base.ref == 'fork_upstream' &&
-          startsWith(github.event.pull_request.head.ref, 'sync/')
-        run: |
-          set -euo pipefail
-          # Sync branches carry no .github/actions; validate with main's trusted copy.
-          echo "🔧 Restoring local actions from main branch for sync PR validation..."
-          if ! git fetch origin main --depth=1; then
-            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
-            exit 1
-          fi
-          if ! git checkout origin/main -- .github/actions/; then
-            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
-            exit 1
-          fi
-          echo "✅ Local actions restored - validation can proceed"
 
       - name: Resolve Java release
         id: java
@@ -316,7 +277,7 @@ jobs:
         id: build
         uses: ./.github/actions/java-build
         with:
-          generate_coverage: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+          generate_coverage: ${{ github.event_name == 'pull_request' }}
           # core is activeByDefault, so a bare profile flag would drop it (ADR-035). Filter-mode
           # fork_upstream builds core only: its azure profile points at fork-owned directories that
           # exist only after the cascade merge. Mirror-mode fork_upstream carries provider/ (ADR-039).
@@ -327,13 +288,12 @@ jobs:
     # Validate-only build of both images; the trusted push is docker-push and the required check
     # is the summary job at the end.
     # Skipped for filter-mode fork_upstream, which builds core only and has no Azure JAR to package.
-    # No pull_request_target lane and no checkout ref: a PR-head ref in a read-only job is a CodeQL
-    # cache-poisoning finding in every fork (#164). Sync PRs get their image validated on the cascade PR.
+    # No checkout ref: a PR-head ref in a read-only job is a CodeQL cache-poisoning finding in
+    # every fork (#164).
     name: "Docker Build"
     needs: [check-initialization, check-repo-state, java-build]
     if: |
       needs.java-build.outputs.build_result == 'success' &&
-      github.event_name != 'pull_request_target' &&
       (vars.SYNC_MODE == 'mirror' ||
        (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream'))
     runs-on: ubuntu-latest
@@ -394,8 +354,6 @@ jobs:
       acceptance_skipped: ${{ steps.acceptance.outputs.skipped }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-        with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: "Docker Build and Push"
         id: push
@@ -937,27 +895,7 @@ jobs:
       - name: "Checkout Code"
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: "Restore local actions for sync PRs"
-        if: |
-          github.event_name == 'pull_request_target' &&
-          github.event.pull_request.base.ref == 'fork_upstream' &&
-          startsWith(github.event.pull_request.head.ref, 'sync/')
-        run: |
-          set -euo pipefail
-          # Sync branches carry no .github/actions; validate with main's trusted copy.
-          echo "🔧 Restoring local actions from main branch for sync PR validation..."
-          if ! git fetch origin main --depth=1; then
-            echo "❌ Failed to fetch 'main' branch from origin. Cannot restore local actions."
-            exit 1
-          fi
-          if ! git checkout origin/main -- .github/actions/; then
-            echo "❌ Failed to restore .github/actions/ from origin/main. Cannot proceed with validation."
-            exit 1
-          fi
-          echo "✅ Local actions restored - validation can proceed"
 
       - name: "Validate Commit Messages"
         if: |
@@ -1031,19 +969,11 @@ jobs:
           fi
 
   validation-summary:
-    # The required check (ADR-030): always reports, so a path-skipped or routed-away run never
-    # wedges the PR, and one table shows what ran, what was skipped, and why. always() bypasses
-    # check-initialization's routing, so the lane test is repeated here.
+    # The required check (ADR-030): always reports, so a path-skipped run never wedges the PR,
+    # and one table shows what ran, what was skipped, and why.
     name: "Validation Summary"
     needs: [check-initialization, check-repo-state, check-paths, java-build, docker-build, docker-push, deploy-gate, deploy-test, code-validation]
-    if: |
-      always() &&
-      (github.event_name != 'pull_request' ||
-       !(github.event.pull_request.head.repo.full_name == github.repository &&
-         startsWith(github.event.pull_request.head.ref, 'sync/'))) &&
-      (github.event_name != 'pull_request_target' ||
-       (github.event.pull_request.head.repo.full_name == github.repository &&
-        startsWith(github.event.pull_request.head.ref, 'sync/')))
+    if: always()
     runs-on: ubuntu-latest
     # One summary at a time per pull request, so two rapid pushes cannot each create a comment.
     concurrency:
@@ -1070,7 +1000,7 @@ jobs:
             echo "| Job | Result | Note |"
             echo "|---|---|---|"
             jq -rn --arg gate "$GATE_REASON" --arg init "$INITIALIZED" --arg relevant "$BUILD_RELEVANT" \
-              --arg java "$JAVA_REPO" --arg event "$EVENT_NAME" --arg same_repo "$SAME_REPO" --arg actor "$ACTOR" \
+              --arg java "$JAVA_REPO" --arg same_repo "$SAME_REPO" --arg actor "$ACTOR" \
               --argjson needs "$NEEDS" '
               def names: {
                 "check-initialization": "Check Initialization", "check-repo-state": "Check Repository",
@@ -1085,7 +1015,6 @@ jobs:
                 elif $init != "true" then "repository not yet initialized"
                 elif build and $relevant == "false" then "only configuration or docs changed"
                 elif build and $java != "true" then "not a Java repository"
-                elif build and $event == "pull_request_target" then "sync lane; images validate on the cascade PR"
                 elif . == "docker-push" and $actor == "dependabot[bot]" then "Dependabot validates through dependabot-validation.yml"
                 elif . == "docker-push" and $same_repo != "true" then "pull request from another repository"
                 else "a job it needs did not run" end;
@@ -1137,8 +1066,5 @@ jobs:
             | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<< "$NEEDS")
           if [ -n "$broken" ]; then
             echo "❌ failed or cancelled: $(echo $broken | tr ' ' ',')"; exit 1
-          fi
-          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
-            echo "✅ Validation deferred - the sync lane leaves image validation to the cascade PR"; exit 0
           fi
           echo "✅ Validation completed"

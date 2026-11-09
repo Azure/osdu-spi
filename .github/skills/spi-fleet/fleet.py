@@ -181,8 +181,7 @@ def pr_row(fork: dict, prefix: str) -> dict:
     pr = find_pr(fork["repo"], prefix)
     if pr is None:
         return {**row, "verdict": "no-pr"}
-    event = "pull_request_target" if pr["headRefName"].startswith("sync/") else "pull_request"
-    run = latest_run(fork["repo"], f"head_sha={pr['headRefOid']}&event={event}")
+    run = latest_run(fork["repo"], f"head_sha={pr['headRefOid']}&event=pull_request")
     blockers = [
         c.get("name") or c.get("context")
         for c in pr.get("statusCheckRollup") or []

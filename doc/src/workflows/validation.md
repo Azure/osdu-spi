@@ -12,7 +12,7 @@ The validation workflow runs on:
 - **Direct pushes** to protected branches, where the rulesets permit them
 - **Manual trigger** for a check during setup or troubleshooting
 
-The workflow declares both `pull_request` and `pull_request_target`, and routes each PR to exactly one lane. Same-repository `sync/` branches take `pull_request_target`, which reads the workflow from the default branch; in filter mode that is the only lane, because neither `fork_upstream` nor the sync branch carries workflows. Every other PR takes `pull_request`. The unused lane reports skipped, so exactly one `Validation Summary` context reflects a real build.
+Pull requests take the `pull_request` trigger. A filter-mode sync PR never reaches this workflow, because neither `fork_upstream` nor the sync branch carries workflows; the `Sync Build` job in `sync.yml` builds it and posts a `Sync Build` status on the PR (ADR-021).
 
 ## What Gets Validated
 
@@ -32,7 +32,7 @@ On a push to `main` or `fork_integration`, and on the fork's own pull requests, 
 
 ## Validation Results
 
-The summary job posts one comment on the pull request, updated in place on every push: a table of every job with its result and the reason for any skip, followed by one line per suite the lane ran, and a link to the run. A failed suite names its failure count there; the Surefire and Failsafe reports are attached to the run as the `suite-reports` artifact. Pull requests from other repositories and from Dependabot get no comment, because their token cannot write one, and sync PRs on the `pull_request_target` lane never had one; the checks list and run summary carry the same content.
+The summary job posts one comment on the pull request, updated in place on every push: a table of every job with its result and the reason for any skip, followed by one line per suite the lane ran, and a link to the run. A failed suite names its failure count there; the Surefire and Failsafe reports are attached to the run as the `suite-reports` artifact. Pull requests from other repositories and from Dependabot get no comment, because their token cannot write one; the checks list and run summary carry the same content.
 
 When every check passes the PR can merge once a reviewer approves it. When a check fails the PR is blocked; the failing check links to the job log with the reason.
 
@@ -107,7 +107,7 @@ All protected branches use the same validation rules, with exemptions for specif
 
 ### Sync PRs
 - **Relaxed commit standards** - Upstream commits may not follow conventions
-- **Single lane** - `pull_request_target` owns sync PRs and supplies trusted local actions; it builds `core` only in filter mode and the full profile set in mirror mode. The validate-only image build never runs in this lane (#164); it runs on the cascade PR (and, in mirror mode, on the `fork_upstream` push after merge)
+- **Sync Build** - In filter mode `sync.yml` builds the generated tree with the `core` profile and reports a `Sync Build` commit status; images validate on the cascade PR. In mirror mode the sync PR runs this workflow like any other PR (ADR-039)
 
 ## Status Check Details
 
