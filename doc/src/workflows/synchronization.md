@@ -103,7 +103,7 @@ Look for `human-required,upstream-sync` issues for sync PR review and `human-req
 |---------|---------|-------------|
 | **Schedule** | `0 0 * * *` | Daily at midnight UTC |
 | **Duplicate Prevention** | Enabled | Prevents multiple PRs for same upstream state |
-| **Monitor Trigger** | 6 hours | Auto-cascade if human trigger missed |
+| **Monitor Trigger** | Hourly | Auto-cascade if human trigger missed |
 | **State Persistence** | Issues and open PRs | Tracks the active upstream SHA and sync branch |
 | **Filter Configuration** | `.github/upstream-filter.yml` | Explicit per-service classification |
 
@@ -114,7 +114,7 @@ Look for `human-required,upstream-sync` issues for sync PR review and `human-req
 | "No upstream changes detected" | Fork is current with upstream | Normal - no action needed |
 | "Failed to fetch upstream" | Network issues or incorrect URL | Verify the `UPSTREAM_REPO_URL` variable |
 | "Duplicate PR detected" | Existing sync PR found | Updates existing PR instead |
-| "Cascade not triggered" | Forgot to run manually | Monitor auto-triggers after 6 hours |
+| "Cascade not triggered" | Forgot to run manually | Monitor auto-triggers within the hour |
 | "Upstream filter halted" | New or renamed content is unclassified | Update `.github/upstream-filter.yml` and rerun |
 
 ## Related

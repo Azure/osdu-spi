@@ -7,7 +7,7 @@ Accepted (2026-06-04)
 ## Context
 
 - Two jobs in `validate.yml` hold a credential with write reach: `docker-push` with `packages: write` on GHCR, and `deploy-test` with the fork's Azure federated identity for the attached stack (ADR-041). This ADR fixes the boundary both inherit.
-- The validate-only `docker-build` job runs with `permissions: contents: read` only (no GHCR write, no Azure login) and is out of scope for this boundary. It never takes the `pull_request_target` lane and never sets a checkout ref: CodeQL reports a PR-head ref in a read-only job of a `workflow_dispatch` workflow as cache poisoning in every fork (#164), and the job has no need for one.
+- The validate-only `docker-build` job runs with `permissions: contents: read` only (no GHCR write, no Azure login) and is out of scope for this boundary. It never sets a checkout ref: CodeQL reports a PR-head ref in a read-only job of a `workflow_dispatch` workflow as cache poisoning in every fork (#164), and the job has no need for one.
 - GitHub event contexts are not equally trusted. `pull_request_target`, external-fork PRs, and Dependabot PRs can place attacker-controlled code in a context with secret access. Running a credential-bearing job there would hand that credential to the PR author.
 
 ## Decision
@@ -20,7 +20,7 @@ Credential-bearing jobs run only in the trusted contexts below. The "runs?" colu
 | `push` to `fork_upstream` | Repo HEAD | Yes | No; a filter-mode tree has no Azure JAR to package, and the cascade PR validates the image |
 | `pull_request` from an internal branch (head repo equals base repo) | PR HEAD | Yes | Yes |
 | `pull_request` from an external fork | PR HEAD | No (GitHub default) | No; explicitly skipped rather than left to fail |
-| `pull_request_target` | PR HEAD via explicit ref | Yes | No; a PR could exfiltrate the credential by running arbitrary code with secret access |
+| `pull_request_target` | Not declared by any workflow (ADR-021) | n/a | No; the guard stays as a backstop, since a PR in that context could exfiltrate the credential |
 | `dependabot[bot]` PR | PR HEAD | Dependabot secrets scope only | No; `dependabot-validation.yml` is the dependency-update path |
 | `workflow_dispatch` | Repo HEAD at chosen ref | Yes | No today. The clause reserves a `force_full_pipeline` operator override, but `validate.yml` does not yet declare that input, so the override cannot match |
 | Tag push (release-please) | Tagged commit already on `main` | Yes | Not via `validate.yml`. `release.yml` re-tags the existing image with the semver through `GITHUB_TOKEN` and does not rebuild or deploy |
@@ -61,7 +61,7 @@ The clause needs no separate `check-initialization` or `check-repo-state` guard 
 
 ### Neutral
 
-- `docker-build` runs on every event except the `pull_request_target` lane and a filter-mode `fork_upstream`. Sync PRs get their image validated on the cascade PR, and in mirror mode on the `fork_upstream` push.
+- `docker-build` runs on every event except a filter-mode `fork_upstream`. Filter-mode sync PRs build Java only, in `sync.yml` (ADR-021), and get their image validated on the cascade PR. Mirror-mode sync PRs validate the image on the PR itself.
 - Dependabot keeps its own validation path outside credential-bearing workflows.
 
 ## Alternatives Considered

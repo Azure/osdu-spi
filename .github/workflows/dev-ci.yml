@@ -140,6 +140,11 @@ jobs:
               "check-required-variables.sh requires $name but settings-apply.yml passes no HAVE_${name} flag"
           done
 
+          # A helper settings-apply.yml never calls would sync to every fork and do nothing.
+          for helper in .github/scripts/settings-apply/*.sh; do
+            assert_contains "$(cat "$SETTINGS")" "$helper" "settings-apply.yml never runs $helper"
+          done
+
           # build.yml is push-only; PR events belong to the validation workflows.
           assert_yq '.on.pull_request == null' "$BUILD" \
             "Build workflow must not duplicate protected-branch PR validation"
@@ -151,8 +156,21 @@ jobs:
           # A path-filtered PR trigger leaves the required summary Pending (ADR-030).
           assert_yq '.on.pull_request | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request must stay unfiltered so the required summary always reports"
-          assert_yq '.on.pull_request_target | has("paths-ignore") | not' "$VALIDATE" \
-            "pull_request_target owns sync PRs and must stay unfiltered"
+
+          # GitHub blocks pull_request_target by default on public repositories (ADR-021).
+          for wf in .github/workflows/*.yml .github/template-workflows/*.yml; do
+            assert_yq '.on | has("pull_request_target") | not' "$wf" \
+              "pull_request_target is blocked by GitHub's default execution policy; use push, schedule, or sync.yml's build"
+          done
+          assert_yq '.on.push.branches | (length == 1 and .[0] == "main")' ".github/template-workflows/integration-cleanup.yml" \
+            "integration-cleanup must run on the push to main, where main's own workflow definition applies"
+          SYNC=".github/template-workflows/sync.yml"
+          assert_yq '.jobs."build-sync".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref | contains("needs.sync.outputs.sync_sha")' "$SYNC" \
+            "Sync Build must build the exact commit the sync job pushed"
+          assert_yq '.jobs."build-sync".steps[] | select(.id == "build") | .with.checkout == "false"' "$SYNC" \
+            "Sync Build must keep its checkout of the sync commit; java-build's own checkout would build main"
+          assert_yq '.jobs."build-sync".permissions | (.contents == "read" and .statuses == "write" and (keys | length) == 2)' "$SYNC" \
+            "Sync Build holds read access plus commit statuses, nothing else"
 
           CHECK_PATHS=$(yq -r '.jobs."check-paths".steps[] | select(.id == "filter") | .run' "$VALIDATE")
           assert_contains "$CHECK_PATHS" 'case "$file" in .mvn/*|.spi/*)' \
@@ -170,33 +188,13 @@ jobs:
           assert_yq '.jobs."check-paths".steps[] | select(.id == "owned") | .uses == "./.github/actions/upstream-owned-files"' "$VALIDATE" \
             "Check Paths must list upstream-owned files through the shared action"
           assert_yq '.jobs."check-paths".steps[] | select(.id == "owned") | .if == "github.event_name == '"'"'pull_request'"'"'"' "$VALIDATE" \
-            "The local action must not run on the pull_request_target lane, which checks out the PR head (ADR-036)"
+            "Check Paths must list upstream-owned files only for pull requests"
           OWNERSHIP_STEP=$(yq -r '.jobs."check-paths".steps[] | select(.name == "Assert upstream ownership split (ADR-038)")' "$VALIDATE")
           assert_contains "$OWNERSHIP_STEP" 'issues/$PR_NUMBER/labels' \
             "The ownership check must read the port label live so a re-run after labeling sees it"
 
-          # One lane per PR: check-initialization routes, and validation-summary repeats
-          # the test because always() bypasses it.
-          SYNC_HEAD="github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'sync/')"
-          CHECK_INIT_IF=$(yq -r '.jobs."check-initialization".if | sub("\s+"; " ")' "$VALIDATE")
-          SUMMARY_IF=$(yq -r '.jobs."validation-summary".if | sub("\s+"; " ")' "$VALIDATE")
-
-          assert_contains "$CHECK_INIT_IF" "(github.event_name == 'pull_request' && !($SYNC_HEAD))" \
-            "The pull_request lane must stand down for same-repository sync PRs"
-          assert_contains "$CHECK_INIT_IF" "(github.event_name == 'pull_request_target' && $SYNC_HEAD)" \
-            "The pull_request_target lane must own same-repository sync PRs, and only those"
-          assert_contains "$SUMMARY_IF" "(github.event_name != 'pull_request' || !($SYNC_HEAD))" \
-            "The lane that did not build must not report the required summary"
-          assert_contains "$SUMMARY_IF" "(github.event_name != 'pull_request_target' || ($SYNC_HEAD))" \
-            "The sync lane must report the required summary"
-
-          # Routing lives in check-initialization alone; per-job copies drift apart from it.
-          assert_yq '.jobs."java-build".if | contains("head.repo.full_name") | not' "$VALIDATE" \
-            "Lane routing belongs in check-initialization, not in java-build"
-          assert_yq '.jobs."code-validation".if | contains("head.repo.full_name") | not' "$VALIDATE" \
-            "Lane routing belongs in check-initialization, not in code-validation"
-          assert_yq '.jobs."java-build".steps[] | select(.id == "build") | .with.generate_coverage | contains("pull_request_target")' "$VALIDATE" \
-            "The sync pull_request_target build must generate coverage"
+          assert_yq '.jobs."validation-summary".if == "always()"' "$VALIDATE" \
+            "The required summary must report on every run"
 
           # A check bound to verify in a service pom must gate the pull request, not only main,
           # so both goal paths of the action run the lifecycle through verify.
@@ -210,13 +208,10 @@ jobs:
             "The coverage summary must still read the JaCoCo report from target/site/jacoco"
 
           # A PR-head checkout in the read-only docker-build job is a CodeQL cache-poisoning finding (#164).
-          DOCKER_IF=$(yq -r '.jobs."docker-build".if | sub("\s+"; " ")' "$VALIDATE")
-          assert_contains "$DOCKER_IF" "github.event_name != 'pull_request_target'" \
-            "docker-build must stay out of the pull_request_target lane"
           assert_yq '[.jobs."docker-build".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref == null] | select(length > 0) | all' "$VALIDATE" \
             "docker-build must check out github.sha, never a PR head"
 
-          # The deploy lane inherits docker-push's trust and never enters the pull_request_target lane.
+          # The deploy lane inherits docker-push's trust (ADR-036).
           assert_yq '.jobs."deploy-test".needs | contains(["docker-push", "deploy-gate"])' "$VALIDATE" \
             "deploy-test must chain on docker-push and the deploy gate"
           assert_yq '.jobs."deploy-test".if == "needs.deploy-gate.outputs.run == '"'"'true'"'"'"' "$VALIDATE" \

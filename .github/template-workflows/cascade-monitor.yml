@@ -1,12 +1,9 @@
 name: Cascade Monitor
 
 on:
+  # Schedule only: fork_upstream carries no workflows, so a merged sync PR fires nothing here (ADR-021).
   schedule:
-    - cron: '0 */6 * * *'  # Run every 6 hours
-  pull_request_target:
-    types: [closed]
-    branches:
-      - fork_upstream
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -36,12 +33,12 @@ jobs:
           echo "Found $UPSTREAM_COMMITS commits in fork_upstream ahead of fork_integration"
           
           if [ "$UPSTREAM_COMMITS" -gt 0 ]; then
+            # Blocked and failed cascades wait on a human; detect-recovery-ready retries them.
             ISSUE_NUMBER=$(gh issue list \
               --label "upstream-sync" \
               --state open \
-              --limit 1 \
-              --json number \
-              --jq '.[0].number // empty')
+              --json number,labels \
+              --jq '[.[] | select(.labels | map(.name) | any(. == "cascade-blocked" or . == "cascade-failed") | not)] | .[0].number // empty')
             
             if [ -n "$ISSUE_NUMBER" ]; then
               echo "Found missed cascade trigger for issue #$ISSUE_NUMBER - auto-initiating"
@@ -57,7 +54,7 @@ jobs:
                 exit 1
               fi
             else
-              echo "Found pending upstream changes but no tracking issue - may need manual investigation"
+              echo "Pending upstream changes, but no open upstream-sync issue is waiting on a cascade"
               echo "Upstream commits pending: $UPSTREAM_COMMITS"
               
               echo "Recent commits in fork_upstream:"

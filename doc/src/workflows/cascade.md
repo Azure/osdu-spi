@@ -11,8 +11,7 @@ The cascade process includes a dedicated monitor workflow. A merged sync PR trig
 The cascade workflow starts on:
 
 - **Manual trigger** - You provide the sync issue number in the GitHub Actions tab after reviewing a sync PR
-- **Automatic trigger** - The monitor dispatches the cascade when a sync PR is merged
-- **Scheduled recovery** - The monitor checks every 6 hours for missed or recoverable cascades
+- **Scheduled trigger** - The monitor checks hourly and dispatches the cascade for a merged sync PR nobody started, or a cascade a human has cleared for retry
 
 ## What Happens
 
@@ -87,7 +86,7 @@ git push origin fork_integration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Monitor Schedule** | Every 6 hours | Automatic detection of stalled sync PRs |
+| **Monitor Schedule** | Hourly | Automatic detection of stalled sync PRs |
 | **Validation Process** | `core,azure` build + tests | `MAVEN_PROFILE` can override exceptional layouts |
 | **Auto-merge Production** | Armed when possible | Waits for the required human approval on `main` |
 | **Integration Conflicts** | Manual resolution | Human intervention required for conflicts |

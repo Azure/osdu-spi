@@ -7,7 +7,7 @@
 
 The cascade workflow needs to run after upstream changes are merged into `fork_upstream`. Automatic triggering created reliability and usability problems:
 
-1. **Event trigger limitations**: `pull_request_target` events require workflows to exist on the target branch (`fork_upstream`), but that branch is a generated upstream tree without workflow files (ADR-038)
+1. **Event trigger limitations**: a `pull_request` event on a sync PR reads the workflow from the PR's tree, and `fork_upstream` is a generated upstream tree without workflow files (ADR-038). `pull_request_target` is blocked by GitHub's default policy (ADR-021)
 2. **Human control**: teams want to decide when integration happens, and may want to batch changes
 3. **Visibility**: the cascade lifecycle needs an audit trail and progress tracking
 4. **Error recovery**: failed or missed triggers need reliable detection and recovery
@@ -17,19 +17,19 @@ The cascade workflow needs to run after upstream changes are merged into `fork_u
 Make manual triggering the primary path and add a scheduled monitor as the safety net:
 
 1. **Primary path**: humans trigger `Cascade Integration` (`cascade.yml`, `workflow_dispatch` with an `issue_number` input) after reviewing and merging the sync PR
-2. **Safety net**: `cascade-monitor.yml` runs every 6 hours (`cron: '0 */6 * * *'`) and on `workflow_dispatch`, detects missed triggers, and starts the cascade itself
+2. **Safety net**: `cascade-monitor.yml` runs hourly (`cron: '0 * * * *'`) and on `workflow_dispatch`, detects missed triggers, and starts the cascade itself
 3. **Issue lifecycle tracking**: cascade state is carried by labels on the upstream-sync tracking issue and by comments the workflows post (ADR-022)
 4. **Automated failure recovery**: the monitor retries cascades whose failure a human has cleared
 
 ### Sync workflow instructions
 
-The tracking issue created by `sync.yml` (labeled `upstream-sync,human-required`) tells the reviewer to merge the sync PR, then run the Cascade Integration workflow with the issue number, and notes that the monitor will start the cascade within 6 hours if nobody does. See the "Upstream Sync Ready for Review" body in `sync.yml`.
+The tracking issue created by `sync.yml` (labeled `upstream-sync,human-required`) tells the reviewer to merge the sync PR, then run the Cascade Integration workflow with the issue number, and notes that the monitor will start the cascade within the hour if nobody does. See the "Upstream Sync Ready for Review" body in `sync.yml`.
 
 ### Monitor jobs
 
 `cascade-monitor.yml` has four jobs:
 
-- **detect-missed-cascade**: if `fork_upstream` has commits that `fork_integration` lacks and an open `upstream-sync` issue exists, comment on the issue and run `gh workflow run "Cascade Integration" -f issue_number=<n>`. If the trigger call fails, the job comments "Auto-trigger Failed" on the issue and exits non-zero; no label is applied.
+- **detect-missed-cascade**: if `fork_upstream` has commits that `fork_integration` lacks and an open `upstream-sync` issue exists that is not labeled `cascade-blocked` or `cascade-failed`, comment on the issue and run `gh workflow run "Cascade Integration" -f issue_number=<n>`. If the trigger call fails, the job comments "Auto-trigger Failed" on the issue and exits non-zero; no label is applied.
 - **check-stale-conflicts**: find open PRs labeled `conflict,cascade-blocked` older than 48 hours, open an escalation issue labeled `escalation,high-priority,cascade-escalated,human-required`, comment on the PR, and add `cascade-escalated` to it (skipped when already escalated).
 - **check-cascade-health**: count `cascade-active`, `cascade-blocked`, and `cascade-escalated` items and write a status summary.
 - **detect-recovery-ready**: find open issues labeled `cascade-failed` but not `human-required`, relabel them `cascade-active`, comment, and re-run the cascade. If the retry trigger fails the issue is relabeled `cascade-failed,human-required` again.
@@ -86,11 +86,11 @@ Rejected: extra infrastructure for minimal benefit.
 
 ### 4. Frequent scheduled polling (every 5 minutes)
 
-Rejected as the primary approach; a 6-hour schedule is kept as the backup in the monitor.
+Rejected as the primary approach; an hourly schedule is kept as the backup in the monitor.
 
 ## Consequences
 
-Humans must remember to trigger cascades; a forgotten trigger is delayed by up to 6 hours until the monitor runs. Label-based state tracking adds steps to the cascade workflow, and the safety net depends on the monitor itself running. In exchange, integration timing is under team control and the process does not depend on GitHub event delivery to a branch without workflows.
+Humans must remember to trigger cascades; a forgotten trigger is delayed by up to an hour until the monitor runs. Label-based state tracking adds steps to the cascade workflow, and the safety net depends on the monitor itself running. In exchange, integration timing is under team control and the process does not depend on GitHub event delivery to a branch without workflows.
 
 ## Related Decisions
 

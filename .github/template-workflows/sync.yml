@@ -8,6 +8,8 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    outputs:
+      sync_sha: ${{ steps.sync-changes.outputs.sync_sha }}
     env:
       GH_REPO: ${{ github.repository }}
     permissions:
@@ -181,6 +183,7 @@ jobs:
 
           git push -f origin "$META:refs/heads/$SYNC_BRANCH"
           echo "Pushed generated sync branch $SYNC_BRANCH"
+          echo "sync_sha=$META" >> "$GITHUB_OUTPUT"
 
           # GitHub rejects a PR body over 65536 characters, and this is the only description
           # path, so the largest syncs would fail outright without a cap.
@@ -296,7 +299,7 @@ jobs:
             "2. After merging, [run the Cascade Integration workflow]($WORKFLOW_URL):" \
             "   - In the \`issue_number\` field, enter this issue's number" \
             "   - Click **Run workflow**" \
-            "> **Note**: If not triggered manually, the automated monitor will start the cascade process within 6 hours." \
+            "> **Note**: If not triggered manually, the automated monitor will start the cascade process within the hour." \
             "---" \
             "**Sync Summary**" \
             "- **Upstream Version**: \`$UPSTREAM_VERSION\`" \
@@ -473,3 +476,55 @@ jobs:
               --body "$ISSUE_BODY" \
               --label "sync-failed,human-required"
           fi
+
+  build-sync:
+    # A filtered sync PR carries no workflows, so validate.yml never sees it; the build runs here and
+    # lands on the PR as the "Sync Build" status (ADR-021). Mirror-mode trees carry the parent's
+    # workflows and validate through validate.yml's pull_request trigger (ADR-039).
+    name: "Sync Build"
+    needs: sync
+    if: needs.sync.outputs.sync_sha != '' && vars.SYNC_MODE != 'mirror'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SYNC_SHA: ${{ needs.sync.outputs.sync_sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Mark the sync PR pending
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SYNC_SHA" -f state=pending -f context="Sync Build" \
+            -f description="Building the generated upstream tree" -f target_url="$RUN_URL" > /dev/null
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          ref: ${{ needs.sync.outputs.sync_sha }}
+          fetch-depth: 0
+
+      - name: Restore local actions from main
+        # The generated tree carries no .github/; build it with main's copy of the actions.
+        run: git checkout origin/main -- .github/actions
+
+      - name: Build
+        id: build
+        uses: ./.github/actions/java-build
+        with:
+          checkout: 'false'
+          # The filtered tree has no provider/ until the cascade merges it (ADR-038).
+          maven_profile: core
+          build_env: ${{ vars.BUILD_ENV }}
+
+      - name: Report on the sync PR
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            state=success; description="Generated upstream tree builds"
+          else
+            state=failure; description="Generated upstream tree failed to build"
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SYNC_SHA" -f state="$state" -f context="Sync Build" \
+            -f description="$description" -f target_url="$RUN_URL" > /dev/null

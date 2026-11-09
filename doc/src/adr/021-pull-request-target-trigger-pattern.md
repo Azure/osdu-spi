@@ -1,58 +1,58 @@
-# ADR-021: Pull Request Target Trigger Pattern
+# ADR-021: No pull_request_target Triggers
 
 ## Status
-**Accepted** - 2025-10-01
+
+Accepted (2025-10-01). Revised 2026-11-09: the trigger is removed from every workflow.
 
 ## Context
 
-The cascade-monitor workflow needs to run when a sync pull request is merged into `fork_upstream` so the cascade can start. The original `pull_request` trigger had one defect: `pull_request` reads the workflow file from the target branch, and `fork_upstream` carries no `.github/` at all. The event fired but nothing ran.
+A filter-mode `fork_upstream` carries no `.github/` (ADR-038), and a sync branch carries the same tree. A `pull_request` event on a sync PR reads the workflow from that tree, so it fires and nothing runs. Three template workflows used `pull_request_target`, which reads the workflow from the default branch, to react to PRs anyway:
 
-The first workaround triggered the cascade indirectly with `gh workflow run` under a personal access token. That added a token dependency and a second failure point.
+- `cascade-monitor.yml` on a sync PR closed into `fork_upstream`
+- `validate.yml` on a sync PR opened or updated, building the PR head
+- `integration-cleanup.yml` on a PR closed into `main`
+
+GitHub blocks `pull_request_target` by default on public repositories that have no event policy allowing it. The Azure organization started enforcing on 2026-11-09, and runs of all three workflows failed at startup. An allowlist needs a repository admin for each fork, through JIT elevation, and the `validate.yml` lane needs a security review because it checks out PR code in a context that holds a write token.
 
 ## Decision
 
-Trigger cascade-monitor with `pull_request_target`:
+No workflow in the template or its forks declares `pull_request_target`. `dev-ci.yml` asserts this for `.github/workflows/` and `.github/template-workflows/`.
 
-```yaml
-on:
-  pull_request_target:
-    types: [closed]
-    branches: [fork_upstream]
-```
+| Workflow | Before | Now |
+|---|---|---|
+| `cascade-monitor.yml` | Sync PR closed into `fork_upstream`, plus every 6 hours | Hourly schedule and `workflow_dispatch`. The PR trigger only cut latency: the job ignored the event and compared `fork_upstream` to `fork_integration` either way. |
+| `integration-cleanup.yml` | PR closed into `main` | `push` to `main`. The job finds the merged PR with `GET /repos/{repo}/commits/{sha}/pulls` and applies the same match as before: the `upstream-sync` label, a `fork_integration` head, or a `release/upstream-*` head. `workflow_dispatch` resets `fork_integration` to `main` for recovery. |
+| `validate.yml` (filter-mode sync PRs) | `pull_request_target` lane building the PR head | The `Sync Build` job in `sync.yml` builds the commit the sync job just pushed, with the `core` profile, and posts a `Sync Build` commit status on the sync PR. |
 
-`pull_request_target` always reads the workflow definition from the default branch while still exposing the pull request payload. The same job also runs on a six-hour schedule and on manual dispatch, so a merge event and a scheduled pass take the same path: compare `fork_upstream` to `fork_integration`, find the open `upstream-sync` issue, and dispatch the cascade workflow with `GITHUB_TOKEN` (`actions: write`). No personal access token is involved.
+The sync build holds `contents: read` and `statuses: write`. It builds upstream code that reaches `main` through the cascade anyway, and it runs from a schedule or a manual dispatch, so no PR author controls what it checks out.
 
-### Comparison with Alternatives
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **pull_request_target** | Reads from main, direct trigger, simple | Elevated permissions |
-| Copy YAML to fork_upstream | Standard trigger | Duplicate files, maintenance burden |
-| workflow_run | Works from main | Fires before merge, complex logic |
-| Issue-close pattern | Works from main | Extra complexity, manual cleanup |
-| repository_dispatch | Explicit control | Requires PAT, more moving parts |
-
-### Security Considerations
-
-`pull_request_target` runs with base-repository permissions. The monitor limits exposure by triggering only on closed PRs against `fork_upstream`, checking merged state, and never checking out or executing PR head content.
-
-The same trigger is now also used by `validate.yml` (sync PRs) and `integration-cleanup.yml`. The trust rules for which jobs may run under it, and which credentials they may hold, are in [ADR-036: Workflow Trust Boundaries](036-workflow-trust-boundaries.md).
+A mirror-mode `fork_upstream` carries the parent's workflows (ADR-039), so its sync PRs take the ordinary `pull_request` trigger of `validate.yml`. The routing that used to send same-repository `sync/` PRs away from that trigger is gone.
 
 ## Consequences
 
-Team members must understand the difference between `pull_request` and `pull_request_target` before editing these workflows; the elevated context is the cost of running from `main`.
+- A merged sync PR starts its cascade within the hour unless someone runs Cascade Integration first. The safety net skips tracking issues labeled `cascade-blocked` or `cascade-failed`, which wait on a human, so an hourly schedule does not repost "Auto-Cascade Initiated" on a blocked cascade.
+- `fork_upstream` has no required checks, so `Sync Build` informs the merge without gating it.
+- `docker-push` keeps its `pull_request_target` guard (ADR-036) as a backstop in case the trigger is ever added back.
+
+## Alternatives Considered
+
+- **Allowlist the three workflows by workflow file targeting.** Needs JIT admin in every fork, and again for every new fork. `validate.yml` fails the untrusted-checkout CodeQL checks the exception requires.
+- **Allowlist only `cascade-monitor.yml`.** It never checks out PR code, so it would pass review, but all it buys is a faster cascade start.
+- **Copy workflows onto `fork_upstream`.** Pollutes the generated tree and conflicts with `main`'s copies on every cascade.
+- **Dispatch `validate.yml` from `sync.yml`.** A `workflow_dispatch` run reports its checks against `main`, not the sync PR, so it would need status posting anyway and would carry the whole validate graph for a `core` build.
 
 ## Related Decisions
 
-- [ADR-019: Cascade Monitor Pattern](019-cascade-monitor-pattern.md) - Original monitor pattern
-- [ADR-001: Three-Branch Fork Management Strategy](001-three-branch-strategy.md) - Branch structure
-- [ADR-020: Human-Required Label Strategy](020-human-required-label-strategy.md) - Label-based triggers
-- [ADR-036: Workflow Trust Boundaries](036-workflow-trust-boundaries.md) - Trust rules for `pull_request_target` jobs
+- [ADR-019: Cascade Monitor Pattern](019-cascade-monitor-pattern.md)
+- [ADR-036: Workflow Trust Boundaries](036-workflow-trust-boundaries.md)
+- [ADR-038: Upstream Filter Transform](038-upstream-filter-transform.md)
+- [ADR-039: Customer-Tier Forks and Mirror-Mode Sync](039-customer-tier-mirror-sync.md)
 
 ## References
 
-- [GitHub Docs: pull_request_target](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request_target)
-- [GitHub Security: pull_request_target](https://securitylab.github.com/research/github-actions-preventing-pwn-requests/)
+- [Workflow execution protections in GitHub Actions generally available](https://github.blog/changelog/2026-09-17-workflow-execution-protections-in-github-actions-generally-available/)
+- [pull_request_target blocked by default December 2](https://github.blog/changelog/2026-11-02-pull_request_target-blocked-by-default-december-2/)
+
 ---
 
 [← ADR-020](020-human-required-label-strategy.md) | :material-arrow-up: [Catalog](index.md) | [ADR-022 →](022-issue-lifecycle-tracking-pattern.md)
