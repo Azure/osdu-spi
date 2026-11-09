@@ -180,6 +180,8 @@ jobs:
             "The sandbox must mount .git read-only so checkout's post-job git commands cannot be steered"
           assert_contains "$SANDBOX" '--cap-drop ALL --security-opt no-new-privileges' \
             "The sandbox must drop capabilities"
+          assert_contains "$(cat .github/actions/setup-maven/action.yml)" '(cd / && "$MAVEN_HOME_DIR/bin/mvn" -v)' \
+            "setup-maven runs on the host before the sandbox and must not read the workspace's .mvn/jvm.config"
           assert_yq '.jobs."build-sync".permissions | (.contents == "read" and (keys | length) == 1)' "$SYNC" \
             "Sync Build runs unreviewed upstream code and must hold read access only"
           assert_yq '[.jobs."build-sync" | .. | select(tag == "!!str" and test("secrets\."))] | length == 0' "$SYNC" \

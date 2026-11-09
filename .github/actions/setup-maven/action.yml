@@ -29,4 +29,5 @@ runs:
 
         echo "$MAVEN_HOME_DIR/bin" >> "$GITHUB_PATH"
         echo "M2_HOME=$MAVEN_HOME_DIR" >> "$GITHUB_ENV"
-        "$MAVEN_HOME_DIR/bin/mvn" -v
+        # From /: the launcher applies the nearest .mvn/jvm.config, and the workspace may be unreviewed.
+        (cd / && "$MAVEN_HOME_DIR/bin/mvn" -v)
