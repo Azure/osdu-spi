@@ -1,5 +1,119 @@
 # Changelog
 
+## [1.5.0](https://github.com/Azure/osdu-spi/compare/v1.4.0...v1.5.0) (2026-11-09)
+
+
+### ✨ Features
+
+* **acceptance:** Add forward:&lt;target&gt;:host/port bindings ([fbf20e8](https://github.com/Azure/osdu-spi/commit/fbf20e84341aa19408d9b10eacdc1f96d0963f97))
+* **acceptance:** Add suite forwards and Key Vault secret fetch ([05f37c1](https://github.com/Azure/osdu-spi/commit/05f37c13f9d85e6724ce5d7daeadb99f64497b62))
+* **acceptance:** Fetch suite secrets and port-forward to in-cluster services ([18b6884](https://github.com/Azure/osdu-spi/commit/18b6884efad210b1568d735be51b1418e8bfe2d5))
+* **acceptance:** Forward:&lt;target&gt;:host and :port bindings ([1041364](https://github.com/Azure/osdu-spi/commit/104136490270fef0d6fac1bbf22548248bac56fe))
+* **acceptance:** Pytest acceptance suites ([cdf1bbb](https://github.com/Azure/osdu-spi/commit/cdf1bbb91e62221dede74cc9c73345f1c8156769))
+* **acceptance:** Support pytest suites in the descriptor ([d93c32c](https://github.com/Azure/osdu-spi/commit/d93c32c0db5dc82f48477de5f1eb827e58c98879))
+* **acceptance:** Trust forwarded CA in suite JVM trust store ([058fb84](https://github.com/Azure/osdu-spi/commit/058fb845b4b9bc55ba8bed9ce76d8a2c4e74bcdc))
+* **acceptance:** Trust forwarded CA in suite JVM trust store ([294af61](https://github.com/Azure/osdu-spi/commit/294af6136b985fce39074bcac6bc4710f4359703))
+* **build:** Copy license notices into published images ([8ae1596](https://github.com/Azure/osdu-spi/commit/8ae159668f50520227cf6e4e10841d8917a1ec1f))
+* **build:** Copy license notices into published images ([f73ecc8](https://github.com/Azure/osdu-spi/commit/f73ecc8ef38da9a0fa1b007b591487bc116a3c3a))
+* **fleet:** Add fleet release workflow and bom.json builder ([5436222](https://github.com/Azure/osdu-spi/commit/5436222e6060f8914ac9e9de118e58b80a35e0f3))
+* **fleet:** Add spi-fleet skill to pace fleet rollouts ([beeacb6](https://github.com/Azure/osdu-spi/commit/beeacb6228a4b114b34e37c12150fb02b141d205))
+* **fleet:** Add the fleet release workflow and bom.json ([614b9c6](https://github.com/Azure/osdu-spi/commit/614b9c6c19e717be786441f7c14e163a541beb98))
+* **fleet:** Add the spi-fleet skill to pace fleet rollouts ([f7fb6f4](https://github.com/Azure/osdu-spi/commit/f7fb6f43686ed5dfa397b2196c933be883cb2f5f))
+* **fleet:** Judge sync PRs by their Sync Build status ([4488b60](https://github.com/Azure/osdu-spi/commit/4488b60f7909bbd9dc45f001b83b543a9a824b21))
+* **governance:** Open the NOTICE pull request from the weekly run ([ab7721f](https://github.com/Azure/osdu-spi/commit/ab7721f0aa4a8c510160e822678e4be65259ed88))
+* **governance:** Register forks with Component Governance and generate NOTICE ([7d269b5](https://github.com/Azure/osdu-spi/commit/7d269b57e9b114711a7de9d0052b5ae4fd261e97))
+* **governance:** Register forks with Component Governance and generate NOTICE ([8f0d1cd](https://github.com/Azure/osdu-spi/commit/8f0d1cdd3003f82c8803261413e78bc8b2d1e53f))
+* **notice:** Plant NOTICE-OSDU-SPI in forks from source headers ([242f2f3](https://github.com/Azure/osdu-spi/commit/242f2f35f15dd505fc0091aa76ca8b71d0979993))
+* **notice:** Plant NOTICE-OSDU-SPI in forks from source headers ([1d5393f](https://github.com/Azure/osdu-spi/commit/1d5393fe96fb59e5ab52ac04edfeb684de79bdea))
+* **resolver:** Accept a componentGovernance descriptor section ([2a9b74e](https://github.com/Azure/osdu-spi/commit/2a9b74e85ded6cff2535f0f6ebafb3e4e2a76aee))
+* **settings:** Reconcile merge-commit auto-merge settings ([2c308e3](https://github.com/Azure/osdu-spi/commit/2c308e33d3175f1eaa2ac193e421e8137df6a6c3))
+
+
+### 🐛 Bug Fixes
+
+* **acceptance:** Accept dotted pod names and tolerate missing secrets ([b03addf](https://github.com/Azure/osdu-spi/commit/b03addfdbac383365969ccddbf12621aa59ffe54))
+* **acceptance:** Build each shared pytest venv once and dry-run Cucumber in the prewarm ([4a202e1](https://github.com/Azure/osdu-spi/commit/4a202e13b74722b52d059e7ef35672ce178f8f0f))
+* **acceptance:** Dry-run Cucumber in the provider prewarm ([b237cc9](https://github.com/Azure/osdu-spi/commit/b237cc9a39aa2fe2414a02899c3fa1d9ea80a9a2))
+* **acceptance:** Emit each shared pytest suite path once ([466cea2](https://github.com/Azure/osdu-spi/commit/466cea2245be8e71e83d1fc166c8515ad30c55d1))
+* **acceptance:** Harden forwarded CA detection in truststore ([2e03e02](https://github.com/Azure/osdu-spi/commit/2e03e02e6c7702153784e34ecf817c2aa8421b02))
+* **acceptance:** Harden truststore script and secret fetch ([36d0310](https://github.com/Azure/osdu-spi/commit/36d0310726a9c1786cd4f6b892a940b5e3e85fed))
+* **acceptance:** Keep caller id for rootless podman truststore ([aac8d02](https://github.com/Azure/osdu-spi/commit/aac8d0226e9bd538e61e09e6b5ab9022fb029c20))
+* **acceptance:** Keep secret values intact, accept dotted pod names, tighten forward readiness ([b452526](https://github.com/Azure/osdu-spi/commit/b4525267efd7f97753c87f57ab6c06835827a884))
+* **acceptance:** Name pytest venvs with + and reject shared paths ([5234b6d](https://github.com/Azure/osdu-spi/commit/5234b6d0a2a1649c4e870b5516c079f84a48195b))
+* **acceptance:** Prewarm providers with a -Dtest method filter ([8da8576](https://github.com/Azure/osdu-spi/commit/8da8576c4641f1108647d66b1d94f4252e324b33))
+* **acceptance:** Prewarm providers with a -Dtest method filter ([5bd1c03](https://github.com/Azure/osdu-spi/commit/5bd1c032c1a5c956704ac0c8fb39e97cd284d971))
+* **acceptance:** Prewarm surefire and failsafe test providers ([b7ed379](https://github.com/Azure/osdu-spi/commit/b7ed379cee15e4c3aa0ffaa36283a006d7d72eb5))
+* **acceptance:** Prewarm surefire providers in the acceptance image ([d430769](https://github.com/Azure/osdu-spi/commit/d4307694b18b20f345d78cfbc04f80fb2097b375))
+* **acceptance:** Put pytest venv first on PATH in entrypoint ([7236c5c](https://github.com/Azure/osdu-spi/commit/7236c5cea757f580532a49b958f68d09bf209f17))
+* **acceptance:** Put the pytest suite's venv on PATH ([1aaa0c3](https://github.com/Azure/osdu-spi/commit/1aaa0c33ff4dfdf17628a2d645976662e4d8ae43))
+* **acceptance:** Read forward pid before port readiness check ([8de3222](https://github.com/Azure/osdu-spi/commit/8de3222a57d7b9c81a7933a97b5ead8064527447))
+* **ci:** Build config-only pushes without borrowing the environment ([860b52c](https://github.com/Azure/osdu-spi/commit/860b52c595383b63cca5b179b2f989d7272057fd))
+* **ci:** Count dropped template files as sync updates ([06a8243](https://github.com/Azure/osdu-spi/commit/06a8243fcacf809d6d0cef6b3171ca9c40ca8b5c))
+* **ci:** Count dropped template files as sync updates ([40dd935](https://github.com/Azure/osdu-spi/commit/40dd9358ef6f220f353fdf76f6ba8db9d08d2cc1))
+* **ci:** Replace slashes in branch name for Maven revision ([f9d3b21](https://github.com/Azure/osdu-spi/commit/f9d3b21a0b14da11487b9fa91c451b1110b48b3e))
+* **ci:** Replace slashes in branch name for Maven revision ([a0ebd35](https://github.com/Azure/osdu-spi/commit/a0ebd35786dad4a60b5e29062fdd3196a8a67490))
+* **ci:** Retag release images from the release tag's commit ([a37fdda](https://github.com/Azure/osdu-spi/commit/a37fddac423b9fe60f7b6d74224871c21385f5b9))
+* **ci:** Sanitize branch name used as Maven revision ([8935867](https://github.com/Azure/osdu-spi/commit/8935867cc2129dc6cbc7415374fc712b917b2063))
+* **ci:** Sanitize branch name used as Maven revision ([ae931af](https://github.com/Azure/osdu-spi/commit/ae931af055e183302dcccf3ca7b8b8f280b7d84e))
+* **ci:** Skip the borrow on config-only pushes and retag the release commit ([30e9fe0](https://github.com/Azure/osdu-spi/commit/30e9fe01d928c148e3017409a059cca59cec0914))
+* **ci:** Stop retag treating registry errors as missing tags ([86c4f4d](https://github.com/Azure/osdu-spi/commit/86c4f4db34ff59386228d69bdc8b40c1d8da5095))
+* **fleet:** Read image name from SERVICE_NAME repo variable ([5398e93](https://github.com/Azure/osdu-spi/commit/5398e9339b7236baecdf7e8b82366041c137c0f7))
+* **fleet:** Read image name from SERVICE_NAME repo variable ([dc6cd99](https://github.com/Azure/osdu-spi/commit/dc6cd99c8ece4464b0d4dae626c8cbc54966cd2a))
+* **fleet:** Size merge groups to free Validation lanes ([c035546](https://github.com/Azure/osdu-spi/commit/c0355467da49fc16029c003cd6ab5a1bd459568a))
+* **governance:** Address review of the image gate, image name and cutover ([1714684](https://github.com/Azure/osdu-spi/commit/17146847a72a22d9589707240ac2954147a15f0d))
+* **governance:** Date the push by its check suites and list image packages ([cfa1fbf](https://github.com/Azure/osdu-spi/commit/cfa1fbf78a74c1d0736b931d029690266f5929f2))
+* **notice:** Map azure copyright holder to Microsoft Corporation ([f9f4a47](https://github.com/Azure/osdu-spi/commit/f9f4a472bb11c765f94c6b9700d9df5a540d9471))
+* **notice:** Skip .github when collecting copyright holders ([bcd5c0a](https://github.com/Azure/osdu-spi/commit/bcd5c0a159a0125b9ecb0227af11aac87b265d57))
+* **sync:** Drop statuses write from the sync build job ([ff6ed0b](https://github.com/Azure/osdu-spi/commit/ff6ed0b60a7210a0eaecbd07d83bc430f6a25f8b))
+* **sync:** Drop statuses write from the sync build job ([34948f5](https://github.com/Azure/osdu-spi/commit/34948f5f8e093e0bfe27505d7fb4da16c1706de7))
+* **sync:** Run the sync build's Maven in a docker sandbox ([d3ddff5](https://github.com/Azure/osdu-spi/commit/d3ddff562b24cf3b259c8a215fd8b7962df1eb97))
+* **workflows:** Mask multiline secrets and clean up secrets file ([fcdd017](https://github.com/Azure/osdu-spi/commit/fcdd017c35381b047fd8f758e91c15a52a5f6a62))
+* **workflows:** Remove pull_request_target triggers ([df480b6](https://github.com/Azure/osdu-spi/commit/df480b643259ee20f99ccc4851b92431d7b0346e))
+* **workflows:** Use exact-match upstream tag for correlation ([185b57b](https://github.com/Azure/osdu-spi/commit/185b57bfa097841bc0852528fd0879d740741e7c))
+* **workflows:** Use exact-match upstream tag for correlation ([b6d2714](https://github.com/Azure/osdu-spi/commit/b6d2714abf9870b27f1ef3f8fdb9d850a5a9e040))
+
+
+### 📚 Documentation
+
+* **adr:** Add ADR-046 for fleet release and BOM ([24d5347](https://github.com/Azure/osdu-spi/commit/24d5347c9f11da453313c4fab7b7ffb0d5e2a127))
+* **adr:** Add overview diagram to pytest suites ADR ([49d534c](https://github.com/Azure/osdu-spi/commit/49d534cf2af64d2b3fb2182f91a9fb7143a005c3))
+* **fleet:** Add -R repo flag to gh run rerun commands ([e12e396](https://github.com/Azure/osdu-spi/commit/e12e39665875a919f68778c9f02a5ba87362ef37))
+* **governance:** Record ADR-046 and the Component Governance runbook ([fbbb818](https://github.com/Azure/osdu-spi/commit/fbbb8180e28ac09b290c06f4ff59136a43a48315))
+
+
+### 🔧 Miscellaneous
+
+* **deps:** Bump certifi from 2025.10.5 to 2026.10.19 in /doc ([bab3ee2](https://github.com/Azure/osdu-spi/commit/bab3ee246cc0470e1a05cbe3fa7c8c767228b3d3))
+* **deps:** Bump certifi from 2025.10.5 to 2026.10.19 in /doc ([6d0508b](https://github.com/Azure/osdu-spi/commit/6d0508b984934cbbcfeb226440db2db781a169f1))
+* **deps:** Bump openjdk/jdk from `1f04a62` to `292f024` in /build in the docker group ([b828150](https://github.com/Azure/osdu-spi/commit/b8281504743af81f781ade67744f706b9f146cf0))
+* **deps:** Bump openjdk/jdk from `292f024` to `9768f7d` in /build in the docker group ([f5a483b](https://github.com/Azure/osdu-spi/commit/f5a483b7f2e670b5293db2e7b4657f7de6071d59))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([f49e1a0](https://github.com/Azure/osdu-spi/commit/f49e1a01b6ca9004cb503a7eee76c29ef28a6431))
+* **deps:** Bump openjdk/jdk in /build in the docker group ([13b9664](https://github.com/Azure/osdu-spi/commit/13b9664fccc9dc91195da7a969cad00d18a40036))
+* **deps:** Bump the docker group across 1 directory with 2 updates ([632f390](https://github.com/Azure/osdu-spi/commit/632f390b325ebe4b4c9ec764fdabaa7656e7ea69))
+* **deps:** Bump the docker group across 1 directory with 2 updates ([a5100a9](https://github.com/Azure/osdu-spi/commit/a5100a9012b41e386754969e3dab5d44e996cfa7))
+* **deps:** Bump the docker group in /build with 2 updates ([792f5ab](https://github.com/Azure/osdu-spi/commit/792f5ab30beb28896ee4683dbfdebf146b408a1e))
+* **deps:** Bump the docker group in /build with 2 updates ([feae8ad](https://github.com/Azure/osdu-spi/commit/feae8ad60b59a5d1f206631bbb7b98baefb6d91f))
+
+
+### ♻️ Code Refactoring
+
+* **workflows:** Remove pull_request_target triggers ([03c69f3](https://github.com/Azure/osdu-spi/commit/03c69f3a1fd516caeffb140318ff1f29c5bba05a))
+
+
+### 🧪 Tests
+
+* **build:** Assert agent stage pins runtime-17 base image ([44fc6cf](https://github.com/Azure/osdu-spi/commit/44fc6cf519bc281c4c0af639960e1797a5f3049b))
+
+
+### ⚙️ Continuous Integration
+
+* **release:** Fetch retag helper from checkout instead of second clone ([0c6c5e5](https://github.com/Azure/osdu-spi/commit/0c6c5e5f4e18e5bb4acce1e90c6b28a6c70c1500))
+* **sync:** Exec docker run in sandbox build script ([934035a](https://github.com/Azure/osdu-spi/commit/934035afd1e547afb3465daad92ee44859dd2779))
+* **sync:** Rename sync_sha job output to sync_tip ([ec964bd](https://github.com/Azure/osdu-spi/commit/ec964bdd9d9106111dfbc3740b3b0baaf46e8827))
+* **sync:** Run mvn -v from / in setup-maven action ([77d8874](https://github.com/Azure/osdu-spi/commit/77d8874e1e27695b23a15aff1f62cff511fc88c6))
+* **sync:** Run sync build Maven in a docker sandbox ([4e88c49](https://github.com/Azure/osdu-spi/commit/4e88c49a8c0814576d5a8b02cad22ff74023ca60))
+* **validate:** Title environment timeout error annotations ([260f30b](https://github.com/Azure/osdu-spi/commit/260f30b45b4369074d9a0fef6457456d7d2991fc))
+
 ## [1.4.0](https://github.com/Azure/osdu-spi/compare/v1.3.0...v1.4.0) (2026-10-14)
 
 
