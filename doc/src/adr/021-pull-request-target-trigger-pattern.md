@@ -26,6 +26,8 @@ No workflow in the template or its forks declares `pull_request_target`. `dev-ci
 
 The sync build runs from a schedule or a manual dispatch, so no PR author controls what it checks out. The tree is still unreviewed upstream code, so the build job holds `contents: read` only, with no secret and no persisted checkout credential. The sync job marks the status pending and a separate `report-sync` job, which never checks out the tree, posts the result. A `statuses: write` token inside the build would let upstream build code forge any status in the repository, including the required checks on `main`.
 
+A scheduled run also carries `main`'s Actions cache scope, and code on the runner can write that cache whatever the job's permissions, because the runner holds its own cache token. `validate.yml` restores `~/.m2` from that scope and ships the JAR it builds. So the sync build runs Maven through `sandbox-build.sh`: a `docker run` of a digest-pinned base image that mounts the workspace and the read-only JDK and Maven, with no runner environment, no host `~/.m2`, and no capabilities. `.git` is mounted read-only, so the build cannot plant config that `actions/checkout`'s post-job git commands would run. No other step runs after it, and the job saves no cache.
+
 A mirror-mode `fork_upstream` carries the parent's workflows (ADR-039), so its sync PRs take the ordinary `pull_request` trigger of `validate.yml`. The routing that used to send same-repository `sync/` PRs away from that trigger is gone.
 
 ## Consequences
