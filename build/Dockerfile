@@ -7,14 +7,14 @@
 # the fork's root pom declares (java-release action); one stage per release keeps each digest on
 # a FROM line where Dependabot bumps it in the template, and template-sync carries it to the forks.
 ARG JAVA_VERSION=17
-FROM mcr.microsoft.com/openjdk/jdk:17-azurelinux@sha256:42ab19e341c33cbc2113eb246c9281f93b6cefc94dcb7fd8c623f56ddcd9cb68 AS runtime-17
-FROM mcr.microsoft.com/openjdk/jdk:25-azurelinux@sha256:61002c0b9ccdd84295342d305e4cf6f956d205cf1cd2eabc2f9e376aff1e70f6 AS runtime-25
+FROM mcr.microsoft.com/openjdk/jdk:17-azurelinux@sha256:ab6e7d411657fe17b304ec6c7f13eb6efc0b1d7ee8022d21079182560f980931 AS runtime-17
+FROM mcr.microsoft.com/openjdk/jdk:25-azurelinux@sha256:924d0dc78bd95158ef2e17c8d5442f8845742d41153d74d399bd5625d69317b0 AS runtime-25
 
 # The MCR base does not bundle the App Insights agent that OSDU's base image did, so it is
 # fetched here, on the builder's platform so the arm64 leg needs no emulation, and its bundled
 # license and notice files are read out of the same verified bytes. Bumping the version means
 # updating the checksum.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/openjdk/jdk:17-azurelinux@sha256:42ab19e341c33cbc2113eb246c9281f93b6cefc94dcb7fd8c623f56ddcd9cb68 AS agent
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/openjdk/jdk:17-azurelinux@sha256:ab6e7d411657fe17b304ec6c7f13eb6efc0b1d7ee8022d21079182560f980931 AS agent
 ARG APPLICATIONINSIGHTS_AGENT_VERSION="3.7.8"
 ADD --checksum=sha256:e8c494f3f9a36f6b99790a4741b03f51988dc5c4244c14cc24be51874ef72e6b \
     https://repo1.maven.org/maven2/com/microsoft/azure/applicationinsights-agent/${APPLICATIONINSIGHTS_AGENT_VERSION}/applicationinsights-agent-${APPLICATIONINSIGHTS_AGENT_VERSION}.jar \
