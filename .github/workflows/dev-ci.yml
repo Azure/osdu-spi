@@ -178,6 +178,8 @@ jobs:
           SANDBOX=$(cat .github/actions/java-build/sandbox-build.sh)
           assert_contains "$SANDBOX" '-v "$GITHUB_WORKSPACE/.git:$GITHUB_WORKSPACE/.git:ro"' \
             "The sandbox must mount .git read-only so checkout's post-job git commands cannot be steered"
+          assert_contains "$SANDBOX" '-v /etc/ssl/certs:/etc/ssl/certs:ro' \
+            "The sandbox must mount the host CA certificates read-only; Temurin's cacerts links into /etc/ssl/certs"
           assert_contains "$SANDBOX" '--cap-drop ALL --security-opt no-new-privileges' \
             "The sandbox must drop capabilities"
           assert_contains "$SANDBOX" 'exec docker run --rm' \
