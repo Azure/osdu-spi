@@ -15,9 +15,11 @@
 
 #
 # Builds an unreviewed tree with Maven in a throwaway container that sees only the workspace,
-# the JDK and Maven. The runner's Actions cache token, credentials and ~/.m2 stay outside, so
-# build code cannot plant a cache entry that a trusted build later restores. .git is read-only so
-# nothing it writes there runs in a later host git command (checkout's post-job cleanup).
+# the JDK, Maven and the host's CA certificates. The runner's Actions cache token, credentials and
+# ~/.m2 stay outside, so build code cannot plant a cache entry that a trusted build later restores.
+# .git is read-only so nothing it writes there runs in a later host git command (checkout's
+# post-job cleanup). /etc/ssl/certs is read-only too: the runner's apt-installed Temurin links
+# lib/security/cacerts to /etc/ssl/certs/adoptium/cacerts, so without it Java trusts nothing.
 #
 # Env:
 #   JAVA_HOME      - JDK mounted read-only (actions/setup-java)
@@ -54,6 +56,7 @@ exec docker run --rm \
   -e "PATH=$JAVA_HOME/bin:$M2_HOME/bin:/usr/bin:/bin" \
   -v "$JAVA_HOME:$JAVA_HOME:ro" \
   -v "$M2_HOME:$M2_HOME:ro" \
+  -v /etc/ssl/certs:/etc/ssl/certs:ro \
   -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" \
   -v "$GITHUB_WORKSPACE/.git:$GITHUB_WORKSPACE/.git:ro" \
   -w "$GITHUB_WORKSPACE" \
