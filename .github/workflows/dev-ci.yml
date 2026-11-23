@@ -202,8 +202,10 @@ jobs:
             ".mvn and .spi changes must always run full validation"
           assert_contains "$CHECK_PATHS" "grep -qE '^(\.github/|devops/|docs/|\.)|\.md$'" \
             "Config-only directory prefixes and Markdown suffixes must be filtered"
-          assert_contains "$CHECK_PATHS" 'case "$file" in */*) ;; LICENSE|NOTICE|NOTICE-*) continue ;; esac' \
-            "A pull request that changes only root legal notices must skip the build"
+          assert_contains "$CHECK_PATHS" 'case "$file" in */*) ;; LICENSE|NOTICE|NOTICE-*) git cat-file -e "$HEAD:$file" 2>/dev/null && continue ;; esac' \
+            "A pull request that changes only existing root legal notices must skip the build"
+          assert_contains "$CHECK_PATHS" 'git diff --name-only --no-renames' \
+            "A rename must list its source path, or moving code to a config path skips the build"
           assert_yq '.on.push."paths-ignore" | (contains(["LICENSE"]) or contains(["NOTICE"])) | not' "$VALIDATE" \
             "The push to main must rebuild the image when only a legal notice changes"
 

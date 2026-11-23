@@ -150,7 +150,7 @@ jobs:
 
           CHANGED_FILES=""
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            CHANGED_FILES=$(git diff --name-only "$BASE" "$HEAD" || echo "")
+            CHANGED_FILES=$(git diff --name-only --no-renames "$BASE" "$HEAD" || echo "")
           fi
 
           CONFIG_ONLY=false
@@ -160,7 +160,8 @@ jobs:
             while IFS= read -r file; do
               case "$file" in .mvn/*|.spi/*) CONFIG_ONLY=false; break ;; esac
               # Legal notices change no code. The image ships them, and the push to main still builds it.
-              case "$file" in */*) ;; LICENSE|NOTICE|NOTICE-*) continue ;; esac
+              # A deleted one breaks the Dockerfile's COPY, so only a file that still exists skips the build.
+              case "$file" in */*) ;; LICENSE|NOTICE|NOTICE-*) git cat-file -e "$HEAD:$file" 2>/dev/null && continue ;; esac
               if echo "$file" | grep -qE '^(\.github/|devops/|docs/|\.)|\.md$'; then
                 continue
               fi
