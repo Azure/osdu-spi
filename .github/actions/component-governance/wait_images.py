@@ -64,7 +64,6 @@ VALIDATION_IGNORED = (
     "docs/**",
     "**.md",
     "**.txt",
-    "LICENSE",
 )
 MAX_SKIPPED = 50
 

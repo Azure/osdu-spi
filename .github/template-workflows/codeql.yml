@@ -54,13 +54,15 @@ jobs:
             exit 0
           fi
 
-          # Skip only when every changed file is Markdown. Markdown is not an analyzed
-          # language, so this can never hide a finding.
+          # Skip only when every changed file is Markdown or a root legal notice. Neither is
+          # an analyzed language, so this can never hide a finding.
           SHOULD_RUN=false
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
               *.md) continue ;;
+              */*) ;;
+              LICENSE|NOTICE|NOTICE-*) continue ;;
             esac
             SHOULD_RUN=true
             break
@@ -68,10 +70,10 @@ jobs:
 
           if [ "$SHOULD_RUN" = "true" ]; then
             echo "should-run=true" >> $GITHUB_OUTPUT
-            echo "Running CodeQL: non-Markdown changes detected"
+            echo "Running CodeQL: analyzable changes detected"
           else
             echo "should-run=false" >> $GITHUB_OUTPUT
-            echo "Skipping CodeQL: only Markdown files changed"
+            echo "Skipping CodeQL: only Markdown or legal notice files changed"
           fi
 
   detect-languages:
@@ -212,7 +214,7 @@ jobs:
           fi
 
           if [ "${{ needs.check-paths.outputs.should-run }}" = "false" ]; then
-            echo "✅ CodeQL skipped - only Markdown files changed"
+            echo "✅ CodeQL skipped - only Markdown or legal notice files changed"
             exit 0
           fi
 
@@ -224,7 +226,7 @@ jobs:
           # The language list always holds actions, so a skipped analyze means the job
           # never started: an infrastructure fault, not a pass.
           if [ "${{ needs.analyze.result }}" = "skipped" ]; then
-            echo "❌ CodeQL analysis did not run despite non-Markdown changes"
+            echo "❌ CodeQL analysis did not run despite analyzable changes"
             exit 1
           fi
 

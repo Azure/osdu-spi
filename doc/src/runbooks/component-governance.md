@@ -62,7 +62,7 @@ The first refresh also changes `NOTICE: keep` to `NOTICE: strip` in `.github/ups
 
 ## Routine operation
 
-The pipeline registers `main` every Monday at 06:00 UTC and every `v*` release tag. Compliance is read from `main`. The Monday run also refreshes `NOTICE`: it opens or updates the draft pull request from `chore/notice-refresh/main` when the generated NOTICE differs from `main`'s, and leaves it alone when the branch already holds the same NOTICE for the same commit. Review and merge it like any other pull request; a pull request someone closed is not reopened for the same `main` commit. To refresh sooner, queue a run on `main` with the pull request option; a refresh only replaces an older one, and nothing is opened when `NOTICE` already matches. Don't queue a run while another run of the same branch is in progress.
+The pipeline registers `main` every Monday at 06:00 UTC and every `v*` release tag. Compliance is read from `main`. The Monday run also refreshes `NOTICE`: it opens or updates the draft pull request from `chore/notice-refresh/main` when the generated NOTICE differs from `main`'s, and leaves it alone when the branch already holds the same NOTICE for the same commit. Review and merge it like any other pull request. A pull request that changes only `NOTICE` skips the build, deploy and CodeQL analysis; the push to `main` that merges it builds the image that ships the new file. A pull request someone closed is not reopened for the same `main` commit. To refresh sooner, queue a run on `main` with the pull request option; a refresh only replaces an older one, and nothing is opened when `NOTICE` already matches. Don't queue a run while another run of the same branch is in progress.
 
 ## Failures
 
