@@ -60,7 +60,9 @@ jobs:
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
-              *.md|LICENSE|NOTICE|NOTICE-*) continue ;;
+              *.md) continue ;;
+              */*) ;;
+              LICENSE|NOTICE|NOTICE-*) continue ;;
             esac
             SHOULD_RUN=true
             break

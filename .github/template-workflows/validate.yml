@@ -22,7 +22,6 @@ on:
       - 'docs/**'
       - '**.md'
       - '**.txt'
-      - 'LICENSE'
   workflow_dispatch:
     inputs:
       post_init:
@@ -161,7 +160,7 @@ jobs:
             while IFS= read -r file; do
               case "$file" in .mvn/*|.spi/*) CONFIG_ONLY=false; break ;; esac
               # Legal notices change no code. The image ships them, and the push to main still builds it.
-              case "$file" in LICENSE|NOTICE|NOTICE-*) continue ;; esac
+              case "$file" in */*) ;; LICENSE|NOTICE|NOTICE-*) continue ;; esac
               if echo "$file" | grep -qE '^(\.github/|devops/|docs/|\.)|\.md$'; then
                 continue
               fi
