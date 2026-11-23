@@ -62,7 +62,7 @@ jobs:
             case "$file" in
               *.md) continue ;;
               */*) ;;
-              LICENSE|NOTICE|NOTICE-*) continue ;;
+              LICENSE|NOTICE|NOTICE-OSDU-SPI) continue ;;
             esac
             SHOULD_RUN=true
             break
