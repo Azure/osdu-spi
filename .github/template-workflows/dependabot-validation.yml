@@ -16,7 +16,6 @@ on:
       - '.vscode/**'
       - 'docs/**'
       - '**.md'
-      - '**.txt'
       - 'LICENSE'
       - 'NOTICE'
 
