@@ -39,6 +39,12 @@ permissions:
   contents: read
   pull-requests: write
 
+# A newer run for the same pull request cancels the older one before it can move the sha- tag
+# the older run pinned. Push and dispatch runs each get their own group.
+concurrency:
+  group: validation-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   check-initialization:
     name: "Check Initialization"
