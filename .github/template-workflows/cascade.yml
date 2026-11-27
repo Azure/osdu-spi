@@ -913,7 +913,7 @@ jobs:
           3. Re-run the cascade workflow or manually complete the integration"
 
           CONFLICT_ISSUE_URL="${{ needs.cascade-to-integration.outputs.conflict_issue }}"
-          if [ "${{ needs.cascade-to-integration.outputs.conflicts_found }}" = "true" ] && [ -n "$CONFLICT_ISSUE_URL" ]; then
+          if [ -n "$CONFLICT_ISSUE_URL" ]; then
             echo "Merge conflicts already have $CONFLICT_ISSUE_URL - not opening a second failure issue"
             FAILURE_ISSUE_URL="$CONFLICT_ISSUE_URL"
           else
