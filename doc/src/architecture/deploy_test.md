@@ -120,7 +120,7 @@ That is the entire per-repo surface. The prototype's other ~13 pushed variables 
 
 ## §5 The CI lane: one borrow transaction
 
-One credentialed job, `deploy-test`, chained on `docker-push` in `validate.yml` behind a gate job that carries the ADR-036 trust clause (push or same-repository pull request; never Dependabot, `pull_request_target`, or `fork_upstream`) and always says why the lane did not run. It runs on the fork's own pull requests and again on the push after merge, since the merge is a new build with a new digest. Concurrency group `spi-stack-<service>`, `cancel-in-progress: false`.
+One credentialed job, `deploy-test`, chained on `docker-push` in `validate.yml` behind a gate job that carries the ADR-036 trust clause (push or same-repository pull request; never Dependabot, `pull_request_target`, or `fork_upstream`) and always says why the lane did not run. It runs on the fork's own pull requests and again on the push after merge, since the merge is a new build with a new digest. Concurrency group `spi-stack-<service>`, `cancel-in-progress: false`. The workflow itself runs one pull request run at a time (`validation-pr-<number>`, `cancel-in-progress: true`), so a duplicate event for the same head cannot push a second build to the `sha-` tag the first run pinned; Restore runs under `always()`, so a cancelled borrow still restores.
 
 ```
 gate    → deploy-gate                 trusted event? onboarded? descriptor? image pushed?
