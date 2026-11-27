@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.5.1](https://github.com/Azure/osdu-spi/compare/v1.5.0...v1.5.1) (2026-11-27)
+
+
+### 🐛 Bug Fixes
+
+* **template:** Cancel superseded validate runs per pull request ([732d061](https://github.com/Azure/osdu-spi/commit/732d061fbf19ccae5d7d034b39c866a96dc4138a))
+* **template:** Cancel superseded validate runs per pull request ([6c096a1](https://github.com/Azure/osdu-spi/commit/6c096a1e01c80d3d3211cfe50b16758922555312))
+* **template:** Exempt only the shipped legal files, not every NOTICE-* name ([8b6dc0f](https://github.com/Azure/osdu-spi/commit/8b6dc0f4cff145f6f7cb607d41aa7e0ce8beefc7))
+* **template:** Exempt only the shipped legal files, not every NOTICE-* name ([2b107a9](https://github.com/Azure/osdu-spi/commit/2b107a99c96f3fce5ca620d14638d9bb286c28eb))
+* **template:** Recover cascade from merge conflicts on retry ([9f28e07](https://github.com/Azure/osdu-spi/commit/9f28e07e735c66061bbfb71b1e916320b32f2ec2))
+* **template:** Recover the cascade from merge conflicts on retry ([2430aa0](https://github.com/Azure/osdu-spi/commit/2430aa018326533a7477b8b55890cb9da4fd1e0c))
+* **template:** Run Dependabot Validation on requirements.txt bumps ([db4159d](https://github.com/Azure/osdu-spi/commit/db4159d463fbb4a61f0c4311a40f0c91673c557c))
+* **template:** Skip duplicate cascade failure issue on conflict ([d37f5c1](https://github.com/Azure/osdu-spi/commit/d37f5c158f12a3dd496bd38fd1b387355d8b0ad3))
+* **template:** Validate dependabot bumps to .txt files ([483fd88](https://github.com/Azure/osdu-spi/commit/483fd889c31ec05655366c92ff9351549d719e97))
+
 ## [1.5.0](https://github.com/Azure/osdu-spi/compare/v1.4.0...v1.5.0) (2026-11-23)
 
 
