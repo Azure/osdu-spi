@@ -41,8 +41,8 @@ The strategy is implemented in `cascade.yml` (job `cascade-to-integration`) toge
 1. `sync.yml` opens a PR from a `sync/upstream-*` branch to `fork_upstream`.
 2. After that PR merges, a human triggers `cascade.yml`. `cascade-monitor.yml` dispatches it as a safety net if nobody does.
 3. The cascade merges `fork_upstream` into `fork_integration`. If git reports unmerged paths, the step lists the conflicted files, opens an issue titled `🚨 Cascade Conflicts: Manual Resolution Required` with labels `conflict,cascade-blocked,high-priority,human-required`, moves the tracking issue from `cascade-active` to `cascade-blocked`, and stops.
-4. The developer resolves the conflicts on `fork_integration` locally, commits, and pushes.
-5. Once the `human-required` label is removed, `cascade-monitor.yml` re-dispatches the cascade, which continues to validation and the production PR.
+4. The developer merges `main` and then `fork_upstream` into `fork_integration` locally, resolves the conflicts, and pushes. The cascade merged `main` first but never pushed that merge, so the issue gives the exact commands. A modify/delete on a path the upstream filter strips keeps the fork's file. A conflict opens no separate pipeline failure issue.
+5. Once the `human-required` label is removed, `cascade-monitor.yml` re-dispatches the cascade, or a human dispatches it. When `fork_upstream` is already merged into `fork_integration`, the retry closes the conflict issue and continues to validation and the production PR. A retry before the resolution is pushed puts `human-required` back on the tracking issue.
 6. `check-stale-conflicts` in both `cascade.yml` and `cascade-monitor.yml` looks for `conflict,cascade-blocked` items older than 48 hours, opens an escalation issue labeled `escalation,high-priority,cascade-escalated,human-required`, and comments on the original.
 
 ### Labels (ADR-020)
