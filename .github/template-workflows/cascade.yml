@@ -25,6 +25,7 @@ jobs:
     outputs:
       integration_success: ${{ steps.validate.outputs.success }}
       conflicts_found: ${{ steps.merge_upstream.outputs.conflicts }}
+      conflict_issue: ${{ steps.merge_upstream.outputs.conflict_issue }}
       issue_valid: ${{ steps.update_tracking_start.outputs.issue_valid }}
     steps:
       - name: Checkout repository
@@ -52,7 +53,20 @@ jobs:
           
           CONFLICT_ISSUES=$(gh issue list --label "conflict,cascade-blocked" --json number,title 2>/dev/null || echo "[]")
           CONFLICT_COUNT=$(echo "$CONFLICT_ISSUES" | jq length)
-          
+
+          # A conflicted merge is never pushed, so fork_upstream inside fork_integration means it was resolved.
+          UPSTREAM_IN_INTEGRATION=$(git rev-list --count origin/fork_integration..origin/fork_upstream 2>/dev/null || echo "999")
+          if [ "$CONFLICT_COUNT" -gt 0 ] && [ "$UPSTREAM_IN_INTEGRATION" -eq 0 ]; then
+            RESOLVED_AT=$(git rev-parse --short origin/fork_integration)
+            for CONFLICT_ISSUE in $(echo "$CONFLICT_ISSUES" | jq -r '.[].number'); do
+              echo "::notice::Closing conflict issue #$CONFLICT_ISSUE - fork_upstream is merged into fork_integration at $RESOLVED_AT"
+              printf -v CLOSE_BODY "Resolved - %s\n\n\`fork_upstream\` is merged into \`fork_integration\` at %s, so the cascade is continuing.\n\nRun: %s" \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RESOLVED_AT" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              gh issue close "$CONFLICT_ISSUE" --comment "$CLOSE_BODY"
+            done
+            CONFLICT_COUNT=0
+          fi
+
           if [ "$INTEGRATION_COMMITS" -gt 0 ] || [ "$RELEASE_PR_COUNT" -gt 0 ] || [ "$CONFLICT_COUNT" -gt 0 ]; then
             # Ahead of main with no release PR and no conflict issue is usually stale
             # (a manual PR merged without the upstream-sync label, so cleanup never ran).
@@ -61,7 +75,6 @@ jobs:
               echo "::notice::Checking if this is a stale divergence that can be auto-healed..."
 
               # fork_upstream already merged in means a real in-progress cascade, not stale divergence.
-              UPSTREAM_IN_INTEGRATION=$(git rev-list --count origin/fork_integration..origin/fork_upstream 2>/dev/null || echo "999")
               if [ "$UPSTREAM_IN_INTEGRATION" -eq 0 ]; then
                 echo "::notice::fork_upstream is already merged into fork_integration - this is a legitimate in-progress cascade, not stale divergence"
                 echo "::notice::Skipping self-heal, proceeding to create release PR"
@@ -105,6 +118,24 @@ jobs:
             echo "  - fork_integration is $INTEGRATION_COMMITS commits ahead of main"
             echo "  - $RELEASE_PR_COUNT release PRs open to main"
             echo "  - $CONFLICT_COUNT conflict issues blocking pipeline"
+
+            # A retry of a blocked sync: a monitor retry left at cascade-active would block every sync.
+            TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
+            if [ "$CONFLICT_COUNT" -gt 0 ] && [ -n "$TRACKING_ISSUE" ]; then
+              TRACKING_LABELS=$(gh issue view "$TRACKING_ISSUE" --json state,labels --jq 'select(.state == "OPEN") | .labels[].name' 2>/dev/null || true)
+              if echo "$TRACKING_LABELS" | grep -qxE "cascade-active|cascade-blocked"; then
+                CONFLICT_REFS=$(echo "$CONFLICT_ISSUES" | jq -r '[.[].number | "#\(.)"] | join(", ")')
+                gh issue edit "$TRACKING_ISSUE" \
+                  --remove-label "cascade-active" \
+                  --add-label "cascade-failed,human-required"
+                printf -v RETRY_BODY "Conflict still unresolved - %s\n\n\`fork_upstream\` is not merged into \`fork_integration\` yet, so this retry stopped. Resolve %s, push \`fork_integration\`, then remove \`human-required\` again." \
+                  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CONFLICT_REFS"
+                gh issue comment "$TRACKING_ISSUE" --body "$RETRY_BODY"
+                # A retry of the same sync holds no new upstream changes.
+                echo "integration_in_process=true" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
 
             HELD_ISSUE=$(gh issue list --label "upstream-held" --json number,title 2>/dev/null | jq -r '.[0].number // empty')
 
@@ -246,36 +277,55 @@ jobs:
               echo "Conflicted files:"
               git diff --name-only --diff-filter=U | tee conflicted_files.txt
               
-              CONFLICT_BODY="Upstream merge conflicts detected in fork_integration branch.
-              
-              **Conflicted Files:**
-              \`\`\`
-              $(cat conflicted_files.txt)
-              \`\`\`
-              
-              **Next Steps:**
-              1. Checkout the fork_integration branch locally
-              2. Resolve conflicts in the listed files
-              3. Commit and push the resolution
-              4. The cascade will automatically continue once conflicts are resolved
-              
-              **SLA:** 48 hours for resolution"
-              
-              gh issue create \
-                --title "🚨 Cascade Conflicts: Manual Resolution Required - $(date +%Y-%m-%d)" \
-                --body "$CONFLICT_BODY" \
-                --label "conflict,cascade-blocked,high-priority,human-required"
-              
               TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
-              if [ -n "$TRACKING_ISSUE" ] && [ "${{ steps.update_tracking_start.outputs.issue_valid }}" = "true" ]; then
+              TRACKING_VALID="${{ steps.update_tracking_start.outputs.issue_valid }}"
+
+              # The body is echoed line by line so the YAML indent does not turn it into a markdown code block.
+              {
+                echo 'Merging `fork_upstream` into `fork_integration` stopped on conflicts in:'
+                echo
+                echo '```'
+                cat conflicted_files.txt
+                echo '```'
+                echo
+                echo '**Resolve.** Merge `main` first: this run merged it before the conflict but never pushed that merge, so merging `fork_upstream` alone gives a different result.'
+                echo
+                echo '```bash'
+                echo 'git fetch origin'
+                echo 'git checkout -B fork_integration origin/fork_integration'
+                echo 'git merge --no-edit origin/main'
+                echo 'git merge origin/fork_upstream'
+                echo '# resolve the files above, then'
+                echo 'git commit --no-edit'
+                echo 'git push origin fork_integration'
+                echo '```'
+                echo
+                echo 'A modify/delete conflict on a path that `.github/upstream-filter.yml` strips, such as `NOTICE`, keeps the fork version: `git checkout --ours <path> && git add <path>`.'
+                echo
+                if [ -n "$TRACKING_ISSUE" ] && [ "$TRACKING_VALID" = "true" ]; then
+                  echo "**Continue.** Remove \`human-required\` from #$TRACKING_ISSUE and the cascade monitor retries, or run Cascade Integration with \`issue_number=$TRACKING_ISSUE\`. The retry closes this issue once \`fork_upstream\` is merged into \`fork_integration\`."
+                else
+                  echo '**Continue.** Run Cascade Integration again. The retry closes this issue once `fork_upstream` is merged into `fork_integration`.'
+                fi
+                echo
+                echo '**SLA:** 48 hours for resolution'
+              } > conflict_body.md
+
+              CONFLICT_ISSUE_URL=$(gh issue create \
+                --title "🚨 Cascade Conflicts: Manual Resolution Required - $(date +%Y-%m-%d)" \
+                --body-file conflict_body.md \
+                --label "conflict,cascade-blocked,high-priority,human-required")
+              echo "conflict_issue=$CONFLICT_ISSUE_URL" >> $GITHUB_OUTPUT
+
+              if [ -n "$TRACKING_ISSUE" ] && [ "$TRACKING_VALID" = "true" ]; then
                 gh issue edit "$TRACKING_ISSUE" \
                   --remove-label "cascade-active" \
                   --add-label "cascade-blocked"
                 
                 gh issue comment "$TRACKING_ISSUE" --body "🚨 **Conflicts Detected** - $(date -u +%Y-%m-%dT%H:%M:%SZ)
                 
-                Merge conflicts were detected during integration. A separate conflict resolution issue has been created.
-                
+                Merge conflicts were detected during integration. Resolution steps: $CONFLICT_ISSUE_URL
+
                 **Status:** Cascade blocked - manual conflict resolution required
                 **SLA:** 48 hours for resolution"
               fi
@@ -862,11 +912,17 @@ jobs:
           2. Identify and fix the root cause
           3. Re-run the cascade workflow or manually complete the integration"
 
-          FAILURE_ISSUE_URL=$(gh issue create \
-            --title "🚨 Cascade Pipeline Failure: $FAILURE_TYPE - $(date +%Y-%m-%d)" \
-            --body "$ISSUE_BODY" \
-            --label "high-priority,human-required")
-          
+          CONFLICT_ISSUE_URL="${{ needs.cascade-to-integration.outputs.conflict_issue }}"
+          if [ -n "$CONFLICT_ISSUE_URL" ]; then
+            echo "Merge conflicts already have $CONFLICT_ISSUE_URL - not opening a second failure issue"
+            FAILURE_ISSUE_URL="$CONFLICT_ISSUE_URL"
+          else
+            FAILURE_ISSUE_URL=$(gh issue create \
+              --title "🚨 Cascade Pipeline Failure: $FAILURE_TYPE - $(date +%Y-%m-%d)" \
+              --body "$ISSUE_BODY" \
+              --label "high-priority,human-required")
+          fi
+
           TRACKING_ISSUE="${{ github.event.inputs.issue_number }}"
           ISSUE_VALID="${{ needs.cascade-to-integration.outputs.issue_valid }}"
           if [ -n "$TRACKING_ISSUE" ] && [ "$ISSUE_VALID" = "true" ]; then
